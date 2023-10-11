@@ -428,7 +428,7 @@ sub sha256
 		chomp( my $line = $_ ) ;
 		if( $line =~ m/^[0-9a-f][0-9a-f] [0-9a-f ]+$/ )
 		{
-			$line =~ s/ /g ;
+			$line =~ s/\s//g ;
 			$result = $line ;
 			last ;
 		}
