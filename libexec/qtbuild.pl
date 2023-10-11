@@ -1,16 +1,38 @@
 #!/usr/bin/env perl
 #
+# Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# ===
+#
 # qtbuild.pl
 #
-# Downloads Qt and builds static libraries.
+# Builds Qt static libraries.
 #
 # usage: qtbuild.pl [{--x86|--x86-only}]
 #
-# Source code goes into "qt-source", and builds are done in
-# "qt-build-<arch>-<type>" (where <type> is "debug" or 
-# "release").
+# Directories, relative to cwd:
+#  source   - qt5/
+#  build    - qt-build-<arch>/
+#  install  - qt-install-<arch>/
 #
-# Runs all windows commands via "vcvarsall.bat" if "x86" is 
+# Download qt source with:
+#    $ git clone https://code.qt.io/qt/qt5.git qt5
+#    $ git -C qt5 checkout 5.15
+#    $ cd qt5 && perl init-repository --module-subset=qtbase,qttranslations
+#
+# Runs all windows commands via "vcvarsall.bat" if "x86" is
 # one of the requested architectures.
 #
 
@@ -25,75 +47,60 @@ use File::Glob ;
 my @cfg_arch = ( "x64" ) ;
 if( $ARGV[0] eq "--x86" ) { push @cfg_arch , "x86" }
 if( $ARGV[0] eq "--x86-only" ) { @cfg_arch = ( "x86" ) }
-my $cfg_branch = "5.15" ;
-my @cfg_types = ( "release" ) ; # "debug"
-die if( scalar(@cfg_arch) == 0 || scalar(@cfg_types) == 0 ) ;
-my $cfg_use_vcvars = $^O ne "linux" && scalar(@cfg_arch) == 1 && $cfg_arch[0] eq "x64" ;
-
-# find msvc
+my $cfg_type = "release" ; # or "debug" or "debug-and-release"
+die if( scalar(@cfg_arch) == 0 ) ;
+my $cfg_use_vcvars = $^O ne "linux" ;
 my $msvc_dir = $cfg_use_vcvars ? find_msvc() : undef ;
-
-
-# fetch the source code, but only the 'qtbase' git submodule
-if( ! -e "qt-source/source.ok" )
-{
-	run( "git-clone" , "git clone https://code.qt.io/qt/qt5.git qt-source" ) ;
-	run( "git-checkout" , "git -C qt-source checkout $cfg_branch" ) ;
-	run( {cd=>"qt-source"} , "init-repository" , "perl init-repository --module-subset=qtbase,qttranslations" ) ;
-	touch( "qt-source/source.ok" ) ;
-}
 
 for my $arch ( @cfg_arch )
 {
-	for my $type ( @cfg_types )
+	my $source_dir = "qt5" ;
+	my $build_dir = "qt-build-${arch}-${cfg_type}" ;
+	my $install_dir = "qt-install-$arch" ;
+	$install_dir = Cwd::realpath(".")."/$install_dir" ;
+
+	mkdir( $build_dir ) ;
+
+	# (see qtbase/config_help.txt)
+	my @configure_args = (
+		"-opensource" , "-confirm-license" ,
+		"-prefix" , $install_dir ,
+		"-static" , ( $^O eq "linux" ? "" : "-static-runtime" ) ,
+		"-${cfg_type}" ,
+		"-platform" , ( $^O eq "linux" ? "linux-g++" : "win32-msvc" ) ,
+		"-ltcg" , # link-time code generation (?)
+		"-no-pch" ,
+		"-optimize-size" , # ?
+		"-no-openssl" ,
+		"-no-opengl" ,
+		"-no-dbus" ,
+		"-no-gif" ,
+    	"-no-libpng" ,
+    	"-no-libjpeg" ,
+		#"-no-sqlite" ,
+		"-nomake" , "examples" ,
+		"-nomake" , "tests" ,
+		"-nomake" , "tools" ,
+		"-make" , "libs" ,
+	) ;
+	push @configure_args , map {("-skip",$_)} skips() ;
+	#push @configure_args , no_networking() ;
+	#push @configure_args , no_images() ;
+	#push @configure_args , extras() ;
+
+	if( $^O eq "linux" )
 	{
-		my $build_dir = "qt-build-$arch-$type" ;
-		my $install_dir = "qt-install-$arch-$type" ;
-		$install_dir = Cwd::realpath(".")."/$install_dir" ;
-
-		mkdir( $build_dir ) ;
-
-		# (see qtbase/config_help.txt)
-		my @configure_args = (
-			"-opensource" , "-confirm-license" ,
-			"-prefix" , $install_dir ,
-			"-static" , ( $^O eq "linux" ? "" : "-static-runtime" ) ,
-			( $type eq "release" ? "-release" : "-debug" ) , # -debug-and-release
-			"-platform" , ( $^O eq "linux" ? "linux-g++" : "win32-msvc" ) ,
-			"-ltcg" , # link-time code generation (?)
-			"-no-pch" , 
-			"-optimize-size" , # ?
-			"-no-openssl" ,
-			"-no-opengl" ,
-			"-no-dbus" ,
-			"-no-gif" ,
-    		"-no-libpng" ,
-    		"-no-libjpeg" ,
-			#"-no-sqlite" ,
-			"-nomake" , "examples" ,
-			"-nomake" , "tests" ,
-			"-nomake" , "tools" ,
-			"-make" , "libs" ,
-		) ;
-		push @configure_args , map {("-skip",$_)} skips() ;
-		#push @configure_args , no_networking() ;
-		#push @configure_args , no_images() ;
-		#push @configure_args , extras() ;
-
-		if( $^O eq "linux" )
-		{
-			run( {cd=>$build_dir} , "configure($arch,$type)" , 
-				"../qt-source/configure" , @configure_args ) ;
-		}
-		else
-		{
-			run( {arch=>$arch,cd=>$build_dir} , "configure($arch,$type)" , 
-				"..\\qt-source\\configure.bat" , @configure_args ) ;
-		}
-
-		run( {arch=>$arch,cd=>$build_dir} , "make($arch,$type)" , $^O eq "linux" ? qw(make -j 10) : qw(nmake) ) ;
-		run( {arch=>$arch,cd=>$build_dir} , "make-install($arch,$type)" , $^O eq "linux" ? qw(make install) : qw(nmake install) ) ;
+		run( {cd=>$build_dir} , "configure($arch)" ,
+			"../$source_dir/configure" , @configure_args ) ;
 	}
+	else
+	{
+		run( {arch=>$arch,cd=>$build_dir} , "configure($arch)" ,
+			"..\\qt-source\\configure.bat" , @configure_args ) ;
+	}
+
+	run( {arch=>$arch,cd=>$build_dir} , "make($arch)" , $^O eq "linux" ? qw(make -j 10) : qw(nmake) ) ;
+	run( {arch=>$arch,cd=>$build_dir} , "make-install($arch)" , $^O eq "linux" ? qw(make install) : qw(nmake install) ) ;
 }
 
 ## ==
@@ -185,15 +192,15 @@ sub skips
 sub extras
 {
 	# in principle it should be possible to get "--no-feature-whatever"
-	# options from the qconfig-gui tool, but it's only available 
+	# options from the qconfig-gui tool, but it's only available
 	# commercially :-< -- the https://qtlite.com/ web tool looks like an
-	# alternative but it does not work well in practice 
+	# alternative but it does not work well in practice
 	#
 	# the full (?) list of features can be obtained from
 	# "cd <build> && <source>/configure[.bat] -list-features 2>&1"
 	#
-	# configure options can go into a config file "<build>/config.opt" 
-	# rather than on the command-line, with "configure -redo" to 
+	# configure options can go into a config file "<build>/config.opt"
+	# rather than on the command-line, with "configure -redo" to
 	# re-process
 	#
 	return grep {!m/^#/} qw(

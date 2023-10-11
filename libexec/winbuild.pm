@@ -82,6 +82,7 @@ sub find_qt_x86
 		"$ENV{SystemDrive}/qt" ,
 	) ;
 	return (
+		_find_basic( "find-qt(x86)" , "qt-install-x86" , "." ) || # see qtbuild.pl
 		_find_match( "find-qt(x86)" , "6*/msvc*/lib/cmake/qt6" , qr;/msvc\d\d\d\d/; , @dirs ) ||
 		_find_match( "find-qt(x86)" , "5*/msvc*/lib/cmake/qt5" , qr;/msvc\d\d\d\d/; , @dirs ) ) ;
 }
@@ -94,6 +95,7 @@ sub find_qt_x64
 		"$ENV{SystemDrive}/qt" ,
 	) ;
 	return (
+		_find_basic( "find-qt(x64)" , "qt-install-x64" , "." ) || # see qtbuild.pl
 		_find_match( "find-qt(x64)" , "6*/msvc*_64/lib/cmake/qt6" , undef , @dirs ) ||
 		_find_match( "find-qt(x64)" , "5*/msvc*_64/lib/cmake/qt5" , undef , @dirs ) ) ;
 }
