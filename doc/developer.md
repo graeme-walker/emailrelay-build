@@ -232,29 +232,26 @@ that there cannot be any name clashes within the combined anonymous namespace.)
 
 Windows build
 -------------
-E-MailRelay can be compiled on Windows using Microsoft Visual Studio C++ (MSVC)
-or mingw-w64.
+E-MailRelay can be compiled for Windows using Microsoft Visual Studio C++ (MSVC)
+or using MinGW (mingw-w64) on Linux.
 
-For MSVC builds there is a perl script (`winbuild.pl`) that creates `cmake`
-files from the autotools makefiles, runs `cmake` to create the MSVC project
-files and then runs `msbuild` to compile E-MailRelay. If perl, cmake, MSVC, Qt
-and mbedTLS source are installed in the right way then the `winbuild.bat` batch
-file should be able to do a complete MSVC release build in one go. After that
-the `winbuild-install.bat` batch file can be used to create a distribution.
+The `winbuild.pl` perl script generates `cmake` files from the autotools
+makefiles and then uses `cmake` to do the build. By default it expects to find
+mbedtls source code in a child or sibling directory and Qt libraries (having
+dynamic run-time library linkage (`/MD`)) somewhere sensible. Use `--no-mbedtls`
+and/or `--no-gui` to build without these dependencies and use `--static-gui` if
+the Qt libraries have static run-time library linkage (`/MT`). The
+`winbuild.cfg` configuration file can be used to point to mbedtls source code
+and Qt libraries in non-standard locations.
 
-When building for a public release the E-MailRelay setup program should be
-statically linked and copied into the distribution created by `winbuild.pl`.
-This requires a static build of Qt: edit `msvc-desktop.conf` to use `/MT`;
-run `configure.bat` with `-static -release`; run `nmake -f Makefile` for
-`release` then `install`. Then build the E-MailRelay GUI using
-`emailrelay-gui.pro`: `qmake CONFIG+='win static' emailrelay-gui.pro`;
-then `mc messages.mc`; then copy `emailrelay-icon.ico`; and finally
-`nmake -f Makefile.Release`.
+The `libexec/qtbuild.pl` perl script can be used to build Qt libraries from
+source with static run-time library linkage (`/MT`). It expects to find a `qt5`
+child or sibling directory containing the Qt5 source code; only the `qtbase`
+and `qttranslations` submodules are needed.
 
 For MinGW cross-builds use `./configure.sh -w64` and `make` on a Linux box and
-copy the built executables and the MinGW run-time to the target. Any extra
-run-time files can be identified by running `dumpbin /dependents` in the normal
-way.
+copy the built executables. Any extra run-time files can be identified by
+running `dumpbin /dependents` in the normal way.
 
 Windows packaging
 -----------------

@@ -18,29 +18,30 @@
 #
 # winbuild.pl
 #
-# Parses automake files throughout the source tree, generates cmake files
-# for windows, runs cmake to generate visual studio project files, and
-# then runs "cmake --build".
+# Parses automake files throughout the emailrelay source tree to generate
+# windows-specific cmake files, then uses cmake to generate mbedtls and
+# emailrelay makefiles, and finally uses "cmake --build" to build the mbedtls
+# libraries and emailrelay executables.
 #
-# usage: winbuild.pl [<subtask> [<subtask> ...]]
+# By default the emailrelay cmake files specify static linkage of the run-time
+# library ("/MT"), with the exception of the emailrelay GUI which is built with
+# "/MD".
 #
-# Also spits out batch files (like "winbuild-whatever.bat") for doing
-# sub-tasks, including "winbuild-install.bat".
+# usage: winbuild.pl [--no-mbedtls] [--no-gui] [--static-gui] [<subtask> [<subtask> ...]]
 #
-# Requires "cmake" to be on the path or somewhere obvious (see
-# find_cmake() in "winbuild.pm").
+# Also spits out batch files (like "winbuild-whatever.bat") for doing sub-tasks,
+# including "winbuild-install.bat".
 #
-# Looks for mbedtls source code in a sibling or child directory
-# (see find_mbedtls(), disabled with "--no-mbedtls"). Note that
-# emailrelay and the mbedtls library are built with static linking
-# of the MSVC run-time library ("/MT").
+# Requires "cmake" to be on the path or somewhere obvious (see find_cmake() in
+# "winbuild.pm").
 #
-# Looks for Qt libraries in various places (see find_qt_x64(),
-# disabled with "--no-gui"). By default this script builds the GUI
-# with dynamic linking of the run-time library ("/MD") and dynamic
-# linking to the Qt DLLs. For a fully static GUI build the Qt libraries
-# must be built from source ("configure.bat -static -static-runtime...")
-# with "--static-gui" passed to this script.
+# Looks for mbedtls source code in a sibling or child directory or other likely
+# places (see winbuild::find_mbedtls(), disabled with "--no-mbedtls").
+#
+# Looks for Qt libraries in various places (see winbuild::find_qt_x64(),
+# disabled with "--no-gui"). For a fully static GUI build the Qt libraries
+# should be built from source (ie. "configure -static -static-runtime") and then
+# "--static-gui" passed to this script. See also "qtbuild.pl".
 #
 # The "install" sub-task, which is not run by default, assembles binaries
 # and their dependencies in a directory tree ready for zipping and

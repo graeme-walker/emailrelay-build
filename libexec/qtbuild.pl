@@ -35,10 +35,9 @@
 # Delete qt-build-<arch> and qt-install-<arch> directories
 # for a clean build ("rmdir /s" on windows).
 #
-# Runs all windows commands via "vcvarsall.bat" batch file
-# in order to select the x86/x64 architecture (although this
-# is overkill if only building for the the compiler's default
-# architecture). The batch file is located by find_msvc().
+# Runs windows commands via "vcvarsall.bat" batch file in order
+# to select the x86/x64 architecture and get "nmake" etc. on
+# the path.
 #
 
 use strict ;
@@ -113,9 +112,7 @@ for my $arch ( @cfg_arch )
 		) ;
 		push @configure_args , ( "-ltcg" , "-no-pch" , "-optimize-size" ) unless $cfg_type eq "debug" ;
 		push @configure_args , map {("-skip",$_)} skips() ;
-		#push @configure_args , no_networking() ;
-		#push @configure_args , no_images() ;
-		#push @configure_args , extras() ;
+		#push @configure_args , no_features() ;
 
 		# fix for missing qglobal.h error -- see "-e" test in "qtbase/configure"
 		touch( "$source_dir/qtbase/.git" ) ;
@@ -128,7 +125,7 @@ for my $arch ( @cfg_arch )
 		else
 		{
 			run( {arch=>$arch,cd=>$build_dir} , "configure($arch)" ,
-				"..\\\\$source_dir\\\\configure.bat" , @configure_args ) ; # (double backslashes for msys perl)
+				"..\\\\$source_dir\\\\configure.bat" , @configure_args ) ;
 		}
 	}
 
@@ -148,32 +145,9 @@ sub run
 	my $opt = {} ; $opt = shift if ref($_[0]) ;
 	my ( $logname , @cmd ) = @_ ;
 
-	my $debug = 1 ;
-	if( $debug )
-	{
-		print "qtbuild: run: $logname...\n" ;
-		print "qtbuild: run: cmd=[" , join("|",@cmd) , "]\n" ;
-		print "qtbuild: run: arch=[$$opt{arch}]\n" ;
-		print "qtbuild: run: msvc=[$cfg_msvc_dir]\n" ;
-		print "qtbuild: run: auxiliary? " , (-d "$cfg_msvc_dir/auxiliary") , "\n" ;
-		print "qtbuild: run: auxiliary/build? " , (-d "$cfg_msvc_dir/auxiliary/build") , "\n" ;
-		for my $f ( File::Glob::bsd_glob("$cfg_msvc_dir/auxiliary/build/*") )
-		{
-			print "qtbuild: run: build/*: [$f]\n" ;
-		}
-		print "qtbuild: run: auxiliary/build? " , (-d "$cfg_msvc_dir/auxiliary/build") , "\n" ;
-		print "qtbuild: run: vcvars=[$cfg_vcvars]\n" ;
-		print "qtbuild: run: cwd=[" , Cwd::getcwd() , "]\n" ;
-		print "qtbuild: run: cd=[$$opt{cd}]\n" ;
-		if( $opt->{arch} && $cfg_vcvars )
-		{
-			print "qtbuild: run: argv=[" , join("|",$cfg_vcvars,$opt->{arch},"&&","cd",($opt->{cd}?$opt->{cd}:"."),"&&",@cmd) , "]\n" ;
-		}
-	}
-
 	if( $opt->{arch} && $cfg_vcvars )
 	{
-		die "qtbuild: error: cannot do spaces" if $opt->{cd} =~ m/\s/ ; # TODO check
+		die "qtbuild: error: cannot do spaces" if $opt->{cd} =~ m/\s/ ; # may be unnecessary
 		my $check_dir = Cwd::getcwd() ;
 		print "qtbuild: $logname: running: cmd=[".join(" ",@cmd)."] arch=[$$opt{arch}] vcvars=[$cfg_vcvars] cwd=[".Cwd::getcwd()."]".($opt->{cd}?" cd=[$$opt{cd}]":"")."\n" ;
 		my @argv = ( $cfg_vcvars , $opt->{arch} , "&&" , "cd" , ($opt->{cd}?$opt->{cd}:".") , "&&" , @cmd ) ;
@@ -254,7 +228,7 @@ sub skips
 	) ;
 }
 
-sub extras
+sub no_features
 {
 	# in principle it should be possible to get "--no-feature-whatever"
 	# options from the qconfig-gui tool, but it's only available
