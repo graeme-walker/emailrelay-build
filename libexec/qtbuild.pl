@@ -54,12 +54,23 @@ if( $ARGV[0] eq "--x86" ) { push @cfg_arch , "x86" }
 if( $ARGV[0] eq "--x86-only" ) { @cfg_arch = ( "x86" ) }
 my $cfg_type = "release" ; # or "debug" or "debug-and-release"
 die if( scalar(@cfg_arch) == 0 ) ;
-my $cfg_use_vcvars = $^O ne "linux" ;
-my $msvc_dir = undef ;
-if( $cfg_use_vcvars )
+my $cfg_msvc_dir = find_msvc() ;
+my $cfg_vcvars = undef ;
+
+if( $^O ne "linux" )
 {
-	$msvc_dir = find_msvc() ;
-	$msvc_dir or die "qtbuild: error: cannot determine the msvc base directory\n" ;
+	warn "qtbuild: warning: cannot determine the msvc base directory\n" if !$cfg_msvc_dir ;
+	$cfg_vcvars = "$cfg_msvc_dir/auxiliary/build/vcvarsall.bat" if $cfg_msvc_dir ;
+	if( !$cfg_vcvars || (! -e $cfg_vcvars) )
+	{
+		warn "qtbuild: warning: cannot find vcvarsall.bat\n" ;
+		if( scalar(@cfg_arch) != 1 || $cfg_arch[0] ne "x64" )
+		{
+			die "qtbuild: cannot build requested architectures without vcvarsall.bat\n" ;
+		}
+	}
+	warn "qtbuild: warning: not using vcvarsall.bat\n" ;
+	$cfg_vcvars = undef ;
 }
 
 for my $arch ( @cfg_arch )
@@ -137,12 +148,12 @@ sub run
 	my $opt = {} ; $opt = shift if ref($_[0]) ;
 	my ( $logname , @cmd ) = @_ ;
 
-	if( $opt->{arch} && $cfg_use_vcvars )
+	if( $opt->{arch} && $cfg_vcvars )
 	{
 		die "qtbuild: error: cannot do spaces" if $opt->{cd} =~ m/\s/ ; # TODO check
 		my $check_dir = Cwd::getcwd() ;
-		print "qtbuild: $logname: running: cmd=[".join(" ",@cmd)."] arch=[$$opt{arch}] cwd=[".Cwd::getcwd()."]".($opt->{cd}?" cd=[$$opt{cd}]":"")."\n" ;
-		my @argv = ( "$msvc_dir/auxiliary/build/vcvarsall" , $opt->{arch} , "&&" , "cd" , ($opt->{cd}?$opt->{cd}:".") , "&&" , @cmd ) ;
+		print "qtbuild: $logname: running: cmd=[".join(" ",@cmd)."] arch=[$$opt{arch}] vcvars=[$cfg_vcvars] cwd=[".Cwd::getcwd()."]".($opt->{cd}?" cd=[$$opt{cd}]":"")."\n" ;
+		my @argv = ( $cfg_vcvars , $opt->{arch} , "&&" , "cd" , ($opt->{cd}?$opt->{cd}:".") , "&&" , @cmd ) ;
 		my $rc = system( @argv ) ; # must use array form
 		die if Cwd::getcwd() ne $check_dir ;
 		print "qtbuild: $logname: rc=[$rc]\n" ;
@@ -170,6 +181,8 @@ sub run
 
 sub find_msvc
 {
+	return "." if $^O eq "linux" ;
+
 	# try using cmake (if it's on the path)
 	my $msvc_dir ;
 	{

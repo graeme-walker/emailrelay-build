@@ -501,7 +501,6 @@ sub create_cmake_files
 
 sub create_cmake_find_mbedtls_file
 {
-	# from  github/Kitware/CMake/Utilities/cmcurl/CMake/FindMbedTLS.cmake
 	my $fh = new FileHandle( "FindMbedTLS.cmake" , "w" ) or die ;
 	print $fh 'find_path(MBEDTLS_INCLUDE_DIRS mbedtls/ssl.h)' , "\n" ;
 	print $fh 'find_library(MBEDTLS_LIBRARY mbedtls)' , "\n" ;
@@ -611,7 +610,7 @@ sub run_build
 	{
 		print "winbuild: build($arch,$confname): " ,
 			File::Basename::basename($exe) , " " ,
-			winbuild::sha256($exe) , "\n" if -f $exe ;
+			winbuild::sha256($exe,"<error>") , "\n" if -f $exe ;
 	}
 }
 

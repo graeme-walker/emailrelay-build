@@ -421,8 +421,8 @@ sub file_copy
 
 sub sha256
 {
-	my ( $file ) = @_ ;
-	my $result = undef ;
+	my ( $file , $default_ ) = @_ ;
+	my $result = $default_ ;
 	my $fh = new FileHandle( "certutil -hashfile $file SHA256 |" ) ;
 	while(<$fh>)
 	{
@@ -434,7 +434,6 @@ sub sha256
 			last ;
 		}
 	}
-	die "error: cannot run certutil\n" if !defined($result) ;
 	return $result ;
 }
 
