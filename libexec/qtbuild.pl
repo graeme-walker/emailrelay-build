@@ -129,7 +129,7 @@ for my $arch ( @cfg_arch )
 		else
 		{
 			run( {arch=>$arch,cd=>$build_dir} , "configure($arch)" ,
-				"..\\$source_dir\\configure.bat" , @configure_args ) ;
+				"..\\\\$source_dir\\\\configure.bat" , @configure_args ) ; # (double backslashes for msys perl)
 		}
 	}
 
