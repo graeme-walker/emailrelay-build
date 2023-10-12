@@ -236,7 +236,7 @@ sub clean_cmake_files
 	$base_dir ||= "." ;
 	my @list = () ;
 	File::Find::find( sub { push @list , $File::Find::name if $_ eq "CMakeLists.txt" } , $base_dir ) ;
-	unlink grep {!m/mbedtls/i} @list ;
+	unlink grep {!m/mbedtls/i} grep {!m/qt/i} @list ;
 }
 
 sub clean_cmake_cache_files

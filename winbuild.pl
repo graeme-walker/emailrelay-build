@@ -539,7 +539,8 @@ sub run_cmake
 	my $i = 0 ;
 	for my $arch_args ( @arch_args )
 	{
-		winbuild::clean_cmake_cache_files( $arch , {verbose=>0} ) ;
+		# TODO -- this also deletes from mbedtls and qt trees!
+		##winbuild::clean_cmake_cache_files( $arch , {verbose=>0} ) ;
 
 		my @args = @$arch_args ;
 		if( $cfg_with_mbedtls )
@@ -555,6 +556,7 @@ sub run_cmake
 		if( $cfg_with_gui )
 		{
 			my $qt_dir = defined($qt_info) ? Cwd::realpath( $qt_info->{$arch} ) : "." ;
+			unshift @args , "-DCMAKE_PREFIX_PATH:FILEPATH=$qt_dir/lib/cmake" ; # so find_package() will find <qt>/lib/cmake/qt5/Qt5Config.cmake
 			if( $qt_info->{v} == 5 )
 			{
 				unshift @args , "-DQt5_DIR:FILEPATH=$qt_dir" ;
