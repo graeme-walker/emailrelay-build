@@ -68,9 +68,8 @@ if( $^O ne "linux" )
 		{
 			die "qtbuild: cannot build requested architectures without vcvarsall.bat\n" ;
 		}
+		$cfg_vcvars = undef ;
 	}
-	warn "qtbuild: warning: not using vcvarsall.bat\n" ;
-	$cfg_vcvars = undef ;
 }
 
 for my $arch ( @cfg_arch )
