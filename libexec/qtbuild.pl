@@ -60,7 +60,7 @@ if( $cfg_use_vcvars )
 for my $arch ( @cfg_arch )
 {
 	my $source_dir = "qt5" ;
-	my $build_dir = "qt-build-${arch}-${cfg_type}" ;
+	my $build_dir = "qt-build-$arch" ;
 	my $install_dir = "qt-install-$arch" ;
 	$install_dir = Cwd::realpath(".")."/$install_dir" ;
 
@@ -93,6 +93,8 @@ for my $arch ( @cfg_arch )
 	#push @configure_args , no_images() ;
 	#push @configure_args , extras() ;
 
+	touch( "../$source_dir/qtbase/.git" ) ; # (!) see "-e" test in "qtbase/configure"
+
 	if( $^O eq "linux" )
 	{
 		run( {cd=>$build_dir} , "configure($arch)" ,
@@ -117,7 +119,7 @@ sub run
 
 	if( $opt->{arch} && $cfg_use_vcvars )
 	{
-		die "cannot do spaces" if $opt->{cd} =~ m/\s/ ; # TODO check
+		die "error: cannot do spaces" if $opt->{cd} =~ m/\s/ ; # TODO check
 		my $check_dir = Cwd::getcwd() ;
 		print "$logname: running: cmd=[".join(" ",@cmd)."] arch=[$$opt{arch}] cwd=[".Cwd::getcwd()."]".($opt->{cd}?" cd=[$$opt{cd}]":"")."\n" ;
 		my @argv = ( "$msvc_dir/auxiliary/build/vcvarsall" , $opt->{arch} , "&&" , "cd" , ($opt->{cd}?$opt->{cd}:".") , "&&" , @cmd ) ;
@@ -174,7 +176,9 @@ sub find_msvc
 sub touch
 {
 	my ( $file ) = @_ ;
-	new FileHandle( $file , "w" ) or die ;
+	my $fh = new FileHandle( $file , "w" ) ;
+	my $ok = defined($fh) && $fh->close() ;
+	return $ok ;
 }
 
 sub skips
