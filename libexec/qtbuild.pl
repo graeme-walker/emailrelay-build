@@ -131,7 +131,7 @@ sub run
 
 	if( $opt->{arch} && $cfg_use_vcvars )
 	{
-		die "error: cannot do spaces" if $opt->{cd} =~ m/\s/ ; # TODO check
+		die "qtbuild: error: cannot do spaces" if $opt->{cd} =~ m/\s/ ; # TODO check
 		my $check_dir = Cwd::getcwd() ;
 		print "qtbuild: $logname: running: cmd=[".join(" ",@cmd)."] arch=[$$opt{arch}] cwd=[".Cwd::getcwd()."]".($opt->{cd}?" cd=[$$opt{cd}]":"")."\n" ;
 		my @argv = ( "$msvc_dir/auxiliary/build/vcvarsall" , $opt->{arch} , "&&" , "cd" , ($opt->{cd}?$opt->{cd}:".") , "&&" , @cmd ) ;
@@ -147,7 +147,7 @@ sub run
 		if( $opt->{cd} )
 		{
 			$old_dir = Cwd::getcwd() ;
-			chdir( $opt->{cd} ) or die "error: $logname: cannot cd to [$opt->{cd}]\n" ;
+			chdir( $opt->{cd} ) or die "qtbuild: error: $logname: cannot cd to [$opt->{cd}]\n" ;
 		}
 		print "qtbuild: $logname: running: cmd=[$cmd] cwd=[".Cwd::getcwd()."]\n" ;
 		my $rc = system( $cmd ) ;
@@ -155,7 +155,7 @@ sub run
 		$rc == 0 or die ;
 		if( $old_dir )
 		{
-			chdir( $old_dir ) or die "error: $logname: cannot cd back to [$old_dir]\n" ;
+			chdir( $old_dir ) or die "qtbuild: error: $logname: cannot cd back to [$old_dir]\n" ;
 		}
 	}
 }
