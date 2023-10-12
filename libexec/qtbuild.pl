@@ -32,8 +32,8 @@
 #    $ git -C qt5 checkout 5.15
 #    $ cd qt5 && perl init-repository --module-subset=qtbase,qttranslations
 #
-# Runs all windows commands via "vcvarsall.bat" if "x86" is
-# one of the requested architectures.
+# Runs all windows commands via "vcvarsall.bat" in order
+# to select the x86/x64 architecture.
 #
 
 use strict ;
@@ -66,47 +66,59 @@ for my $arch ( @cfg_arch )
 
 	mkdir( $build_dir ) ;
 
-	# (see qtbase/config_help.txt)
-	my @configure_args = (
-		"-opensource" , "-confirm-license" ,
-		"-prefix" , $install_dir ,
-		"-static" , ( $^O eq "linux" ? "" : "-static-runtime" ) ,
-		"-${cfg_type}" ,
-		"-platform" , ( $^O eq "linux" ? "linux-g++" : "win32-msvc" ) ,
-		"-ltcg" , # link-time code generation (?)
-		"-no-pch" ,
-		"-optimize-size" , # ?
-		"-no-openssl" ,
-		"-no-opengl" ,
-		"-no-dbus" ,
-		"-no-gif" ,
-    	"-no-libpng" ,
-    	"-no-libjpeg" ,
-		#"-no-sqlite" ,
-		"-nomake" , "examples" ,
-		"-nomake" , "tests" ,
-		"-nomake" , "tools" ,
-		"-make" , "libs" ,
-	) ;
-	push @configure_args , map {("-skip",$_)} skips() ;
-	#push @configure_args , no_networking() ;
-	#push @configure_args , no_images() ;
-	#push @configure_args , extras() ;
-
-	touch( "../$source_dir/qtbase/.git" ) ; # (!) see "-e" test in "qtbase/configure"
-
-	if( $^O eq "linux" )
+	# configure
+	#
+	if( -e "$build_dir/config.status".($^O eq "linux"?"":".bat") )
 	{
-		run( {cd=>$build_dir} , "configure($arch)" ,
-			"../$source_dir/configure" , @configure_args ) ;
+		print "qtbuild: info: already configured\n" ;
 	}
 	else
 	{
-		run( {arch=>$arch,cd=>$build_dir} , "configure($arch)" ,
-			"..\\$source_dir\\configure.bat" , @configure_args ) ;
+		# (see qtbase/config_help.txt)
+		my @configure_args = (
+			"-opensource" , "-confirm-license" ,
+			"-prefix" , $install_dir ,
+			"-static" , ( $^O eq "linux" ? "" : "-static-runtime" ) ,
+			"-${cfg_type}" ,
+			"-platform" , ( $^O eq "linux" ? "linux-g++" : "win32-msvc" ) ,
+			"-ltcg" , # link-time code generation (?)
+			"-no-pch" ,
+			"-optimize-size" , # ?
+			"-no-openssl" ,
+			"-no-opengl" ,
+			"-no-dbus" ,
+			"-no-gif" ,
+			"-no-libpng" ,
+			"-no-libjpeg" ,
+			#"-no-sqlite" ,
+			"-nomake" , "examples" ,
+			"-nomake" , "tests" ,
+			"-nomake" , "tools" ,
+			"-make" , "libs" ,
+		) ;
+		push @configure_args , map {("-skip",$_)} skips() ;
+		#push @configure_args , no_networking() ;
+		#push @configure_args , no_images() ;
+		#push @configure_args , extras() ;
+		touch( "../$source_dir/qtbase/.git" ) ; # (!) see "-e" test in "qtbase/configure"
+		if( $^O eq "linux" )
+		{
+			run( {cd=>$build_dir} , "configure($arch)" ,
+				"../$source_dir/configure" , @configure_args ) ;
+		}
+		else
+		{
+			run( {arch=>$arch,cd=>$build_dir} , "configure($arch)" ,
+				"..\\$source_dir\\configure.bat" , @configure_args ) ;
+		}
 	}
 
+	# build
+	#
 	run( {arch=>$arch,cd=>$build_dir} , "make($arch)" , $^O eq "linux" ? qw(make -j 10) : qw(nmake) ) ;
+
+	# install
+	#
 	run( {arch=>$arch,cd=>$build_dir} , "make-install($arch)" , $^O eq "linux" ? qw(make install) : qw(nmake install) ) ;
 }
 
@@ -121,11 +133,11 @@ sub run
 	{
 		die "error: cannot do spaces" if $opt->{cd} =~ m/\s/ ; # TODO check
 		my $check_dir = Cwd::getcwd() ;
-		print "$logname: running: cmd=[".join(" ",@cmd)."] arch=[$$opt{arch}] cwd=[".Cwd::getcwd()."]".($opt->{cd}?" cd=[$$opt{cd}]":"")."\n" ;
+		print "qtbuild: $logname: running: cmd=[".join(" ",@cmd)."] arch=[$$opt{arch}] cwd=[".Cwd::getcwd()."]".($opt->{cd}?" cd=[$$opt{cd}]":"")."\n" ;
 		my @argv = ( "$msvc_dir/auxiliary/build/vcvarsall" , $opt->{arch} , "&&" , "cd" , ($opt->{cd}?$opt->{cd}:".") , "&&" , @cmd ) ;
 		my $rc = system( @argv ) ; # must use array form
 		die if Cwd::getcwd() ne $check_dir ;
-		print "$logname: ERROR: cmd=[".join(" ",@cmd)."] arch=[$$opt{arch}] cwd=[".Cwd::getcwd()."]".($opt->{cd}?" wd=[$$opt{cd}]":"")."\n" if $rc ;
+		print "qtbuild: $logname: rc=[$rc]\n" ;
 		$rc == 0 or die ;
 	}
 	else
@@ -137,9 +149,9 @@ sub run
 			$old_dir = Cwd::getcwd() ;
 			chdir( $opt->{cd} ) or die "error: $logname: cannot cd to [$opt->{cd}]\n" ;
 		}
-		print "$logname: running: cmd=[$cmd] cwd=[".Cwd::getcwd()."]\n" ;
+		print "qtbuild: $logname: running: cmd=[$cmd] cwd=[".Cwd::getcwd()."]\n" ;
 		my $rc = system( $cmd ) ;
-		print "$logname: running: rc=[$rc]\n" ;
+		print "qtbuild: $logname: rc=[$rc]\n" ;
 		$rc == 0 or die ;
 		if( $old_dir )
 		{

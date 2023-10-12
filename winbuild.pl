@@ -100,7 +100,7 @@ if( ! -e "winbuild.cfg" && scalar(%cfg_options) != 0 )
 	$fh->close() or die ;
 }
 my $cfg_with_gui = !exists $cfg_options{no_gui} ;
-my $cfg_static_gui = !exists $cfg_options{static_gui} ;
+my $cfg_static_gui = exists $cfg_options{static_gui} ;
 my $cfg_with_mbedtls = !exists $cfg_options{no_mbedtls} ;
 my $cfg_opt_debug = exists $cfg_options{debug} ;
 my $cfg_opt_x86 = exists $cfg_options{x86} ;
@@ -368,8 +368,8 @@ sub create_cmake_file
 	# it can use a binary Qt distribution -- note that the gui build
 	# is self-contained by virtue of "glibsources.cpp"
 	#
-	my $dynamic_runtime = !$cfg_static_gui && ( $m->path() =~ m/gui/ ) ;
 	{
+		my $dynamic_runtime = !$cfg_static_gui && ( $m->path() =~ m/gui/ ) ;
 		print $fh '# choose dynamic or static linking of the c++ runtime' , "\n" ;
 		print $fh 'set(CompilerFlags' , "\n" ;
 		print $fh '    CMAKE_CXX_FLAGS' , "\n" ;
