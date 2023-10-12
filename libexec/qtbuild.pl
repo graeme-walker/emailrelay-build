@@ -22,18 +22,23 @@
 #
 # usage: qtbuild.pl [{--x86|--x86-only}]
 #
-# Directories, relative to cwd:
-#  source   - qt5/
-#  build    - qt-build-<arch>/
-#  install  - qt-install-<arch>/
-#
 # Download qt source with:
 #    $ git clone https://code.qt.io/qt/qt5.git qt5
 #    $ git -C qt5 checkout 5.15
 #    $ cd qt5 && perl init-repository --module-subset=qtbase,qttranslations
 #
-# Runs all windows commands via "vcvarsall.bat" in order
-# to select the x86/x64 architecture.
+# Directories, relative to cwd:
+#  source   - qt5/
+#  build    - qt-build-<arch>/
+#  install  - qt-install-<arch>/
+#
+# Delete qt-build-<arch> and qt-install-<arch> directories
+# for a clean build ("rmdir /s" on windows).
+#
+# Runs all windows commands via "vcvarsall.bat" batch file
+# in order to select the x86/x64 architecture (although this
+# is overkill if only building for the the compiler's default
+# architecture). The batch file is located by find_msvc().
 #
 
 use strict ;
@@ -74,16 +79,16 @@ for my $arch ( @cfg_arch )
 	}
 	else
 	{
-		# (see qtbase/config_help.txt)
+		# set configure options -- see qtbase/config_help.txt --
+		# these can go on the command-line, or into a config
+		# file "<build>/config.opt" with "configure -redo" to
+		# re-process
 		my @configure_args = (
 			"-opensource" , "-confirm-license" ,
 			"-prefix" , $install_dir ,
 			"-static" , ( $^O eq "linux" ? "" : "-static-runtime" ) ,
 			"-${cfg_type}" ,
 			"-platform" , ( $^O eq "linux" ? "linux-g++" : "win32-msvc" ) ,
-			"-ltcg" , # link-time code generation (?)
-			"-no-pch" ,
-			"-optimize-size" , # ?
 			"-no-openssl" ,
 			"-no-opengl" ,
 			"-no-dbus" ,
@@ -96,11 +101,14 @@ for my $arch ( @cfg_arch )
 			"-nomake" , "tools" ,
 			"-make" , "libs" ,
 		) ;
+		push @configure_args , ( "-ltcg" , "-no-pch" , "-optimize-size" ) unless $cfg_type eq "debug" ;
 		push @configure_args , map {("-skip",$_)} skips() ;
 		#push @configure_args , no_networking() ;
 		#push @configure_args , no_images() ;
 		#push @configure_args , extras() ;
+
 		touch( "../$source_dir/qtbase/.git" ) ; # (!) see "-e" test in "qtbase/configure"
+
 		if( $^O eq "linux" )
 		{
 			run( {cd=>$build_dir} , "configure($arch)" ,
@@ -187,10 +195,10 @@ sub find_msvc
 
 sub touch
 {
-	my ( $file ) = @_ ;
-	my $fh = new FileHandle( $file , "w" ) ;
-	my $ok = defined($fh) && $fh->close() ;
-	return $ok ;
+	my ( $path ) = @_ ;
+	return 1 if -e $path ;
+	my $fh = new FileHandle( $path , "w" ) ;
+	return defined($fh) && $fh->close() ;
 }
 
 sub skips
@@ -214,15 +222,11 @@ sub extras
 {
 	# in principle it should be possible to get "--no-feature-whatever"
 	# options from the qconfig-gui tool, but it's only available
-	# commercially :-< -- the https://qtlite.com/ web tool looks like an
+	# commercially -- the https://qtlite.com/ web tool looks like an
 	# alternative but it does not work well in practice
 	#
 	# the full (?) list of features can be obtained from
 	# "cd <build> && <source>/configure[.bat] -list-features 2>&1"
-	#
-	# configure options can go into a config file "<build>/config.opt"
-	# rather than on the command-line, with "configure -redo" to
-	# re-process
 	#
 	return grep {!m/^#/} qw(
 		-no-feature-accessibility

@@ -539,8 +539,7 @@ sub run_cmake
 	my $i = 0 ;
 	for my $arch_args ( @arch_args )
 	{
-		# TODO -- this also deletes from mbedtls and qt trees!
-		##winbuild::clean_cmake_cache_files( $arch , {verbose=>0} ) ;
+		#winbuild::clean_cmake_cache_files( $arch , {verbose=>0} ) ;
 
 		my @args = @$arch_args ;
 		if( $cfg_with_mbedtls )
