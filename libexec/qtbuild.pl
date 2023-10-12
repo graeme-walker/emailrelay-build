@@ -63,14 +63,13 @@ if( $^O ne "linux" )
 	$cfg_vcvars = "$cfg_msvc_dir/auxiliary/build/vcvarsall.bat" if $cfg_msvc_dir ;
 	if( !$cfg_vcvars || (! -e $cfg_vcvars) )
 	{
-		warn "qtbuild: warning: cannot find vcvarsall.bat\n" ;
+		warn "qtbuild: warning: cannot find vcvarsall.bat undef [$cfg_msvc_dir]\n" ;
 		if( scalar(@cfg_arch) != 1 || $cfg_arch[0] ne "x64" )
 		{
 			die "qtbuild: cannot build requested architectures without vcvarsall.bat\n" ;
 		}
+		$cfg_vcvars = undef ; # hope that the calling environment is set up for x64
 	}
-	warn "qtbuild: warning: not using vcvarsall.bat\n" ;
-	$cfg_vcvars = undef ;
 }
 
 for my $arch ( @cfg_arch )
