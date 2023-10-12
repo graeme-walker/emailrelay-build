@@ -63,7 +63,7 @@ if( $^O ne "linux" )
 	$cfg_vcvars = "$cfg_msvc_dir/auxiliary/build/vcvarsall.bat" if $cfg_msvc_dir ;
 	if( !$cfg_vcvars || (! -e $cfg_vcvars) )
 	{
-		warn "qtbuild: warning: cannot find vcvarsall.bat\n" ;
+		warn "qtbuild: warning: cannot find vcvarsall.bat under [$cfg_msvc_dir]\n" ;
 		if( scalar(@cfg_arch) != 1 || $cfg_arch[0] ne "x64" )
 		{
 			die "qtbuild: cannot build requested architectures without vcvarsall.bat\n" ;
@@ -148,6 +148,29 @@ sub run
 {
 	my $opt = {} ; $opt = shift if ref($_[0]) ;
 	my ( $logname , @cmd ) = @_ ;
+
+	my $debug = 1 ;
+	if( $debug )
+	{
+		print "qtbuild: run: $logname...\n" ;
+		print "qtbuild: run: cmd=[" , join("|",@cmd) , "]\n" ;
+		print "qtbuild: run: arch=[$$opt{arch}]\n" ;
+		print "qtbuild: run: msvc=[$cfg_msvc_dir]\n" ;
+		print "qtbuild: run: auxiliary? " , (-d "$cfg_msvc_dir/auxiliary") , "\n" ;
+		print "qtbuild: run: auxiliary/build? " , (-d "$cfg_msvc_dir/auxiliary/build") , "\n" ;
+		for my $f ( File::Glob::bsd_glob("$cfg_msvc_dir/auxiliary/build/*") )
+		{
+			print "qtbuild: run: build/*: [$f]\n" ;
+		}
+		print "qtbuild: run: auxiliary/build? " , (-d "$cfg_msvc_dir/auxiliary/build") , "\n" ;
+		print "qtbuild: run: vcvars=[$cfg_vcvars]\n" ;
+		print "qtbuild: run: cwd=[" , Cwd::getcwd() , "]\n" ;
+		print "qtbuild: run: cd=[$$opt{cd}]\n" ;
+		if( $opt->{arch} && $cfg_vcvars )
+		{
+			print "qtbuild: run: argv=[" , join("|",$cfg_vcvars,$opt->{arch},"&&","cd",($opt->{cd}?$opt->{cd}:"."),"&&",@cmd) , "]\n" ;
+		}
+	}
 
 	if( $opt->{arch} && $cfg_vcvars )
 	{
