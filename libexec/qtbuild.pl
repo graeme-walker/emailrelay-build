@@ -50,7 +50,12 @@ if( $ARGV[0] eq "--x86-only" ) { @cfg_arch = ( "x86" ) }
 my $cfg_type = "release" ; # or "debug" or "debug-and-release"
 die if( scalar(@cfg_arch) == 0 ) ;
 my $cfg_use_vcvars = $^O ne "linux" ;
-my $msvc_dir = $cfg_use_vcvars ? find_msvc() : undef ;
+my $msvc_dir = undef ;
+if( $cfg_use_vcvars )
+{
+	$msvc_dir = find_msvc() ;
+	$msvc_dir or die "qtbuild: error: cannot determine the msvc base directory\n" ;
+}
 
 for my $arch ( @cfg_arch )
 {
@@ -96,7 +101,7 @@ for my $arch ( @cfg_arch )
 	else
 	{
 		run( {arch=>$arch,cd=>$build_dir} , "configure($arch)" ,
-			"..\\qt-source\\configure.bat" , @configure_args ) ;
+			"..\\$source_dir\\configure.bat" , @configure_args ) ;
 	}
 
 	run( {arch=>$arch,cd=>$build_dir} , "make($arch)" , $^O eq "linux" ? qw(make -j 10) : qw(nmake) ) ;
@@ -146,7 +151,6 @@ sub find_msvc
 	# try using cmake (if it's on the path)
 	my $msvc_dir ;
 	{
-		# fall back to using cmake, assuming it is on the path
 		my $tmp_dir = "qtbuild.tmp" ;
 		mkdir $tmp_dir ;
 		print {new FileHandle( "$tmp_dir/CMakeLists.txt" , "w" )} "project(tmp)\n" if ! -e "$tmp_dir/CMakeLists.txt" ;
@@ -159,8 +163,9 @@ sub find_msvc
 	# .. or a file glob
 	if( ! -d $msvc_dir )
 	{
-		my $pf_dir = $ENV{'ProgramFiles(x86)'} ;
-		( $msvc_dir ) = glob( "$ENV{SystemDrive}:/$pf_dir/microsoft visual studio/*/*/vc" ) ; # eg. .../2019/community/vc
+		( my $pf_dir = $ENV{'ProgramFiles(x86)'} ) =~ s;\\;/;g ;
+		my $glob = "$pf_dir/microsoft visual studio/*/*/vc" ; # eg. .../2019/community/vc
+		( $msvc_dir ) = File::Glob::bsd_glob( $glob ) ;
 	}
 
 	return $msvc_dir ;

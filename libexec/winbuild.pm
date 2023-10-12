@@ -29,7 +29,6 @@
 #  winbuild::find_qt_x64(...) ;
 #  winbuild::find_mbedtls(...) ;
 #  winbuild::find_runtime(...) ;
-#  winbuild::find_msvc_base(...) ;
 #  winbuild::spit_out_batch_files(...) ;
 #  winbuild::clean_cmake_files(...) ;
 #  winbuild::clean_cmake_cache_files(...) ;
