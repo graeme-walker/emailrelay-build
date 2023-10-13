@@ -164,8 +164,8 @@ for my $arch ( @cfg_arch )
 		print $fh "CONFIG += qt console\n" ;
 		$fh->close() or die ;
 		run( {arch=>$arch,cd=>$dir} , "windeployqt-qmake($arch)" , "$install_dir/bin/qmake" ) ;
-		run( {arch=>$arch,cd=>$dir} , "windeployqt-nmake($arch)" , "nmake -f Makefile.$cfg_type" ) ;
-		File::Copy::copy( "$dir/release/windeployqt.exe" , "$install_dir/bin" ) or die ;
+		run( {arch=>$arch,cd=>$dir} , "windeployqt-nmake($arch)" , "nmake" , "-f" , "Makefile.$cfg_type" ) ;
+		File::Copy::copy( "$dir/$cfg_type/windeployqt.exe" , "$install_dir/bin" ) or die ;
 	}
 }
 
