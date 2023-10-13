@@ -730,7 +730,7 @@ sub install
 		if( $add_runtime )
 		{
 			install_gui_dependencies( $msvc_base , $arch , $qt_info ,
-				"$install/emailrelay-setup.exe"
+				"$install/emailrelay-setup.exe" ,
 				"$install/payload/files/gui/emailrelay-gui.exe" ) ;
 		}
 

@@ -240,7 +240,7 @@ this:
 	git clone https://code.qt.io/qt/qt5.git qt5
 	cd qt5
 	git checkout 5.15
-	perl init-repository --module-subset=qtbase,qttranslations
+	perl init-repository --module-subset=qtbase,qttranslations,qttools
 	cd ..
 	git clone https://github.com/mbed-tls/mbedtls.git mbedtls
 	cd mbedtls
