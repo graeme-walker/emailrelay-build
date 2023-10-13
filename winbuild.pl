@@ -729,9 +729,9 @@ sub install
 
 		if( $add_runtime )
 		{
-			install_gui_dependencies( $msvc_base , $arch , $qt_info->{v} ,
-				{ exe => "$install/emailrelay-setup.exe" } ,
-				{ exe => "$install/payload/files/gui/emailrelay-gui.exe" } ) ;
+			install_gui_dependencies( $msvc_base , $arch , $qt_info ,
+				"$install/emailrelay-setup.exe"
+				"$install/payload/files/gui/emailrelay-gui.exe" ) ;
 		}
 
 		winbuild::translate( $arch , $qt_info , "no_NO" , "no" ) ;
@@ -832,46 +832,19 @@ sub install_runtime
 
 sub install_gui_dependencies
 {
-	my ( $msvc_base , $arch , $qtv , @tasks ) = @_ ;
+	my ( $msvc_base , $arch , $qt_info , @exes ) = @_ ;
 
-	my $qt_bin = find_qt_bin( $arch , $qtv ) ;
-	print "qt-bin=[$qt_bin]\n" ;
+	$ENV{VCINSTALLDIR} = $msvc_base ; # used by windeployqt to copy runtime files
+	my $qt_bin = "$$qt_info{$arch}/bin" ;
+	if( ! -d $qt_bin ) { die "winbuild: error: install: no qt bin directory\n" }
+	my $tool = "$qt_bin/windeployqt.exe" ;
+	if( ! -x $tool ) { die "winbuild: error: install: no windeployqt executable\n" }
 
-	$ENV{VCINSTALLDIR} = $msvc_base ;
-	for my $task ( @tasks )
+	for my $exe ( @exes )
 	{
-		my $exe_in = $task->{exe} ;
-		my $exe = exists($task->{dir}) ? ("$$task{dir}/".basename($exe_in)) : $exe_in ;
-		if( $exe_in ne $exe )
-		{
-			File::Copy::copy( $exe_in , $exe ) or die "winbuild: error: install: failed to copy [$exe_in] to [$exe]\n" ;
-		}
-		my $rc = system( "$qt_bin/windeployqt.exe" , $exe ) ;
-		if( $exe_in ne $exe ) { unlink( $exe ) or die }
-		$rc == 0 or die "winbuild: error: install: failed running [$qt_bin/windeployqt.exe] [$exe]" ;
+		my $rc = system( $tool , $exe ) ;
+		$rc == 0 or die "winbuild: error: install: failed running [$tool] [$exe]" ;
 	}
-}
-
-sub find_qt_bin
-{
-	my ( $arch , $qtv ) = @_ ;
-	my $qt_core = cmake_cache_value_qt_core( $arch , $qtv ) ;
-	my $dir = $qt_core ;
-	for( 1..10 )
-	{
-		last if -f "$dir/bin/windeployqt.exe" ;
-		$dir = dirname( $dir ) ;
-	}
-	$dir or die "winbuild: error: install: cannot determine the qt bin directory from [$qt_core]\n" ;
-	return "$dir/bin" ;
-}
-
-sub cmake_cache_value_qt_core
-{
-	my ( $arch , $qtv ) = @_ ;
-	my $qt_core_dir = winbuild::cmake_cache_value( $arch , qr/^Qt[56]Core_DIR:[A-Z]+=(.*)/ ) ;
-	$qt_core_dir or die "winbuild: error: install: cannot read qt path from CMakeCache.txt\n" ;
-	return $qt_core_dir ;
 }
 
 sub install_payload_cfg

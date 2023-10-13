@@ -249,6 +249,38 @@ source with static run-time library linkage (`/MT`). It expects to find a `qt5`
 child or sibling directory containing the Qt5 source code; only the `qtbase`
 and `qttranslations` submodules are needed.
 
+A full build from source, including the emailrelay GUI, goes something like
+this:
+
+        git clone https://git.code.sf.net/p/emailrelay/git emailrelay
+        cd emailrelay
+        git checkout V_2_5_1
+        git clone https://code.qt.io/qt/qt5.git qt5
+        cd qt5
+        git checkout 5.15
+        perl init-repository --module-subset=qtbase,qttranslations
+        cd ..
+        git clone https://github.com/mbed-tls/mbedtls.git mbedtls
+        cd mbedtls
+        git checkout mbedtls-2.28
+        cd ..
+        perl qtbuild.pl
+        perl winbuild.pl --static-gui
+        dir x64\src\main\release\emailrelay-*.exe
+        dir x64\src\gui\release\emailrelay-gui.exe
+
+To assemble all the run-time dependencies for the emailrelay GUI also build the
+`windeployqt` executable from the `qttools` submodule followed by "winbuild.pl
+install":
+
+        cd qt5
+        git submodule update qttools
+        cd qttools
+
+
+        perl winbuild.pl install
+        dir emailrelay-2.5.1-w64\
+
 For MinGW cross-builds use `./configure.sh -w64` and `make` on a Linux box and
 copy the built executables. Any extra run-time files can be identified by
 running `dumpbin /dependents` in the normal way.
@@ -260,9 +292,9 @@ On Windows E-MailRelay is packaged as a zip file containing the executables
 `payload` directory tree. The payload contains many of the same files all over
 again, and while this duplication is not ideal it is at least straightforward.
 
-The Qt tool `windeployqt` is used to add run-time dependencies, such as the
-platform DLL. (Public releases of Windows builds are normally statically linked,
-so many of the DLLs added by `windeployqt` are not needed.)
+The Qt tool `windeployqt` is used to add run-time dependencies such as Qt DLLs,
+run-time library installer, translations and plugins. If the emailrelay GUI is
+statically linked then the DLLs and run-time library installer can be deleted.
 
 To target ancient versions of Windows start with a cross-build using MinGW
 for 32-bit (`./configure.sh -w32`); then `winbuild.pl mingw` can be used to

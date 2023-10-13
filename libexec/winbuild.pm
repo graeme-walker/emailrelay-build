@@ -423,11 +423,11 @@ sub sha256
 {
 	my ( $file , $default_ ) = @_ ;
 	my $result = $default_ ;
-	my $fh = new FileHandle( "certutil -hashfile $file SHA256 |" ) ;
+	my $fh = new FileHandle( "certutil.exe -hashfile $file SHA256 |" ) ;
 	while(<$fh>)
 	{
 		chomp( my $line = $_ ) ;
-		if( $line =~ m/^[0-9a-f][0-9a-f] [0-9a-f ]+$/ )
+		if( $line =~ m/^[0-9a-f][0-9a-f] [0-9a-f][0-9a-f] /i )
 		{
 			$line =~ s/\s//g ;
 			$result = $line ;

@@ -25,7 +25,7 @@
 # Download qt source with:
 #    $ git clone https://code.qt.io/qt/qt5.git qt5
 #    $ git -C qt5 checkout 5.15
-#    $ cd qt5 && perl init-repository --module-subset=qtbase,qttranslations
+#    $ cd qt5 && perl init-repository --module-subset=qtbase,qttranslations,qttools
 #
 # Directories, relative to cwd:
 #  source   - qt5/
@@ -53,11 +53,12 @@ if( $ARGV[0] eq "--x86" ) { push @cfg_arch , "x86" }
 if( $ARGV[0] eq "--x86-only" ) { @cfg_arch = ( "x86" ) }
 my $cfg_type = "release" ; # or "debug" or "debug-and-release"
 die if( scalar(@cfg_arch) == 0 ) ;
-my $cfg_msvc_dir = find_msvc() ;
 my $cfg_vcvars = undef ;
 
+# find vcvarsall.bat
 if( $^O ne "linux" )
 {
+	my $cfg_msvc_dir = find_msvc() ;
 	warn "qtbuild: warning: cannot determine the msvc base directory\n" if !$cfg_msvc_dir ;
 	$cfg_vcvars = "$cfg_msvc_dir/auxiliary/build/vcvarsall.bat" if $cfg_msvc_dir ;
 	if( !$cfg_vcvars || (! -e $cfg_vcvars) )
@@ -110,9 +111,16 @@ for my $arch ( @cfg_arch )
 			"-nomake" , "tools" ,
 			"-make" , "libs" ,
 		) ;
-		push @configure_args , ( "-ltcg" , "-no-pch" , "-optimize-size" ) unless $cfg_type eq "debug" ;
+		if( $cfg_type ne "debug" )
+		{
+			push @configure_args , (
+				#"-ltcg" ,
+				"-no-pch" ,
+				"-optimize-size"
+			) ;
+		}
 		push @configure_args , map {("-skip",$_)} skips() ;
-		#push @configure_args , no_features() ;
+		push @configure_args , no_features() ;
 
 		# fix for missing qglobal.h error -- see "-e" test in "qtbase/configure"
 		touch( "$source_dir/qtbase/.git" ) ;
@@ -136,6 +144,27 @@ for my $arch ( @cfg_arch )
 	# install
 	#
 	run( {arch=>$arch,cd=>$build_dir} , "make-install($arch)" , $^O eq "linux" ? qw(make install) : qw(nmake install) ) ;
+
+	# also build windeployqt from the qttools submodule
+	if( $^O ne "linux" && ! -e "$install_dir/bin/windeployqt.exe" && -d "$source_dir/qttools/src/windeployqt" )
+	{
+		my $dir = "$build_dir/windeployqt" ;
+		mkdir $dir ;
+		File::Copy::copy( "$source_dir/qttools/src/windeployqt/main.cpp" , $dir ) or die ;
+		File::Copy::copy( "$source_dir/qttools/src/shared/winutils/*.cpp" , $dir ) or die ;
+		File::Copy::copy( "$source_dir/qttools/src/shared/winutils/*.h" , $dir ) or die ;
+		my $fh = new FileHandle( "$dir/windeployqt.pro" , "w" ) or die ;
+		print $fh "TEMPLATE = app\n" ;
+		print $fh "TARGET = windeployqt\n" ;
+		print $fh "INCLUDEPATH += .\n" ;
+		print $fh "HEADERS += elfreader.h qmlutils.h utils.h\n" ;
+		print $fh "SOURCES += main.cpp elfreader.cpp qmlutils.cpp utils.cpp\n" ;
+		print $fh "CONFIG += qt console\n" ;
+		$fh->close() or die ;
+		run( {arch=>$arch,cd=>$dir} , "windeployqt-qmake($arch)" , "$install_dir/bin/qmake" ) ;
+		run( {arch=>$arch,cd=>$dir} , "windeployqt-nmake($arch)" , "nmake -f Makefile.$cfg_type" ) ;
+		File::Copy::copy( "$dir/release/windeployqt.exe" , "$install_dir/bin" ) or die ;
+	}
 }
 
 ## ==
@@ -178,8 +207,6 @@ sub run
 
 sub find_msvc
 {
-	return "." if $^O eq "linux" ;
-
 	# try using cmake (if it's on the path)
 	my $msvc_dir ;
 	{
@@ -213,18 +240,12 @@ sub touch
 
 sub skips
 {
-	return qw(
-		charts
-		purchasing
-		quickcontrols2
-		script
-		svg
+	# skip any unwanted submodules cloned by init-repository
+	# (see .git/.gitmodules without the "qt" prefixes) -- we
+	# skip qttools because we clone it to obtain windeployqt
+	# but don't want to build the whole thing
+	return grep {!m/^#/} qw(
 		tools
-		virtualkeyboard
-		wayland
-		webchannel
-		webengine
-		webview
 	) ;
 }
 
@@ -235,13 +256,13 @@ sub no_features
 	# commercially -- the https://qtlite.com/ web tool looks like an
 	# alternative but it does not work well in practice
 	#
-	# the full (?) list of features can be obtained from
+	# the full list of features can be obtained from
 	# "cd <build> && <source>/configure[.bat] -list-features 2>&1"
 	#
 	return grep {!m/^#/} qw(
-		-no-feature-accessibility
-		-no-feature-etc
-		-no-feature-etc
+		#-no-feature-accessibility
+		#-no-feature-etc
+		#-no-feature-etc
 	) ;
 }
 
