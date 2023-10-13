@@ -151,8 +151,8 @@ for my $arch ( @cfg_arch )
 		my $dir = "$build_dir/windeployqt" ;
 		mkdir $dir ;
 		File::Copy::copy( "$source_dir/qttools/src/windeployqt/main.cpp" , $dir ) or die ;
-		File::Copy::copy( "$source_dir/qttools/src/shared/winutils/*.cpp" , $dir ) or die ;
-		File::Copy::copy( "$source_dir/qttools/src/shared/winutils/*.h" , $dir ) or die ;
+		File::Copy::copy( File::Glob::bsd_glob("$source_dir/qttools/src/shared/winutils/*.cpp") , $dir ) or die ;
+		File::Copy::copy( File::Glob::bsd_glob("$source_dir/qttools/src/shared/winutils/*.h") , $dir ) or die ;
 		my $fh = new FileHandle( "$dir/windeployqt.pro" , "w" ) or die ;
 		print $fh "TEMPLATE = app\n" ;
 		print $fh "TARGET = windeployqt\n" ;

@@ -228,8 +228,8 @@ and Qt libraries in non-standard locations.
 
 The "libexec/qtbuild.pl" perl script can be used to build Qt libraries from
 source with static run-time library linkage ("/MT"). It expects to find a "qt5"
-child or sibling directory containing the Qt5 source code; only the "qtbase"
-and "qttranslations" submodules are needed.
+child or sibling directory containing the Qt5 source code with the "qtbase",
+"qttranslations" and "qttools" sub-modules.
 
 A full build from source, including the emailrelay GUI, goes something like
 this:
@@ -250,16 +250,6 @@ this:
 	perl winbuild.pl --static-gui
 	dir x64\src\main\release\emailrelay-*.exe
 	dir x64\src\gui\release\emailrelay-gui.exe
-
-To assemble all the run-time dependencies for the emailrelay GUI also build the
-"windeployqt" executable from the "qttools" submodule followed by "winbuild.pl
-install":
-
-	cd qt5
-	git submodule update qttools
-	cd qttools
-
-
 	perl winbuild.pl install
 	dir emailrelay-2.5.1-w64\
 
@@ -314,16 +304,17 @@ The source code is stored in the SourceForge "svn" and/or "git" repository.
 For example:
 
 	$ svn co https://svn.code.sf.net/p/emailrelay/code emailrelay
-	$ cd emailrelay/tags/V_2_5
+	$ cd emailrelay/tags/V_2_5_1
 
 or
 
 	$ git clone https://git.code.sf.net/p/emailrelay/git emailrelay
 	$ cd emailrelay
-	$ git checkout V_2_5
+	$ git checkout V_2_5_1
 
-Code that has been formally released will be tagged with a tag like "V_2_5" and
-any minor post-release fixes will be on a "fixes" branch like "V_2_5_fixes".
+Code that has been formally released will be tagged with a tag like "V_2_5_1"
+and any minor post-release fixes will be on a "fixes" branch like
+"V_2_5_1_fixes".
 
 Compile-time features
 ---------------------

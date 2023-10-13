@@ -294,8 +294,8 @@
     <p>
      The <em>libexec/qtbuild.pl</em> perl script can be used to build Qt libraries from
      source with static run-time library linkage (<em>/MT</em>). It expects to find a <em>qt5</em>
-     child or sibling directory containing the Qt5 source code; only the <em>qtbase</em>
-     and <em>qttranslations</em> submodules are needed.
+     child or sibling directory containing the Qt5 source code with the <em>qtbase</em>,
+     <em>qttranslations</em> and <em>qttools</em> sub-modules.
     </p>
 
     <p>
@@ -320,20 +320,6 @@ perl qtbuild.pl
 perl winbuild.pl --static-gui
 dir x64\src\main\release\emailrelay-*.exe
 dir x64\src\gui\release\emailrelay-gui.exe
-</pre>
-      </div><!-- div-pre -->
-    <p>
-     To assemble all the run-time dependencies for the emailrelay GUI also build the
-     <em>windeployqt</em> executable from the <em>qttools</em> submodule followed by "winbuild.pl
-     install":
-    </p>
-
-      <div class="div-pre">
-       <pre>cd qt5
-git submodule update qttools
-cd qttools
-
-
 perl winbuild.pl install
 dir emailrelay-2.5.1-w64\
 </pre>
@@ -404,7 +390,7 @@ dir emailrelay-2.5.1-w64\
 
       <div class="div-pre">
        <pre>$ svn co https://svn.code.sf.net/p/emailrelay/code emailrelay
-$ cd emailrelay/tags/V_2_5
+$ cd emailrelay/tags/V_2_5_1
 </pre>
       </div><!-- div-pre -->
     <p>
@@ -414,12 +400,13 @@ $ cd emailrelay/tags/V_2_5
       <div class="div-pre">
        <pre>$ git clone https://git.code.sf.net/p/emailrelay/git emailrelay
 $ cd emailrelay
-$ git checkout V_2_5
+$ git checkout V_2_5_1
 </pre>
       </div><!-- div-pre -->
     <p>
-     Code that has been formally released will be tagged with a tag like <em>V_2_5</em> and
-     any minor post-release fixes will be on a <em>fixes</em> branch like <em>V_2_5_fixes</em>.
+     Code that has been formally released will be tagged with a tag like <em>V_2_5_1</em>
+     and any minor post-release fixes will be on a <em>fixes</em> branch like
+     <em>V_2_5_1_fixes</em>.
     </p>
    <h2><a class="a-header" name="SH_1_14">Compile-time features</a></h2> <!-- index:2:SH:1:14:Compile-time features -->
     <p>
