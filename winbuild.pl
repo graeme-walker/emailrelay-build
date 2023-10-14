@@ -23,14 +23,15 @@
 # emailrelay makefiles, and finally uses "cmake --build" to build the mbedtls
 # libraries and emailrelay executables.
 #
-# By default the emailrelay cmake files specify static linkage of the run-time
-# library ("/MT"), with the exception of the emailrelay GUI which is built with
-# "/MD".
-#
 # usage: winbuild.pl [--no-mbedtls] [--no-gui] [--static-gui] [<subtask> [<subtask> ...]]
 #
-# Also spits out batch files (like "winbuild-whatever.bat") for doing sub-tasks,
-# including "winbuild-install.bat".
+# Spits out batch files (like "winbuild-whatever.bat") for doing sub-tasks,
+# including "winbuild-install.bat". See "winbuild.bat".
+#
+# By default the emailrelay cmake files specify static linkage of the run-time
+# library ("/MT"), with the exception of the emailrelay GUI which is built with
+# "/MD". Use "--static-gui" to have the emailrelay GUI cmake file also specify
+# "/MT".
 #
 # Requires "cmake" to be on the path or somewhere obvious (see find_cmake() in
 # "winbuild.pm").
@@ -40,8 +41,8 @@
 #
 # Looks for Qt libraries in various places (see winbuild::find_qt_x64(),
 # disabled with "--no-gui"). For a fully static GUI build the Qt libraries
-# should be built from source (ie. "configure -static -static-runtime") and then
-# "--static-gui" passed to this script. See also "qtbuild.pl".
+# will have to have been built from source (ie. "configure -static -static-runtime")
+# and then "--static-gui" passed to this script. See also "qtbuild.pl".
 #
 # The "install" sub-task, which is not run by default, assembles binaries
 # and their dependencies in a directory tree ready for zipping and
@@ -87,13 +88,18 @@ my @cfg_run_parts = () ;
 }
 for my $arg ( @ARGV )
 {
-	if( $arg eq "--x86" ) { $cfg_options{x86} = 1 }
-	elsif( $arg eq "--debug" ) { $cfg_options{debug} = 1 }
-	elsif( $arg eq "--no-mbedtls" ) { $cfg_options{no_mbedtls} = 1 }
-	elsif( $arg eq "--no-gui" ) { $cfg_options{no_gui} = 1 }
-	elsif( $arg eq "--static-gui" ) { $cfg_options{static_gui} = 1 }
+	if( $arg eq "--x86" ) { $cfg_options{x86} = 2 }
+	elsif( $arg eq "--debug" ) { $cfg_options{debug} = 2 }
+	elsif( $arg eq "--no-mbedtls" ) { $cfg_options{no_mbedtls} = 2 }
+	elsif( $arg eq "--no-gui" ) { $cfg_options{no_gui} = 2 }
+	elsif( $arg eq "--static-gui" ) { $cfg_options{static_gui} = 2 }
+	elsif( $arg eq "--verbose" ) { $cfg_options{verbose} = 2 }
 	else { push @cfg_run_parts , $arg }
 }
+if( $cfg_options{no_gui} == 1 ) { print "winbuild: info: winbuild.cfg: gui build disabled\n" }
+if( $cfg_options{static_gui} == 1 ) { print "winbuild: info: winbuild.cfg: gui static build\n" }
+if( $cfg_options{no_mbedtls} == 1 ) { print "winbuild: info: winbuild.cfg: mbedtls disabled\n" }
+if( $cfg_options{debug} == 1 ) { print "winbuild: info: winbuild.cfg: debug build enabled\n" }
 if( ! -e "winbuild.cfg" && scalar(%cfg_options) != 0 )
 {
 	my $fh = new FileHandle( "winbuild.cfg" , "w" ) or die "winbuild: error: cannot create winbuild.cfg\n" ;
@@ -103,6 +109,7 @@ if( ! -e "winbuild.cfg" && scalar(%cfg_options) != 0 )
 my $cfg_with_gui = !exists $cfg_options{no_gui} ;
 my $cfg_static_gui = exists $cfg_options{static_gui} ;
 my $cfg_with_mbedtls = !exists $cfg_options{no_mbedtls} ;
+my $cfg_verbose = exists $cfg_options{verbose} ;
 my $cfg_opt_debug = exists $cfg_options{debug} ;
 my $cfg_opt_x86 = exists $cfg_options{x86} ;
 my $cfg_opt_x64 = 1 ;
@@ -111,7 +118,7 @@ my $cfg_path_mbedtls = $cfg_paths{mbedtls} ;
 my $cfg_path_qt_x64 = $cfg_paths{qt_x64} ;
 my $cfg_path_qt_x86 = $cfg_paths{qt_x86} ;
 my $cfg_add_runtime = 1 ;
-my $cfg_add_gui_runtime = $cfg_with_gui && !$cfg_static_gui ;
+my $cfg_add_gui_runtime = $cfg_with_gui && !$cfg_static_gui ; # windeployqt
 die unless ($cfg_opt_x64 || $cfg_opt_x86) ;
 if( scalar(@cfg_run_parts) == 0 )
 {
@@ -266,6 +273,8 @@ for my $part ( @cfg_run_parts )
 		run_build( "x64" , "Debug" ) if ( $cfg_opt_x64 && $cfg_opt_debug ) ;
 		run_build( "x86" , "Release" ) if $cfg_opt_x86 ;
 		run_build( "x86" , "Debug" ) if ( $cfg_opt_x86 && $cfg_opt_debug ) ;
+		print_checksums( "x64" ) if $cfg_opt_x64 ;
+		print_checksums( "x86" ) if $cfg_opt_x86 ;
 	}
 	elsif( $part eq "debug-build" )
 	{
@@ -295,8 +304,11 @@ for my $part ( @cfg_run_parts )
 	}
 	elsif( $part eq "install" )
 	{
-		install( $install_x64 , "x64" , $qt_info , $cfg_with_gui , $cfg_with_mbedtls , $cfg_add_runtime , $cfg_add_gui_runtime ) if $cfg_opt_x64 ;
-		install( $install_x86 , "x86" , $qt_info , $cfg_with_gui , $cfg_with_mbedtls , $cfg_add_runtime , $cfg_add_gui_runtime ) if $cfg_opt_x86 ;
+		install( $install_x64 , "x64" , $qt_info , $cfg_with_gui , $cfg_with_mbedtls ,
+			$cfg_add_runtime , $cfg_add_gui_runtime ) if $cfg_opt_x64 ;
+
+		install( $install_x86 , "x86" , $qt_info , $cfg_with_gui , $cfg_with_mbedtls ,
+			$cfg_add_runtime , $cfg_add_gui_runtime ) if $cfg_opt_x86 ;
 	}
 	elsif( $part eq "install_winxp" )
 	{
@@ -337,7 +349,7 @@ sub create_cmake_file
 	my $fh = new FileHandle( $path , "w" ) or die ;
 
 	print $fh "# $path -- generated by $0\n" ;
-	if( $project )
+	if( $project ) # top-level CMakeLists.txt file
 	{
 		print $fh "cmake_minimum_required(VERSION 3.1.0)\n" ;
 		print $fh "project($project)\n" ;
@@ -490,21 +502,6 @@ sub create_cmake_files
 		create_cmake_file( $first?$project:undef , $m , $switches , $qt_info ) ;
 		$first = 0 ;
 	}
-	create_cmake_find_mbedtls_file() ;
-}
-
-sub create_cmake_find_mbedtls_file
-{
-	my $fh = new FileHandle( "FindMbedTLS.cmake" , "w" ) or die ;
-	print $fh 'find_path(MBEDTLS_INCLUDE_DIRS mbedtls/ssl.h)' , "\n" ;
-	print $fh 'find_library(MBEDTLS_LIBRARY mbedtls)' , "\n" ;
-	print $fh 'find_library(MBEDX509_LIBRARY mbedx509)' , "\n" ;
-	print $fh 'find_library(MBEDCRYPTO_LIBRARY mbedcrypto)' , "\n" ;
-	print $fh 'set(MBEDTLS_LIBRARIES "${MBEDTLS_LIBRARY}" "${MBEDX509_LIBRARY}" "${MBEDCRYPTO_LIBRARY}")' , "\n" ;
-	print $fh 'include(FindPackageHandleStandardArgs)' , "\n" ;
-	print $fh 'find_package_handle_standard_args(MbedTLS DEFAULT_MSG MBEDTLS_INCLUDE_DIRS MBEDTLS_LIBRARY MBEDX509_LIBRARY MBEDCRYPTO_LIBRARY)' , "\n" ;
-	print $fh 'mark_as_advanced(MBEDTLS_INCLUDE_DIRS MBEDTLS_LIBRARY MBEDX509_LIBRARY MBEDCRYPTO_LIBRARY)' , "\n" ;
-	$fh->close() or die ;
 }
 
 sub clean_test_files
@@ -539,11 +536,14 @@ sub run_cmake
 		{
 			my $mbedtls_realpath = Cwd::realpath($cfg_path_mbedtls) ; # must be full paths
 			my $mbedtls_include_dir = "$mbedtls_realpath/include" ;
-			my $mbedtls_lib_dir = "$mbedtls_realpath/$arch/library/Release" ; # fixed up to Debug elsewhere
-			my $module_path = Cwd::realpath( "." ) ; # see create_cmake_find_mbedtls_file()
-			unshift @args , "-DCMAKE_MODULE_PATH:FILEPATH=$module_path" ;
+			my $mbedtls_lib_dir = "$mbedtls_realpath/$arch/library" ;
 			unshift @args , "-DCMAKE_INCLUDE_PATH:FILEPATH=$mbedtls_include_dir" ;
-			unshift @args , "-DCMAKE_LIBRARY_PATH:FILEPATH=$mbedtls_lib_dir" ;
+			unshift @args , "-DMBEDTLS_LIBRARY:FILEPATH=$mbedtls_lib_dir/release/mbedtls.lib" ;
+			unshift @args , "-DMBEDX509_LIBRARY:FILEPATH=$mbedtls_lib_dir/release/mbedx509.lib" ;
+			unshift @args , "-DMBEDCRYPTO_LIBRARY:FILEPATH=$mbedtls_lib_dir/release/mbedcrypto.lib" ;
+			unshift @args , "-DMBEDTLS_LIBRARY_DEBUG:FILEPATH=$mbedtls_lib_dir/debug/mbedtls.lib" ;
+			unshift @args , "-DMBEDX509_LIBRARY_DEBUG:FILEPATH=$mbedtls_lib_dir/debug/mbedx509.lib" ;
+			unshift @args , "-DMBEDCRYPTO_LIBRARY_DEBUG:FILEPATH=$mbedtls_lib_dir/debug/mbedcrypto.lib" ;
 		}
 		if( $cfg_with_gui )
 		{
@@ -584,6 +584,18 @@ sub run_build
 		"--build" , $arch , # build directory (cf. "-B")
 		"--config" , $confname ) ;
 	push @args , ( "--target" , $target ) if $target ;
+	push @args , "-v" if $cfg_verbose ;
+
+	print "winbuild: build($arch,$confname): running: [",join("][",$cfg_path_cmake,@args),"]\n" ;
+	my $rc = system( $cfg_path_cmake , @args ) ;
+	print "winbuild: build($arch,$confname): exit=[$rc]\n" ;
+	die unless $rc == 0 ;
+}
+
+sub print_checksums
+{
+	my ( $arch , $confname ) = @_ ;
+	$confname ||= "release" ;
 
 	my @artifacts = (
 		"$arch/src/main/$confname/emailrelay.exe" ,
@@ -594,11 +606,6 @@ sub run_build
 		"$arch/src/main/$confname/emailrelay-service.exe" ,
 	) ;
 	push @artifacts , "$arch/src/gui/$confname/emailrelay-gui.exe" if $cfg_with_gui ;
-
-	print "winbuild: build($arch,$confname): running: [",join("][",$cfg_path_cmake,@args),"]\n" ;
-	my $rc = system( $cfg_path_cmake , @args ) ;
-	print "winbuild: build($arch,$confname): exit=[$rc]\n" ;
-	die unless $rc == 0 ;
 
 	for my $exe ( @artifacts )
 	{
@@ -704,7 +711,8 @@ sub install
 
 	# copy the core files -- the main programs are always statically linked so they
 	# can go into a "programs" sub-directory -- the gui/setup executable may be
-	# dynamically linked so it must go alongside the run-time dlls
+	# dynamically linked in which case it should have run-time dlls copied
+	# alongside
 	#
 	install_core( "$arch/src/main/Release" , $install ) ;
 
@@ -720,16 +728,22 @@ sub install
 		install_copy( "$arch/src/gui/Release/emailrelay-gui.exe" , "$install/payload/files/gui/" ) ;
 		install_copy( "$arch/src/main/Release/emailrelay-keygen.exe" , "$install/payload/files/programs/" ) if $with_mbedtls ;
 
-		if( $add_gui_runtime )
+		# optionally use windeployqt to install compiler runtime DLLs, compiler runtime
+		# installer, Qt library DLLs, Qt plugin DLLs, and Qt qtbase translations -- this
+		# is only possible if the GUI is dynamically linked -- if statically linked
+		# then the plugins are automatically linked in at build-time and windeployqt
+		# fails -- unfortunately that means that qtbase translations then need to
+		# be copied by hand
+		#
+		if( $add_gui_runtime ) # ie. windeployqt -- only works if dynamically linked
 		{
 			install_gui_dependencies( $msvc_base , $arch , $qt_info ,
 				"$install/emailrelay-setup.exe" ,
 				"$install/payload/files/gui/emailrelay-gui.exe" ) ;
 		}
 
-		winbuild::translate( $arch , $qt_info , "no_NO" , "no" ) ;
-		install_copy( "src/gui/emailrelay.no.qm" , "$install/gui/translations/" ) ;
-		install_copy( "src/gui/emailrelay.no.qm" , "$install/payload/files/gui/translations/" ) ;
+		winbuild::decode( "src/gui/emailrelay.no.qm_in" , "$install/translations/emailrelay.no.qm" ) ;
+		winbuild::decode( "src/gui/emailrelay.no.qm_in" , "$install/payload/files/translations/emailrelay.no.qm" ) ;
 	}
 
 	if( $add_runtime )

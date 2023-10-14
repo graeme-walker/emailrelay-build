@@ -20,9 +20,9 @@
 #
 # Eg:
 #	msvc> cd <qt-source>\qtbase
-#   msvc> edit mkspecs\common\msvc-desktop.conf (/MT)
+#   msvc> edit mkspecs\common\msvc-desktop.conf (/MT) if no "-static-runtime" possible
 #   msvc> PATH=<qt-source>\qtbase\bin;%PATH%
-#   msvc> configure.bat -static -release -prefix "<qt-install>" ... etc
+#   msvc> configure.bat -static -static-runtime -release -prefix "<qt-install>" ... etc
 #   msvc> nmake -f Makefile release
 #   msvc> nmake -f Makefile install
 #

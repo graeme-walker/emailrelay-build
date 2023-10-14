@@ -33,7 +33,7 @@
 #  winbuild::clean_cmake_files(...) ;
 #  winbuild::clean_cmake_cache_files(...) ;
 #  winbuild::deltree(...) ;
-#  winbuild::translate(...) ;
+#  winbuild::decode(...) ;
 #  winbuild::create_touchfile(...) ;
 #  winbuild::read_makefiles(...) ;
 #  winbuild::read_makefiles_imp(...) ;
@@ -268,17 +268,24 @@ sub deltree
 	}
 }
 
-sub translate
+sub decode
 {
-	my ( $arch , $qt_info , $xx_XX , $xx ) = @_ ;
-	my $dir = $qt_info->{$arch} ;
-	$dir = File::Basename::dirname( $dir ) ;
-	$dir = File::Basename::dirname( $dir ) ;
-	$dir = File::Basename::dirname( $dir ) ;
-	my $tool = join( "/" , $dir , "bin" , "lrelease.exe" ) ;
-	my $rc = system( $tool , "src/gui/emailrelay_tr.$xx_XX.ts" , "-qm" , "src/gui/emailrelay.$xx.qm" ) ;
-	print "lrelease-exit=[$rc]\n" ;
-	die unless $rc == 0 ;
+	# re-creates a binary file (eg. ".qm") from an ascii-encoded file (eg. ".qm_in")
+	my ( $path_in , $path_out ) = @_ ;
+	my $dir = File::Basename::dirname($path_out) ;
+	-d $dir or mkdir $dir or die "winbuild: error: decode: cannot create \".qm\" output directory [$dir]\n" ;
+	my $fh_in = new FileHandle( $path_in ) or die "winbuild: error: decode: cannot open \".qm_in\" file [$path_in]\n" ;
+	my @nn = () ; { local $/ = undef ; my $content = <$fh_in> ; @nn = split( " " , $content ) }
+	die "winbuild: error: decode: no \".qm_in\" data\n" if scalar(@nn) == 0 ;
+	open( my $fh_out , ">:raw" , $path_out ) ;
+	$fh_out or die "winbuild: error: decode: cannot create \".qm\" file [$path_out]\n" ;
+	for my $nn ( @nn )
+	{
+		if( $nn < 0 ) { $nn = $nn + 256 ; }
+		die "winbuild: error: decode: invalid encoding ($nn)\n" if ( $nn < 0 || $nn > 255 ) ;
+		printf $fh_out "%c" , $nn ;
+	}
+	close( $fh_out ) or die ;
 }
 
 sub create_touchfile
