@@ -155,11 +155,11 @@ for my $arch ( @cfg_arch )
 		print $fh "TARGET = lconvert\n" ;
 		print $fh "CONFIG += qt console\n" ;
 		print $fh "QT = core-private\n" ;
-		print $fh "INCLUDEPATH += ../$source_dir/qttools/src/linguist/shared\n" ;
-		print $fh "SOURCES += ../$source_dir/qttools/src/linguist/lconvert/main.cpp\n" ;
-		print $fh "SOURCES += ../$source_dir/qttools/src/linguist/shared/translator.cpp\n" ;
-		print $fh "SOURCES += ../$source_dir/qttools/src/linguist/shared/translatormessage.cpp\n" ;
-		print $fh "SOURCES += ../$source_dir/qttools/src/linguist/shared/numerus.cpp\n" ;
+		print $fh "INCLUDEPATH += ../../$source_dir/qttools/src/linguist/shared\n" ;
+		print $fh "SOURCES += ../../$source_dir/qttools/src/linguist/lconvert/main.cpp\n" ;
+		print $fh "SOURCES += ../../$source_dir/qttools/src/linguist/shared/translator.cpp\n" ;
+		print $fh "SOURCES += ../../$source_dir/qttools/src/linguist/shared/translatormessage.cpp\n" ;
+		print $fh "SOURCES += ../../$source_dir/qttools/src/linguist/shared/numerus.cpp\n" ;
 		print $fh "DEFINES += QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII\n" ;
 		$fh->close() or die ;
 		run( {arch=>$arch,cd=>$tool_dir,nofail=>1} , "lconvert-qmake($arch)" , "$install_dir/bin/qmake" ) ;
