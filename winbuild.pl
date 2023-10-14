@@ -45,8 +45,8 @@
 #
 # The "install" sub-task, which is not run by default, assembles binaries
 # and their dependencies in a directory tree ready for zipping and
-# distribution. The dependencies for Qt are assembled by the Qt dependency
-# tool, "windeployqt".
+# distribution. Some dependencies are assembled by the Qt dependency
+# tool, "windeployqt", although this only works for a non-static GUI build.
 #
 # On linux the "install_winxp" sub-task can be used after a mingw cross
 # build to assemble an installation zip file.
@@ -111,6 +111,7 @@ my $cfg_path_mbedtls = $cfg_paths{mbedtls} ;
 my $cfg_path_qt_x64 = $cfg_paths{qt_x64} ;
 my $cfg_path_qt_x86 = $cfg_paths{qt_x86} ;
 my $cfg_add_runtime = 1 ;
+my $cfg_add_gui_runtime = $cfg_with_gui && !$cfg_static_gui ;
 die unless ($cfg_opt_x64 || $cfg_opt_x86) ;
 if( scalar(@cfg_run_parts) == 0 )
 {
@@ -294,8 +295,8 @@ for my $part ( @cfg_run_parts )
 	}
 	elsif( $part eq "install" )
 	{
-		install( $install_x64 , "x64" , $qt_info , $cfg_with_gui , $cfg_with_mbedtls , $cfg_add_runtime ) if $cfg_opt_x64 ;
-		install( $install_x86 , "x86" , $qt_info , $cfg_with_gui , $cfg_with_mbedtls , $cfg_add_runtime ) if $cfg_opt_x86 ;
+		install( $install_x64 , "x64" , $qt_info , $cfg_with_gui , $cfg_with_mbedtls , $cfg_add_runtime , $cfg_add_gui_runtime ) if $cfg_opt_x64 ;
+		install( $install_x86 , "x86" , $qt_info , $cfg_with_gui , $cfg_with_mbedtls , $cfg_add_runtime , $cfg_add_gui_runtime ) if $cfg_opt_x86 ;
 	}
 	elsif( $part eq "install_winxp" )
 	{
@@ -689,7 +690,7 @@ sub run_mbedtls_build
 
 sub install
 {
-	my ( $install , $arch , $qt_info , $with_gui , $with_mbedtls , $add_runtime ) = @_ ;
+	my ( $install , $arch , $qt_info , $with_gui , $with_mbedtls , $add_runtime , $add_gui_runtime ) = @_ ;
 
 	my $msvc_base = winbuild::msvc_base( $arch ) ;
 	$msvc_base or die "winbuild: error: install: cannot determine the msvc base directory\n" ;
@@ -719,7 +720,7 @@ sub install
 		install_copy( "$arch/src/gui/Release/emailrelay-gui.exe" , "$install/payload/files/gui/" ) ;
 		install_copy( "$arch/src/main/Release/emailrelay-keygen.exe" , "$install/payload/files/programs/" ) if $with_mbedtls ;
 
-		if( $add_runtime )
+		if( $add_gui_runtime )
 		{
 			install_gui_dependencies( $msvc_base , $arch , $qt_info ,
 				"$install/emailrelay-setup.exe" ,

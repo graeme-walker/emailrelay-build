@@ -25,7 +25,7 @@
 # Download qt source with:
 #    $ git clone https://code.qt.io/qt/qt5.git qt5
 #    $ git -C qt5 checkout 5.15
-#    $ cd qt5 && perl init-repository --module-subset=qtbase,qttranslations,qttools
+#    $ cd qt5 && perl init-repository --module-subset=qtbase
 #
 # Directories, relative to cwd:
 #  source   - qt5/
@@ -33,7 +33,7 @@
 #  install  - qt-install-<arch>/
 #
 # Delete qt-build-<arch> and qt-install-<arch> directories
-# for a clean build ("rmdir /s" on windows).
+# for a clean build ("rmdir /q /s" on windows).
 #
 # Runs windows commands via "vcvarsall.bat" batch file in order
 # to select the x86/x64 architecture and get "nmake" etc. on
@@ -51,6 +51,7 @@ use File::Glob ;
 my @cfg_arch = ( "x64" ) ;
 if( $ARGV[0] eq "--x86" ) { push @cfg_arch , "x86" }
 if( $ARGV[0] eq "--x86-only" ) { @cfg_arch = ( "x86" ) }
+my $cfg_static = 1 ;
 my $cfg_type = "release" ; # or "debug" or "debug-and-release"
 die if( scalar(@cfg_arch) == 0 ) ;
 my $cfg_vcvars = undef ;
@@ -93,10 +94,11 @@ for my $arch ( @cfg_arch )
 		# these can go on the command-line, or into a config
 		# file "<build>/config.opt" with "configure -redo" to
 		# re-process
-		my @configure_args = (
+		my @configure_args = grep {m/./} (
 			"-opensource" , "-confirm-license" ,
 			"-prefix" , $install_dir ,
-			"-static" , ( $^O eq "linux" ? "" : "-static-runtime" ) ,
+			( $cfg_static ? "-static" : "" ) ,
+			( $cfg_static && $^O ne "linux" ? "-static-runtime" : "" ) ,
 			"-${cfg_type}" ,
 			"-platform" , ( $^O eq "linux" ? "linux-g++" : "win32-msvc" ) ,
 			"-no-openssl" ,
@@ -144,28 +146,6 @@ for my $arch ( @cfg_arch )
 	# install
 	#
 	run( {arch=>$arch,cd=>$build_dir} , "make-install($arch)" , $^O eq "linux" ? qw(make install) : qw(nmake install) ) ;
-
-	# also build some tools from the qttools submodule
-	if( $^O ne "linux" && ! -e "$install_dir/bin/lconvert.exe" && -d "$source_dir/qttools/src/linguist/lconvert" )
-	{
-		my $tool_dir = "$build_dir/lconvert" ;
-		mkdir $tool_dir ;
-		my $fh = new FileHandle( "$tool_dir/lconvert.pro" , "w" ) or die ;
-		print $fh "TEMPLATE = app\n" ;
-		print $fh "TARGET = lconvert\n" ;
-		print $fh "CONFIG += qt console\n" ;
-		print $fh "QT = core-private\n" ;
-		print $fh "INCLUDEPATH += ../../$source_dir/qttools/src/linguist/shared\n" ;
-		print $fh "SOURCES += ../../$source_dir/qttools/src/linguist/lconvert/main.cpp\n" ;
-		print $fh "SOURCES += ../../$source_dir/qttools/src/linguist/shared/translator.cpp\n" ;
-		print $fh "SOURCES += ../../$source_dir/qttools/src/linguist/shared/translatormessage.cpp\n" ;
-		print $fh "SOURCES += ../../$source_dir/qttools/src/linguist/shared/numerus.cpp\n" ;
-		print $fh "DEFINES += QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII\n" ;
-		$fh->close() or die ;
-		run( {arch=>$arch,cd=>$tool_dir,nofail=>1} , "lconvert-qmake($arch)" , "$install_dir/bin/qmake" ) ;
-		run( {arch=>$arch,cd=>$tool_dir,nofail=>1} , "lconvert-nmake($arch)" , "nmake" , "-f" , "Makefile.$cfg_type" ) ;
-		File::Copy::copy( "$tool_dir/$cfg_type/lconvert.exe" , "$install_dir/bin" ) ;
-	}
 }
 
 ## ==
@@ -242,10 +222,11 @@ sub touch
 sub skips
 {
 	# skip any unwanted submodules cloned by init-repository
-	# (see .git/.gitmodules without the "qt" prefixes) -- we
-	# skip qttools because we clone it to obtain windeployqt
-	# but don't want to build the whole thing
+	# (see .git/.gitmodules without the "qt" prefixes) -- we might
+	# want to clone qttools, qttranslations etc. for other reasons
+	# but we do not want to build them with this script
 	return grep {!m/^#/} qw(
+		translations
 		tools
 	) ;
 }
