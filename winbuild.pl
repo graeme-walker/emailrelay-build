@@ -418,7 +418,6 @@ sub create_cmake_file
 		}
 	}
 
-	my $tls_libs_fixed ;
 	my @programs = $m->programs() ;
 	for my $program ( @programs )
 	{
@@ -429,13 +428,6 @@ sub create_cmake_file
 		my $tls_libs = "" ;
 		if( ( $our_libs =~ m/gssl/ || $our_libs =~ m/keygen/ ) && $cfg_with_mbedtls )
 		{
-			if( ! $tls_libs_fixed )
-			{
-				print $fh '    string(REPLACE "/Release" "/Debug" MBEDTLS_LIBRARY_DEBUG "${MBEDTLS_LIBRARY}")' , "\n" ;
-				print $fh '    string(REPLACE "/Release" "/Debug" MBEDX509_LIBRARY_DEBUG "${MBEDX509_LIBRARY}")' , "\n" ;
-				print $fh '    string(REPLACE "/Release" "/Debug" MBEDCRYPTO_LIBRARY_DEBUG "${MBEDCRYPTO_LIBRARY}")' , "\n" ;
-				$tls_libs_fixed = 1 ;
-			}
 			$tls_libs =
 				'optimized ${MBEDTLS_LIBRARY} debug ${MBEDTLS_LIBRARY_DEBUG} ' .
 				'optimized ${MBEDX509_LIBRARY} debug ${MBEDX509_LIBRARY_DEBUG} ' .

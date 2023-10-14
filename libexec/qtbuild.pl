@@ -145,7 +145,7 @@ for my $arch ( @cfg_arch )
 	#
 	run( {arch=>$arch,cd=>$build_dir} , "make-install($arch)" , $^O eq "linux" ? qw(make install) : qw(nmake install) ) ;
 
-	# also build windeployqt from the qttools submodule
+	# also some tools from the qttools submodule
 	if( $^O ne "linux" && ! -e "$install_dir/bin/windeployqt.exe" && -d "$source_dir/qttools/src/windeployqt" )
 	{
 		my $dir = "$build_dir/windeployqt" ;
@@ -163,9 +163,31 @@ for my $arch ( @cfg_arch )
 		print $fh "SOURCES += main.cpp elfreader.cpp qmlutils.cpp utils.cpp\n" ;
 		print $fh "CONFIG += qt console\n" ;
 		$fh->close() or die ;
-		run( {arch=>$arch,cd=>$dir} , "windeployqt-qmake($arch)" , "$install_dir/bin/qmake" ) ;
-		run( {arch=>$arch,cd=>$dir} , "windeployqt-nmake($arch)" , "nmake" , "-f" , "Makefile.$cfg_type" ) ;
-		File::Copy::copy( "$dir/$cfg_type/windeployqt.exe" , "$install_dir/bin" ) or die ;
+		run( {arch=>$arch,cd=>$dir,nofail=>1} , "windeployqt-qmake($arch)" , "$install_dir/bin/qmake" ) ;
+		run( {arch=>$arch,cd=>$dir,nofail=>1} , "windeployqt-nmake($arch)" , "nmake" , "-f" , "Makefile.$cfg_type" ) ;
+		File::Copy::copy( "$dir/$cfg_type/windeployqt.exe" , "$install_dir/bin" ) ;
+	}
+	if( $^O ne "linux" && ! -e "$install_dir/bin/lconvert.exe" && -d "$source_dir/qttools/src/linguist/lconvert" )
+	{
+		my $dir = "$build_dir/lconvert" ;
+		mkdir $dir ;
+		File::Copy::copy( "$source_dir/qttools/src/linguist/lconvert/main.cpp" , $dir ) or die ;
+		my @src = (
+			File::Glob::bsd_glob("$source_dir/qttools/src/linguist/shared/*.cpp") ,
+			File::Glob::bsd_glob("$source_dir/qttools/src/linguist/shared/*.h") ) ;
+		for my $src ( @src ) { if( -f $src ) { File::Copy::copy( $src , $dir ) or die } }
+		my $fh = new FileHandle( "$dir/lconvert.pro" , "w" ) or die ;
+		print $fh "TEMPLATE = app\n" ;
+		print $fh "TARGET = lconvert\n" ;
+		print $fh "CONFIG += qt console\n" ;
+		print $fh "INCLUDEPATH += .\n" ;
+		print $fh "HEADERS += translator.h translatormessage.h simtexth.h\n" ;
+		print $fh "SOURCES += main.cpp translator.cpp translatormessage.cpp numerus.cpp\n" ;
+		print $fh "DEFINES += QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII\n" ;
+		$fh->close() or die ;
+		run( {arch=>$arch,cd=>$dir,nofail=>1} , "lconvert-qmake($arch)" , "$install_dir/bin/qmake" ) ;
+		run( {arch=>$arch,cd=>$dir,nofail=>1} , "lconvert-nmake($arch)" , "nmake" , "-f" , "Makefile.$cfg_type" ) ;
+		File::Copy::copy( "$dir/$cfg_type/lconvert.exe" , "$install_dir/bin" ) ;
 	}
 }
 
@@ -185,7 +207,7 @@ sub run
 		my $rc = system( @argv ) ; # must use array form
 		die if Cwd::getcwd() ne $check_dir ;
 		print "qtbuild: $logname: rc=[$rc]\n" ;
-		$rc == 0 or die ;
+		die if( $rc != 0 && !exists($opt->{nofail}) ) ;
 	}
 	else
 	{
@@ -199,7 +221,7 @@ sub run
 		print "qtbuild: $logname: running: cmd=[$cmd] cwd=[".Cwd::getcwd()."]\n" ;
 		my $rc = system( $cmd ) ;
 		print "qtbuild: $logname: rc=[$rc]\n" ;
-		$rc == 0 or die ;
+		die if( $rc != 0 && !exists($opt->{nofail}) ) ;
 		if( $old_dir )
 		{
 			chdir( $old_dir ) or die "qtbuild: error: $logname: cannot cd back to [$old_dir]\n" ;
