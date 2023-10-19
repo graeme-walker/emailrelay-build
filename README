@@ -1,0 +1,47 @@
+E-MailRelay windows build
+=========================
+
+cmake
+-----
+Cmake 2.8.12.1 source code with a "build" directory 
+created by running 
+
+	cd build && cmake -G 'NMake Makefiles' ..
+
+using cmake 3.17.
+
+Build on windows without "nmake" with:
+
+	cd cmake\build
+	..\..\makecmake.bat
+	PATH=<cwd>\cmake\build;%PATH%
+
+Or with a full MSVC installation:
+
+	cd cmake\build
+	nmake cmake
+
+perl
+----
+Perl 5.38.0 source code.
+
+
+qt5
+---
+Qt source code.
+
+Build on windows with:
+
+	cd qt5
+	perl ../emailrelay/libexec/qtbuild.pl
+
+
+emailrelay
+----------
+E-MailRelay source.
+
+Build on windows with:
+
+	cd emailrelay
+	perl winbuild.pl
+
