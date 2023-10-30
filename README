@@ -3,44 +3,68 @@ E-MailRelay windows build
 
 cmake
 -----
-Cmake 2.8.12.1 source code with a "build" directory 
-created by running 
+Cmake 2.8.12.1 source code:
 
-	cd build && cmake -G 'NMake Makefiles' ..
+	https://cmake.org/files/v2.8/cmake-2.8.12.1.tar.gz
+	https://cmake.org/files/v2.8/cmake-2.8.12.1.zip
 
-using cmake 3.17.
+Build on windows using "nmake":
 
-Build on windows without "nmake" with:
-
-	cd cmake\build
-	..\..\makecmake.bat
-	PATH=<cwd>\cmake\build;%PATH%
-
-Or with a full MSVC installation:
-
-	cd cmake\build
+	cd cmake
+	mkdir build
+	cd build
 	nmake cmake
+	PATH=<cwd>;%PATH%
+
+Build on windows without "nmake":
+
+	cd cmake
+	mkdir build
+	cd build
+	..\..\makecmake.bat
+	PATH=<cwd>;%PATH%
 
 perl
 ----
-Perl 5.38.0 source code.
+Perl 5.38.0 source code:
 
+	https://www.cpan.org/src/5.0/perl-5.38.0.tar.gz
+
+Build on windows using "nmake":
+
+	cd perl
+	cd win32
+	vi Makefile [set CCTYPE]
+	nmake 
+	cd ..
+	PATH=<cwd>;%PATH%
+
+Build on windows without "nmake":
+
+	...
 
 qt5
 ---
-Qt source code.
+Qt source code:
 
-Build on windows with:
-
+	git clone git://code.qt.io/qt/qt5.git qt5
 	cd qt5
-	perl ../emailrelay/libexec/qtbuild.pl
+	git checkout 5.12
+	perl init-repository --module-subset=qtbase
 
+Build on windows using "perl" and "nmake":
+
+	perl emailrelay/libexec/qtbuild.pl
+
+Clean with:
+
+	rmdir /s /q qt-build-x64
 
 emailrelay
 ----------
 E-MailRelay source.
 
-Build on windows with:
+Build on windows using "perl" and "cmake":
 
 	cd emailrelay
 	perl winbuild.pl
