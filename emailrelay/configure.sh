@@ -212,7 +212,7 @@ then
 	Echo "  `MakeTlsCommand CC=$CC AR=$AR`"
 	echo "  make"
 	echo "  make -C src/main strip"
-	echo "  perl winbuild.pl mingw"
+	echo "  perl winbuild.pl install_winxp"
 :
 elif test "0$opt_rpi" -ne 0
 then

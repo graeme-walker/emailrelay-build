@@ -24,7 +24,6 @@ work_scripts = \
 	make2cmake \
 	make2cdb \
 	make2unity \
-	qtbuild.pl \
 	reduce \
 	reduce.pl \
 	winbuild.pm \

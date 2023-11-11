@@ -233,50 +233,29 @@ that there cannot be any name clashes within the combined anonymous namespace.)
 
 Windows build
 =============
-E-MailRelay can be compiled for Windows using Microsoft Visual Studio C++ (MSVC)
-or using MinGW (mingw-w64) on Linux.
+E-MailRelay can be compiled on Windows using Microsoft Visual Studio C++ (MSVC)
+or mingw-w64.
 
-The *winbuild.pl* perl script generates *cmake* files from the autotools
-makefiles and then uses *cmake* to do the build. By default it expects to find
-mbedtls source code in a child or sibling directory and Qt libraries (having
-dynamic run-time library linkage (\ */MD*\ )) somewhere sensible. Use *--no-mbedtls*
-and/or *--no-gui* to build without these dependencies and use *--static-gui* if
-the Qt libraries have static run-time library linkage (\ */MT*\ ). The
-*winbuild.cfg* configuration file can be used to point to mbedtls source code
-and Qt libraries in non-standard locations.
+For MSVC builds there is a perl script (\ *winbuild.pl*\ ) that creates *cmake*
+files from the autotools makefiles, runs *cmake* to create the MSVC project
+files and then runs *msbuild* to compile E-MailRelay. If perl, cmake, MSVC, Qt
+and mbedTLS source are installed in the right way then the *winbuild.bat* batch
+file should be able to do a complete MSVC release build in one go. After that
+the *winbuild-install.bat* batch file can be used to create a distribution.
 
-The *libexec/qtbuild.pl* perl script can be used to build Qt libraries from
-source with static run-time library linkage (\ */MT*\ ). It expects to find a *qt5*
-child or sibling directory containing the Qt5 source code with the *qtbase*,
-*qttranslations* and *qttools* sub-modules.
-
-A full build from source, including the emailrelay GUI, goes something like
-this:
-
-::
-
-    git clone https://git.code.sf.net/p/emailrelay/git emailrelay
-    cd emailrelay
-    git checkout V_2_5_1
-    git clone https://code.qt.io/qt/qt5.git qt5
-    cd qt5
-    git checkout 5.15
-    perl init-repository --module-subset=qtbase,qttranslations,qttools
-    cd ..
-    git clone https://github.com/mbed-tls/mbedtls.git mbedtls
-    cd mbedtls
-    git checkout mbedtls-2.28
-    cd ..
-    perl qtbuild.pl
-    perl winbuild.pl --static-gui
-    dir x64\src\main\release\emailrelay-*.exe
-    dir x64\src\gui\release\emailrelay-gui.exe
-    perl winbuild.pl install
-    dir emailrelay-2.5.1-w64\
+When building for a public release the E-MailRelay setup program should be
+statically linked and copied into the distribution created by *winbuild.pl*.
+This requires a static build of Qt: edit *msvc-desktop.conf* to use */MT*;
+run *configure.bat* with *-static -release*; run *nmake -f Makefile* for
+*release* then *install*. Then build the E-MailRelay GUI using
+\ *emailrelay-gui.pro*\ : *qmake CONFIG+='win static' emailrelay-gui.pro*;
+then *mc messages.mc*; then copy *emailrelay-icon.ico*; and finally
+\ *nmake -f Makefile.Release*\ .
 
 For MinGW cross-builds use *./configure.sh -w64* and *make* on a Linux box and
-copy the built executables. Any extra run-time files can be identified by
-running *dumpbin /dependents* in the normal way.
+copy the built executables and the MinGW run-time to the target. Any extra
+run-time files can be identified by running *dumpbin /dependents* in the normal
+way.
 
 Windows packaging
 =================
@@ -285,9 +264,9 @@ On Windows E-MailRelay is packaged as a zip file containing the executables
 *payload* directory tree. The payload contains many of the same files all over
 again, and while this duplication is not ideal it is at least straightforward.
 
-The Qt tool *windeployqt* is used to add run-time dependencies such as Qt DLLs,
-run-time library installer, translations and plugins. If the emailrelay GUI is
-statically linked then the DLLs and run-time library installer can be deleted.
+The Qt tool *windeployqt* is used to add run-time dependencies, such as the
+platform DLL. (Public releases of Windows builds are normally statically linked,
+so many of the DLLs added by *windeployqt* are not needed.)
 
 To target ancient versions of Windows start with a cross-build using MinGW
 for 32-bit (\ *./configure.sh -w32*\ ); then *winbuild.pl mingw* can be used to
@@ -327,7 +306,7 @@ For example:
 ::
 
     $ svn co https://svn.code.sf.net/p/emailrelay/code emailrelay
-    $ cd emailrelay/tags/V_2_5_1
+    $ cd emailrelay/tags/V_2_5
 
 or
 
@@ -335,11 +314,10 @@ or
 
     $ git clone https://git.code.sf.net/p/emailrelay/git emailrelay
     $ cd emailrelay
-    $ git checkout V_2_5_1
+    $ git checkout V_2_5
 
-Code that has been formally released will be tagged with a tag like *V_2_5_1*
-and any minor post-release fixes will be on a *fixes* branch like
-\ *V_2_5_1_fixes*\ .
+Code that has been formally released will be tagged with a tag like *V_2_5* and
+any minor post-release fixes will be on a *fixes* branch like *V_2_5_fixes*.
 
 Compile-time features
 =====================

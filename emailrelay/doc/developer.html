@@ -276,58 +276,35 @@
     </p>
    <h2><a class="a-header" name="SH_1_9">Windows build</a></h2> <!-- index:2:SH:1:9:Windows build -->
     <p>
-     E-MailRelay can be compiled for Windows using Microsoft Visual Studio C++ (MSVC)
-     or using MinGW (mingw-w64) on Linux.
+     E-MailRelay can be compiled on Windows using Microsoft Visual Studio C++ (MSVC)
+     or mingw-w64.
     </p>
 
     <p>
-     The <em>winbuild.pl</em> perl script generates <em>cmake</em> files from the autotools
-     makefiles and then uses <em>cmake</em> to do the build. By default it expects to find
-     mbedtls source code in a child or sibling directory and Qt libraries (having
-     dynamic run-time library linkage (<em>/MD</em>)) somewhere sensible. Use <em>--no-mbedtls</em>
-     and/or <em>--no-gui</em> to build without these dependencies and use <em>--static-gui</em> if
-     the Qt libraries have static run-time library linkage (<em>/MT</em>). The
-     <em>winbuild.cfg</em> configuration file can be used to point to mbedtls source code
-     and Qt libraries in non-standard locations.
+     For MSVC builds there is a perl script (<em>winbuild.pl</em>) that creates <em>cmake</em>
+     files from the autotools makefiles, runs <em>cmake</em> to create the MSVC project
+     files and then runs <em>msbuild</em> to compile E-MailRelay. If perl, cmake, MSVC, Qt
+     and mbedTLS source are installed in the right way then the <em>winbuild.bat</em> batch
+     file should be able to do a complete MSVC release build in one go. After that
+     the <em>winbuild-install.bat</em> batch file can be used to create a distribution.
     </p>
 
     <p>
-     The <em>libexec/qtbuild.pl</em> perl script can be used to build Qt libraries from
-     source with static run-time library linkage (<em>/MT</em>). It expects to find a <em>qt5</em>
-     child or sibling directory containing the Qt5 source code with the <em>qtbase</em>,
-     <em>qttranslations</em> and <em>qttools</em> sub-modules.
+     When building for a public release the E-MailRelay setup program should be
+     statically linked and copied into the distribution created by <em>winbuild.pl</em>.
+     This requires a static build of Qt: edit <em>msvc-desktop.conf</em> to use <em>/MT</em>;
+     run <em>configure.bat</em> with <em>-static -release</em>; run <em>nmake -f Makefile</em> for
+     <em>release</em> then <em>install</em>. Then build the E-MailRelay GUI using
+     <em>emailrelay-gui.pro</em>: <em>qmake CONFIG+='win static' emailrelay-gui.pro</em>;
+     then <em>mc messages.mc</em>; then copy <em>emailrelay-icon.ico</em>; and finally
+     <em>nmake -f Makefile.Release</em>.
     </p>
 
-    <p>
-     A full build from source, including the emailrelay GUI, goes something like
-     this:
-    </p>
-
-      <div class="div-pre">
-       <pre>git clone https://git.code.sf.net/p/emailrelay/git emailrelay
-cd emailrelay
-git checkout V_2_5_1
-git clone https://code.qt.io/qt/qt5.git qt5
-cd qt5
-git checkout 5.15
-perl init-repository --module-subset=qtbase,qttranslations,qttools
-cd ..
-git clone https://github.com/mbed-tls/mbedtls.git mbedtls
-cd mbedtls
-git checkout mbedtls-2.28
-cd ..
-perl qtbuild.pl
-perl winbuild.pl --static-gui
-dir x64\src\main\release\emailrelay-*.exe
-dir x64\src\gui\release\emailrelay-gui.exe
-perl winbuild.pl install
-dir emailrelay-2.5.1-w64\
-</pre>
-      </div><!-- div-pre -->
     <p>
      For MinGW cross-builds use <em>./configure.sh -w64</em> and <em>make</em> on a Linux box and
-     copy the built executables. Any extra run-time files can be identified by
-     running <em>dumpbin /dependents</em> in the normal way.
+     copy the built executables and the MinGW run-time to the target. Any extra
+     run-time files can be identified by running <em>dumpbin /dependents</em> in the normal
+     way.
     </p>
    <h2><a class="a-header" name="SH_1_10">Windows packaging</a></h2> <!-- index:2:SH:1:10:Windows packaging -->
     <p>
@@ -338,9 +315,9 @@ dir emailrelay-2.5.1-w64\
     </p>
 
     <p>
-     The Qt tool <em>windeployqt</em> is used to add run-time dependencies such as Qt DLLs,
-     run-time library installer, translations and plugins. If the emailrelay GUI is
-     statically linked then the DLLs and run-time library installer can be deleted.
+     The Qt tool <em>windeployqt</em> is used to add run-time dependencies, such as the
+     platform DLL. (Public releases of Windows builds are normally statically linked,
+     so many of the DLLs added by <em>windeployqt</em> are not needed.)
     </p>
 
     <p>
@@ -390,7 +367,7 @@ dir emailrelay-2.5.1-w64\
 
       <div class="div-pre">
        <pre>$ svn co https://svn.code.sf.net/p/emailrelay/code emailrelay
-$ cd emailrelay/tags/V_2_5_1
+$ cd emailrelay/tags/V_2_5
 </pre>
       </div><!-- div-pre -->
     <p>
@@ -400,13 +377,12 @@ $ cd emailrelay/tags/V_2_5_1
       <div class="div-pre">
        <pre>$ git clone https://git.code.sf.net/p/emailrelay/git emailrelay
 $ cd emailrelay
-$ git checkout V_2_5_1
+$ git checkout V_2_5
 </pre>
       </div><!-- div-pre -->
     <p>
-     Code that has been formally released will be tagged with a tag like <em>V_2_5_1</em>
-     and any minor post-release fixes will be on a <em>fixes</em> branch like
-     <em>V_2_5_1_fixes</em>.
+     Code that has been formally released will be tagged with a tag like <em>V_2_5</em> and
+     any minor post-release fixes will be on a <em>fixes</em> branch like <em>V_2_5_fixes</em>.
     </p>
    <h2><a class="a-header" name="SH_1_14">Compile-time features</a></h2> <!-- index:2:SH:1:14:Compile-time features -->
     <p>
