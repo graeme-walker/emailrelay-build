@@ -34,13 +34,13 @@ Build mbedtls
 
 	$ perl mbedtlsbuild.pl
 
-Build qt
+Build Qt
 --------
 
 	$ perl qtbuild.pl
 
-Build emailrelay
-----------------
+Build E-MailRelay
+-----------------
 
 	$ cd emailrelay-x64 && nmake
 
@@ -57,4 +57,4 @@ Optionally repeat the build from an "x86 native tools command prompt".
 
 
 ___
-Copyrights and licenses apply separately to perl, mbedtls, qt and emailrelay.
+Copyrights and licenses apply separately to perl, mbedtls, Qt and E-MailRelay.
