@@ -1,71 +1,60 @@
-E-MailRelay windows build
-=========================
+E-MailRelay build
+=================
 
-cmake
------
-Cmake 2.8.12.1 source code:
+E-MailRelay source code with dependencies for building statically-linked
+binaries for Windows, including the E-MailRelay GUI.
 
-	https://cmake.org/files/v2.8/cmake-2.8.12.1.tar.gz
-	https://cmake.org/files/v2.8/cmake-2.8.12.1.zip
+Dependencies obtained as follows:
 
-Build on windows using "nmake":
+	wget https://www.cpan.org/src/5.0/perl-5.38.0.tar.gz
+	mkdir perl
+	tar -C perl --strip-components=1 -xzf perl-5.38.0.tar.gz
 
-	cd cmake
-	mkdir build
-	cd build
-	nmake cmake
-	PATH=<cwd>;%PATH%
+    git clone git://code.qt.io/qt/qt5.git qt5
+    cd qt5
+    git checkout 5.12
+    perl init-repository --module-subset=qtbase
 
-Build on windows without "nmake":
+	git clone https://github.com/Mbed-TLS/mbedtls.git mbedtls
+	git -C mbedtls checkout -q "mbedtls-2.28
 
-	cd cmake
-	mkdir build
-	cd build
-	..\..\makecmake.bat
-	PATH=<cwd>;%PATH%
+Start the build with a "x64 native tools command prompt".
 
-perl
-----
-Perl 5.38.0 source code:
-
-	https://www.cpan.org/src/5.0/perl-5.38.0.tar.gz
-
-Build on windows using "nmake":
-
-	cd perl
-	cd win32
-	vi Makefile [set CCTYPE]
-	nmake 
-	cd ..
-	PATH=<cwd>;%PATH%
-
-Build on windows without "nmake":
-
-	...
-
-qt5
----
-Qt source code:
-
-	git clone git://code.qt.io/qt/qt5.git qt5
-	cd qt5
-	git checkout 5.12
-	perl init-repository --module-subset=qtbase
-
-Build on windows using "perl" and "nmake":
-
-	perl emailrelay/libexec/qtbuild.pl
-
-Clean with:
-
-	rmdir /s /q qt-build-x64
-
-emailrelay
+Build perl
 ----------
-E-MailRelay source.
 
-Build on windows using "perl" and "cmake":
+	$ cd perl/win32
+	$ nmake CCTYPE=MSVC143 install
+	$ PATH=c:\perl\bin;%PATH%
 
-	cd emailrelay
-	perl winbuild.pl
+Adjust CCTYPE according to the comments in perl/win32/makefile.
 
+Build mbedtls
+-------------
+
+	$ perl mbedtlsbuild.pl
+
+Build qt
+--------
+
+	$ perl qtbuild.pl
+
+Build emailrelay
+----------------
+
+	$ cd emailrelay-x64 && nmake
+
+Take binaries from emailrelay-x64/src/main/release and 
+emailrelay-x64/src/gui/release.
+
+Repeat for x86
+--------------
+Optionally repeat the build from an "x86 native tools command prompt".
+
+	$ perl mbedtlsbuild.pl
+	$ perl qtbuild.pl
+	$ cd emailrelay-x86 && nmake
+
+
+___
+Copyrights and licenses apply separately to perl, mbedtls, qt and emailrelay.
