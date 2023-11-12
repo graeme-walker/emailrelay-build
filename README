@@ -10,10 +10,10 @@ Dependencies obtained as follows:
 	mkdir perl
 	tar -C perl --strip-components=1 -xzf perl-5.38.0.tar.gz
 
-    git clone git://code.qt.io/qt/qt5.git qt5
-    cd qt5
-    git checkout 5.12
-    perl init-repository --module-subset=qtbase
+	git clone git://code.qt.io/qt/qt5.git qt5
+	cd qt5
+	git checkout 5.12
+	perl init-repository --module-subset=qtbase
 
 	git clone https://github.com/Mbed-TLS/mbedtls.git mbedtls
 	git -C mbedtls checkout -q "mbedtls-2.28

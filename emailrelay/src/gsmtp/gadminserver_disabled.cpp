@@ -37,8 +37,7 @@ GSmtp::AdminServer::AdminServer( GNet::ExceptionSink , GStore::MessageStore & ,
 }
 
 GSmtp::AdminServer::~AdminServer()
-{
-}
+= default ;
 
 void GSmtp::AdminServer::emitCommand( Command , unsigned int )
 {
