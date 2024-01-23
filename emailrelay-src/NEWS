@@ -1,18 +1,12 @@
 News
 ====
 
-Windows build
--------------
-The E-MailRelay 2.5.2 point release has a revised Windows build system so it
-is now possible to build using "nmake", without "cmake" or Visual Studio's
-"msbuild".
-
-The "libexec/make2cmake" script was previously available for Unix builds, but
-it can now be used on Windows either directly or via "winbuild.bat". There is
-now a similar script "libexec/make2nmake" to generate "nmake" makefiles, and
-this is used by "winbuildall.bat".
-
-Other changes have made it easier to support LibreSSL in Windows builds (see
-"winbuildall.bat").
+2.5.2
+-----
+The E-MailRelay 2.5.2 release has very few code changes compared to the 2.5.1a
+source tarball. The biggest change is to the Windows build scripts so that it
+is now possible to build using "nmake" without needing "cmake" or Visual Studio,
+and it is easier to use LibreSSL as the TLS library. Also, the "make2cmake"
+script can now be run on Windows to create cmake files.
 
 Refer to the developer document for more information.

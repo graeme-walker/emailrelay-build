@@ -297,9 +297,6 @@ const char * Main::Configuration::semanticError1() const
 
 		if( contains_admin )
 			return tx("the --admin option cannot be used with --as-client or --dont-serve") ;
-
-		if( contains_poll )
-			return tx("the --poll option cannot be used with --as-client or --dont-serve") ;
 	}
 
 	if( contains("no-smtp") ) // ie. if not serving smtp

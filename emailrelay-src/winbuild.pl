@@ -78,7 +78,7 @@ my %cfg_options = (
 	x64 => 1 ,
 	x86 => 0 ,
 	cmake => undef ,
-	mbedtls => undef ,
+	mbedtls_src => undef ,
 	mbedtls_tls13 => undef , # still 'experimental'
 	openssl_x64 => undef ,
 	openssl_x86 => undef ,
@@ -111,7 +111,7 @@ my $cfg_opt_debug = $cfg_options{debug} ;
 my $cfg_opt_x86 = $cfg_options{x86} ;
 my $cfg_opt_x64 = $cfg_options{x64} ;
 my $cfg_path_cmake = $cfg_options{cmake} ;
-my $cfg_path_mbedtls_src = $cfg_options{mbedtls} ;
+my $cfg_path_mbedtls_src = $cfg_options{mbedtls_src} ;
 my $cfg_mbedtls_tls13 = $cfg_options{mbedtls_tls13} ;
 my $cfg_path_qt_x64 = $cfg_options{qt_x64} ;
 my $cfg_path_qt_x86 = $cfg_options{qt_x86} ;
@@ -135,17 +135,27 @@ if( ! -e "winbuild.cfg" )
 	my $fh = new FileHandle( "winbuild.cfg" , "w" ) ;
 	if( $fh )
 	{
-		print $fh "# winbuild.cfg -- created by winbuild.pl -- uncomment and edit as required\n" ;
+		my $mbedtls_src = -d $cfg_path_mbedtls_src ? $cfg_path_mbedtls_src : "c:/mbedtls-2.28.0" ;
+		my $openssl_x64 = -d $cfg_path_openssl_x64 ? $cfg_path_openssl_x64 : "c:/libressl-3.8.2/build-x64" ;
+		my $openssl_x86 = -d $cfg_path_openssl_x64 ? $cfg_path_openssl_x64 : "c:/libressl-3.8.2" ;
+		my $qt_x64 = -d $cfg_path_qt_x64 ? $cfg_path_qt_x64 : "c:/qt/5.15.2/msvc2019_64" ;
+		my $qt_x86 = -d $cfg_path_qt_x86 ? $cfg_path_qt_x86 : "c:/qt/5.15.2/msvc2019" ;
+
+		print $fh "# winbuild.cfg -- created by winbuild.pl -- edit as required\n" ;
+		print $fh "\n" ;
 		print $fh "#with_mbedtls 0\n" ;
-		my $mbedtls = -d $cfg_path_mbedtls_src ? $cfg_path_mbedtls_src : "c:/mbedtls-2.28.0" ;
-		print $fh "#mbedtls $mbedtls\n" ;
+		print $fh "#mbedtls_src $mbedtls_src\n" ;
+		print $fh "\n" ;
 		print $fh "#with_openssl 0\n" ;
-		my $openssl = -d $cfg_path_openssl_x64 ? $cfg_path_openssl_x64 : "c:/libressl-3.8.2" ;
-		print $fh "#openssl_x64 $openssl\n" ;
+		print $fh "#openssl_x64 $openssl_x64\n" ;
+		print $fh "\n" ;
 		print $fh "#with_gui 0\n" ;
 		print $fh "#qt_static 0\n" ;
-		my $qt_x64 = -d $cfg_path_qt_x64 ? $cfg_path_qt_x64 : "c:/qt/5.15.2/msvc2019_64" ;
 		print $fh "#qt_x64 $qt_x64\n" ;
+		print $fh "\n" ;
+		print $fh "#x86 0\n" ;
+		print $fh "#qt_x86 $qt_x86\n" ;
+		print $fh "#openssl_x86 $openssl_x86\n" ;
 	}
 }
 my $missing_cmake = ( !$cfg_path_cmake || !-e $cfg_path_cmake ) ;

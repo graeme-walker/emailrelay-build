@@ -59,8 +59,7 @@ EXTRA_DIST = \
 	autogen.sh \
 	winbuild.bat \
 	winbuild.pl \
-	runperl.bat \
-	.readthedocs.yaml
+	runperl.bat
 
 SUBDIRS = libexec bin src etc doc debian test m4 bsd po unity
 

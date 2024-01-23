@@ -161,7 +161,7 @@ sub find
 	my $base = File::Basename::dirname( $0 ) ;
 	for my $path ( "$base/$name" , "$base/../$name" , "$base/../../$name" )
 	{
-		return $path if -d $path ;
+		return $path if -d $path && -e "$path/include/mbedtls/ssl.h" && -e "$path/library/version.c" ;
 	}
 	return $name ;
 }

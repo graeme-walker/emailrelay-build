@@ -39,7 +39,7 @@ The E-MailRelay server uses non-blocking socket i/o, with a select() or epoll()
 event loop. This event model means that the server can handle multiple network
 connections simultaneously from a single thread, and even if multi-threading is
 disabled at build-time the only blocking occurs when external programs are
-executed (see *--filter* and *--address-verifier*).
+executed (see *-\ -filter* and *-\ -address-verifier*).
 
 The advantages of a non-blocking event model are discussed in the well-known
 `C10K Problem <http://www.kegel.com/c10k.html>`_ document.
@@ -67,49 +67,49 @@ Module structure
 ================
 The main C++ libraries in the E-MailRelay code base are as follows:
 
-"glib"
-------
+glib
+----
     Low-level classes for file-system abstraction, date and time representation,
     string utility functions, logging, command line parsing etc.
 
 
-"gssl"
-------
+gssl
+----
     A thin layer over the third-party TLS_ libraries.
 
 
-"gnet"
-------
+gnet
+----
     Network and event-loop classes.
 
 
-"gauth"
--------
+gauth
+-----
     Implements various authentication mechanisms.
 
 
-"gsmtp"
--------
+gsmtp
+-----
     SMTP protocol classes.
 
 
-"gpop"
-------
+gpop
+----
     POP3 protocol classes.
 
 
-"gstore"
---------
+gstore
+------
     Message store classes.
 
 
-"gfilters"
-----------
+gfilters
+--------
     Built-in filters.
 
 
-"gverifiers"
-------------
+gverifiers
+----------
     Built-in address verifiers.
 
 All of these libraries are portable between Unix-like systems and Windows.
@@ -124,7 +124,7 @@ The message-store functionality uses three abstract interfaces: *MessageStore*,
 messages within the store, and the *StoredMessage* interface is used for
 reading and extracting messages from the store. The concrete implementation
 classes based on these interfaces are respectively *FileStore*, *NewFile* and
-\ *StoredFile*\ .
+*StoredFile*.
 
 Protocol classes such as *GSmtp::ServerProtocol* receive network and timer
 events from their container and use an abstract *Sender* interface to send
@@ -139,12 +139,12 @@ pattern is used whereby the forwarding class uses an instance of the storage
 class to do the message storing and filtering, while adding in an instance
 of the *GSmtp::Client* class to do the forwarding.
 
-Message filtering (\ *--filter*\ ) is implemented via an abstract *GSmtp::Filter*
+Message filtering (\ *-\ -filter*\ ) is implemented via an abstract *GSmtp::Filter*
 interface. Concrete implementations in the *GFilters* namespace are provided for
 doing nothing, running an external executable program, talking to an external
 network server, etc.
 
-Address verifiers (\ *--address-verifier*\ ) are implemented via an abstract
+Address verifiers (\ *-\ -address-verifier*\ ) are implemented via an abstract
 *GSmtp::Verifier* interface, with concrete implementations in the *GVerifiers*
 namespace.
 
@@ -191,7 +191,7 @@ unless disabled at build-time std::thread is used in a future/promise pattern to
 wrap up *getaddrinfo()* and *waitpid()* system calls. The shared state comprises
 only the parameters and return results from these system calls, and
 synchronisation back to the main thread uses the main event loop (see
-\ *GNet::FutureEvent*\ ). Threading is not used elsewhere so the C/C++ run-time
+*GNet::FutureEvent*). Threading is not used elsewhere so the C/C++ run-time
 library does not need to be thread-safe.
 
 E-MailRelay GUI
@@ -204,7 +204,7 @@ the comments in *src/gui/guimain.cpp* for more details.
 The user interface runs as a stack of dialog-box pages with forward and back
 buttons at the bottom. Once the stack has been completed by the user then each
 page is asked to dump out its state as a set of key-value pairs (see
-\ *src/gui/pages.cpp*\ ). These key-value pairs are processed by an installer class
+*src/gui/pages.cpp*). These key-value pairs are processed by an installer class
 into a list of action objects (in the *Command* design pattern) and then the
 action objects are run in turn. In order to display the progress of the
 installation each action object is run within a timer callback so that the Qt
@@ -244,14 +244,14 @@ sibling directory and Qt libraries under *c:\\qt*, but refer to *winbuild.pm* fo
 the details. The build proceeds using *cmake* and *msbuild* resulting in
 statically-linked executables but with the GUI typically dynamically-linked.
 
-The mbedtls code is built if necessary by running *cmake* and *cmake --build* in
+The mbedtls code is built if necessary by running *cmake* and *cmake -\ -build* in
 a *mbedtls-x64* build sub-directory. The mbedtls headers are copied into the
 build tree. The mbedtls configuration header (mbedtls_config.h) is optionally
 edited to enable TLS v1.3. If necessary delete the *mbedtls-x64* build directory
 to trigger a rebuild.
 
 A release assembly can be created by running *winbuild-install.bat* or
-\ *perl winbuild.pl install*\ . This makes use of the Qt *windeployqt* utility to
+*perl winbuild.pl install*. This makes use of the Qt *windeployqt* utility to
 assemble DLLs and it also generates the Qt translation files (\ **.qm*\ ).
 
 For public release builds the E-MailRelay GUI must be statically linked. Start
@@ -269,7 +269,7 @@ copy the built executables. Any extra run-time files can be identified by
 running *dumpbin /dependents* in the normal way.
 
 To target ancient versions of Windows start with a MinGW cross-build for 32-bit
-(\ *./configure.sh -m -w32 --disable-gui*\ ). Then *winbuild.pl install_winxp* can
+(\ *./configure.sh -m -w32 -\ -disable-gui*\ ). Then *winbuild.pl install_winxp* can
 be used to make a simplified distribution assembly, without a GUI.
 
 Windows packaging
@@ -303,7 +303,7 @@ Internationalisation
 The GUI code has i18n support using the Qt framework, with the tr() function
 used throughout the GUI source code. The GUI main() function loads translations
 from the *translations* sub-directory (relative to the executable), although
-that can be overridden with the *--qm* command-line option. Qt's *-reverse*
+that can be overridden with the *-\ -qm* command-line option. Qt's *-reverse*
 option can also be used to reverse the widgets when using RTL languages.
 
 The non-GUI code has some i18n support by using gettext() via the inline txt()
@@ -335,21 +335,21 @@ or
 
 Code that has been formally released will be tagged with a tag like *V_2_5_2*
 and any post-release or back-ported fixes will be on a *fixes* branch like
-\ *V_2_5_2_fixes*\ .
+*V_2_5_2_fixes*.
 
 Compile-time features
 =====================
 Compile-time features can be selected with options passed to the *configure*
 script. These include the following:
 
-* Configuration GUI (\ *--enable-gui*\ )
-* Multi-threading (\ *--enable-std-thread*\ )
-* TLS library (\ *--with-openssl*\ , *--with-mbedtls*)
-* Debug-level logging (\ *--enable-debug*\ )
-* Event loop using epoll (\ *--enable-epoll*\ )
-* PAM_ support (\ *--with-pam*\ )
+* Configuration GUI (\ *-\ -enable-gui*\ )
+* Multi-threading (\ *-\ -enable-std-thread*\ )
+* TLS library (\ *-\ -with-openssl*\ , *-\ -with-mbedtls*)
+* Debug-level logging (\ *-\ -enable-debug*\ )
+* Event loop using epoll (\ *-\ -enable-epoll*\ )
+* PAM_ support (\ *-\ -with-pam*\ )
 
-Use *./configure --help* to see a complete list of options.
+Use *./configure -\ -help* to see a complete list of options.
 
 
 

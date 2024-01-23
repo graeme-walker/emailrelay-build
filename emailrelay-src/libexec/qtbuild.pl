@@ -31,18 +31,28 @@
 # Runs the Qt 'configure' script with options chosen to limit the size of
 # the build, and then runs 'make' or 'nmake'.
 #
-# usage: qtbuild.pl [--qt6] [--arch <arch>] [--config {debug|release}] [<src-dir> [<build-dir>] [<install-dir>]]]
+# usage: qtbuild.pl [options] [<src-dir> [<build-dir>] [<install-dir>]]]
+#          --qt6                       assume qt6
+#          --arch={x64|x86}            x64 or x86 (windows)
+#          --config={debug|release}    debug or release
+#          --dynamic                   dynamic linking and associated tools
 #
 # On Windows use from a 'vcvars' "developer command prompt".
 #
 # Download qt5 source with:
 #    $ git clone https://code.qt.io/qt/qt5.git qt5
 #    $ git -C qt5 checkout 5.15
-#    $ cd qt5 && perl init-repository --module-subset=qtbase
+#    $ cd qt5 && perl init-repository --module-subset=qtbase,qttools,qttranslations
 #
-# If run without options then a "qt5" sub-directory is expected, an
-# empty sub-directory is created for the build and the install goes
-# into the qt-<arch> sub-directory:
+# Only the "qtbase" module is required to build the libraries, but
+# "qttools" and "qttranslations" are needed for building the "windeployqt"
+# tool, which will be needed after a non-static ("--dynamic") build on
+# windows. It is best to initialise all three when downloading and then
+# use "-skip" options on the "configure" command-line as appropriate.
+#
+# If this script is run without options then a "qt5" sub-directory is
+# expected, an empty sub-directory is created for the build and the
+# install goes into the qt-<arch> sub-directory:
 #
 #  source   - qt5/
 #  build    - qt-build-<arch>-<config>/
@@ -69,6 +79,7 @@ GetOptions( \%opt , "qt6" , "install|i=s" , "arch=s" , "config=s" , "verbose|v" 
 my $cfg_qt6 = $opt{qt6} ;
 my $cfg_static = !$opt{dynamic} ;
 my $cfg_config = $opt{config} || "release" ;
+my $cfg_build_more = $opt{dynamic} ; # build more stuff so that windeployqt works
 my $cfg_arch = $opt{arch} || $ENV{Platform} || "x64" ;
 my $cfg_source_dir_ = $ARGV[0] || _find($cfg_qt6?"qt6":"qt5") ;
 my $cfg_build_dir = $ARGV[1] || "qt-build-${cfg_arch}-${cfg_config}" ;
@@ -124,27 +135,50 @@ print "$cfg_prefix: install: $cfg_install_dir\n" unless $cfg_quiet ;
 my @configure_args = grep {m/./} (
 		"-opensource" , "-confirm-license" ,
 		"-prefix" , $cfg_install_dir ,
+		"-${cfg_config}" ,
 		( $cfg_static ? "-static" : "" ) ,
 		( $cfg_static && _windows() ? "-static-runtime" : "" ) ,
-		"-${cfg_config}" ,
 		"-platform" , ( _windows() ? "win32-msvc" : "linux-g++" ) ,
+		"-nomake" , "examples" ,
+		"-nomake" , "tests" ) ;
+
+if( $cfg_build_more )
+{
+	push @configure_args , grep {m/./} (
+		"-opengl" ,
 		"-no-openssl" ,
-		"-no-opengl" ,
 		"-no-dbus" ,
 		"-no-gif" ,
 		"-no-libpng" ,
 		"-no-libjpeg" ,
-		#"-no-sqlite" ,
-		"-nomake" , "examples" ,
-		"-nomake" , "tests" ,
-		$cfg_qt6 ? (
-			( _windows() ? "" : "-xcb" ) ,
-		) :
-		(
-			"-nomake" , "tools" ,
-			"-make" , "libs" ,
-		)
+		"-make" , "tools" ,
+		"-make" , "libs" ,
 	) ;
+}
+else
+{
+	push @configure_args , grep {m/./} (
+		"-no-opengl" ,
+		"-no-openssl" ,
+		"-no-dbus" ,
+		"-no-gif" ,
+		"-no-libpng" ,
+		"-no-libjpeg" ,
+		"-nomake" , "tools" ,
+		"-make" , "libs" ,
+		"-skip" , "translations" ,
+		"-skip" , "tools"
+	) ;
+}
+if( $cfg_qt6 && _unix() )
+{
+	push @configure_args , (
+		"-xcb" ,
+		"-feature-thread" ,
+		"-feature-xcb" ,
+		"-feature-xkbcommon-x11" ,
+	) ;
+}
 if( $cfg_verbose )
 {
 	unshift @configure_args , "-verbose" ;
@@ -152,24 +186,22 @@ if( $cfg_verbose )
 if( $cfg_config ne "debug" )
 {
 	push @configure_args , (
-		#"-ltcg" ,
 		"-no-pch" ,
 		"-optimize-size"
 	) ;
 }
-push @configure_args , map {("-skip",$_)} skips() ;
-push @configure_args , features() ;
+
 if( $cfg_dry_run )
 {
 	my $sep = ( _windows() ? "\\\\" : "/" ) ;
 	my $bat = ( _windows() ? ".bat" : "" ) ;
-	print "${cfg_source_dir}${sep}configure$bat " , join(" ",@configure_args) , "\n" ;
+	print "cd ${cfg_build_dir} \&\& ${cfg_source_dir}${sep}configure$bat " , join(" ",@configure_args) , "\n" ;
 	exit ;
 }
 
 # fix-ups
 #
-touch( "$cfg_source_dir/qtbase/.git" ) ; # fix for 'missing qglobal.h' error -- see "-e" test in "qtbase/configure"
+map { touch("$cfg_source_dir/$_/.git") } ( "qtbase" , "qttools" , "qttranslations" ) ; # see "-e" test in "qtbase/configure"
 $ENV{MAKE} = "make" if( _unix() ) ; # we dont want gmake -- see "qtbase/configure"
 
 # run 'configure'
@@ -180,7 +212,7 @@ if( _unix() )
 }
 else
 {
-	$ENV{PATH} = File::Basename::dirname($^X) .";$ENV{PATH}" ;
+	$ENV{PATH} = File::Basename::dirname($^X) .";$ENV{PATH}" ; # perl on the path
 	run( $cfg_build_dir , "configure($cfg_arch)" , "$cfg_source_dir\\\\configure.bat" , @configure_args ) ;
 }
 
@@ -251,59 +283,7 @@ sub touch
 	my ( $path ) = @_ ;
 	return 1 if -e $path ;
 	my $fh = new FileHandle( $path , "w" ) ;
-	return defined($fh) && $fh->close() ;
-}
-
-sub skips
-{
-	# skip any unwanted submodules cloned by init-repository
-	# (see .git/.gitmodules without the "qt" prefixes) -- we might
-	# want to clone qttools, qttranslations etc. for other reasons
-	# but we do not want to build them with this script
-	if( $cfg_qt6 )
-	{
-		return () ;
-	}
-	else
-	{
-		return grep {!m/^#/} qw(
-			translations
-			tools
-		) ;
-	}
-}
-
-sub features
-{
-	# in principle it should be possible to get "--no-feature-whatever"
-	# options from the qconfig-gui tool, but it's only available
-	# commercially -- the https://qtlite.com/ web tool looks like an
-	# alternative but it does not work well in practice
-	#
-	# the full list of features can be obtained from
-	# "cd <build> && <source>/configure[.bat] -list-features 2>&1"
-	#
-	if( $cfg_qt6 )
-	{
-		if( _unix() )
-		{
-			return grep {!m/^#/} qw(
-				-feature-thread
-				-feature-xcb
-				-feature-xkbcommon-x11
-			) ;
-		}
-		else
-		{
-			return () ;
-		}
-	}
-	else
-	{
-		return grep {!m/^#/} qw(
-			#-no-feature-accessibility
-		) ;
-	}
+	( $fh && $fh->close() ) or die "$cfg_prefix: error: cannot touch [$path]" ;
 }
 
 sub _find

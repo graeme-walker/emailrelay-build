@@ -99,10 +99,11 @@ sub find_qt_x64
 
 sub _find_mbedtls_src
 {
-	return (
-		_find_match( "find-mbedtls-src" , "mbedtls*/" , undef ,
+	my $version_c =
+		_find_match( "find-mbedtls-src" , "mbedtls*/library/version.c" , undef ,
 			File::Basename::dirname($0) ,
-			File::Basename::dirname($0)."/.." ) ) ;
+			File::Basename::dirname($0)."/.." ) ;
+	return -f $version_c ? File::Basename::dirname(File::Basename::dirname($version_c)) : undef ;
 }
 
 sub find_mbedtls_src
@@ -181,6 +182,11 @@ sub _find_match
 
 	my $find_dir = ( $glob =~ m;/$; ) ;
 	$glob =~ s;/$;; if $find_dir ;
+
+	# for each base directory in @dirs do the file glob and return
+	# the first glob path that matches the regex (optionally only
+	# considering glob paths that are directories if the glob
+	# pattern ends in a slash)
 
 	my $result ;
 	for my $dir ( map {_sanepath($_)} @dirs )
