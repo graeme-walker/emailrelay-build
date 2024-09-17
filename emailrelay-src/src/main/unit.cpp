@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -32,15 +32,20 @@
 #include <functional>
 
 Main::Unit::Unit( Run & run , unsigned int unit_id , const std::string & version_number ) :
+	GNet::EventLogging(nullptr) ,
 	m_run(run) ,
 	m_configuration(run.configuration(unit_id)) ,
 	m_version_number(version_number) ,
 	m_unit_id(unit_id) ,
-	m_es_log_only(GNet::ExceptionSink::logOnly())
+	m_es_log_only(GNet::EventState::create(std::nothrow).logging(this)) ,
+	m_es_rethrow(GNet::EventState::create().logging(this))
 {
 	G_ASSERT( GSsl::Library::instance() != nullptr ) ;
 	using G::format ;
 	using G::txt ;
+
+	if( !m_configuration.name().empty() && m_configuration.logFormatContains("unit") )
+		m_event_logging_string = std::string(1U,'[').append(m_configuration.name().append("] ",2U)) ;
 
 	// cache the forwarding address's address family
 	//
@@ -52,7 +57,7 @@ Main::Unit::Unit( Run & run , unsigned int unit_id , const std::string & version
 		!GNet::Address::isFamilyLocal( m_configuration.serverAddress() ) )
 	{
 		GNet::Location location( m_configuration.serverAddress() , m_resolver_family ) ;
-		std::string error = GNet::Resolver::resolve( location ) ;
+		std::string error = GNet::Resolver::resolve( location ) ; // synchronous
 		if( !error.empty() )
 			G_WARNING( "Main::Unit::ctor: " << format(txt("dns lookup of forward-to address failed: %1%")) % error ) ;
 	}
@@ -113,8 +118,7 @@ Main::Unit::Unit( Run & run , unsigned int unit_id , const std::string & version
 	m_verifier_factory = std::make_unique<GVerifiers::VerifierFactory>() ;
 	if( do_pop )
 	{
-		m_pop_store = GPop::newStore( m_configuration.spoolDir() ,
-			m_configuration.popByName() , !m_configuration.popNoDelete() ) ;
+		m_pop_store = GPop::newStore( m_configuration.spoolDir() , m_configuration.popStoreConfig() ) ;
 	}
 
 	// prepare authentication secrets
@@ -146,7 +150,7 @@ Main::Unit::Unit( Run & run , unsigned int unit_id , const std::string & version
 			m_configuration.smtpServerConfig( ident() , m_server_secrets->valid() , serverTlsProfile() , domain() ) ,
 			m_configuration.immediate() ? m_configuration.serverAddress() : std::string() ,
 			m_resolver_family ,
-			m_configuration.smtpClientConfig( clientTlsProfile() , domain() ) ) ;
+			m_configuration.smtpClientConfig( clientTlsProfile() , domain() , clientDomain() ) ) ;
 	}
 
 	// create the pop server
@@ -181,7 +185,7 @@ Main::Unit::Unit( Run & run , unsigned int unit_id , const std::string & version
 			*m_filter_factory ,
 			*m_client_secrets ,
 			m_configuration.listeningNames("admin") ,
-			m_configuration.adminServerConfig( info_map , clientTlsProfile() , domain() ) ) ;
+			m_configuration.adminServerConfig( info_map , clientTlsProfile() , domain() , clientDomain() ) ) ;
 	}
 
 	if( GSmtp::AdminServer::enabled() && m_admin_server ) m_admin_server->commandSignal().connect( G::Slot::slot(*this,&Unit::onAdminCommand) ) ;
@@ -208,6 +212,12 @@ unsigned int Main::Unit::id() const
 std::string Main::Unit::name( const std::string & default_ ) const
 {
 	return m_configuration.name().empty() ? default_ : m_configuration.name() ;
+}
+
+std::string_view Main::Unit::eventLoggingString() const noexcept
+{
+	if( m_event_logging_string.empty() ) return {} ;
+	return m_event_logging_string ;
 }
 
 void Main::Unit::onClientEvent( const std::string & p1 , const std::string & p2 , const std::string & p3 )
@@ -296,7 +306,7 @@ void Main::Unit::onRequestForwardingTimeout()
 
 bool Main::Unit::logForwarding() const
 {
-	return m_forwarding_reason != "poll" || m_configuration.pollingLog() || G::Log::atDebug() ;
+	return m_forwarding_reason != "poll" || m_configuration.pollingLog() || G::LogOutput::Instance::atDebug() ;
 }
 
 std::string Main::Unit::startForwarding()
@@ -306,12 +316,12 @@ std::string Main::Unit::startForwarding()
 	{
 		G_ASSERT( m_client_secrets != nullptr ) ;
 		m_client_ptr.reset( std::make_unique<GSmtp::Forward>(
-			GNet::ExceptionSink(m_client_ptr,nullptr) ,
+			m_es_rethrow.eh(m_client_ptr) ,
 			*m_file_store ,
 			*m_filter_factory ,
 			GNet::Location(m_configuration.serverAddress(),m_resolver_family) ,
 			*m_client_secrets ,
-			m_configuration.smtpClientConfig( clientTlsProfile() , domain() ) ) ) ;
+			m_configuration.smtpClientConfig( clientTlsProfile() , domain() , clientDomain() ) ) ) ;
 		return {} ;
 	}
 	catch( std::exception & e )
@@ -469,10 +479,20 @@ std::string Main::Unit::ident() const
 
 std::string Main::Unit::domain() const
 {
-	// lasy wrt Run::defaultDomain()
+	// we dont want to evaluate Run::defaultDomain() just to pass it as
+	// a default that is then ignored, so use a functor for the default --
+	// neither Configuration nor Run will return an empty domain string
 	if( m_domain.empty() )
+	{
 		m_domain = m_configuration.domain( std::bind(&Run::defaultDomain,&m_run) ) ;
+		G_ASSERT( !m_domain.empty() ) ;
+	}
 	return m_domain ;
+}
+
+std::string Main::Unit::clientDomain() const
+{
+	return domain() ;
 }
 
 G::Path Main::Unit::spoolDir() const

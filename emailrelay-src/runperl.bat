@@ -1,6 +1,6 @@
 @echo off
 rem
-rem Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+rem Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 rem 
 rem This program is free software: you can redistribute it and/or modify
 rem it under the terms of the GNU General Public License as published by
@@ -50,8 +50,15 @@ goto done
 @rem try c:\perl\bin
 :no_path
 c:\perl\bin\perl.exe -e "exit 99" 2>NUL:
-if not errorlevel 99 goto fail_no_perl
+if not errorlevel 99 goto no_c_perl
 c:\perl\bin\perl.exe %1 %3 %4 %5
+goto done
+
+@rem try ..\perl-bin\bin
+:no_c_perl
+..\perl-bin\bin\perl.exe -e "exit 99" 2>NUL:
+if not errorlevel 99 goto fail_no_perl
+..\perl-bin\bin\perl.exe %1 %3 %4 %5
 goto done
 
 @rem after running perl check for the touchfile

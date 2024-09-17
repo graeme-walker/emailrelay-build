@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -30,6 +30,7 @@
 #include "gpath.h"
 #include "gstringarray.h"
 #include <fstream>
+#include <memory>
 
 class QCheckBox;
 class QComboBox;
@@ -102,6 +103,8 @@ private slots:
 private:
 	QString browse( QString ) ;
 	G::Path normalise( const G::Path & ) const ;
+	void checkCharacterSets() ;
+	bool checkCharacterSet( QString ) ;
 
 private:
 	bool m_installing ;
@@ -121,6 +124,7 @@ private:
 	QString m_runtime_dir_start ;
 	QLineEdit * m_runtime_dir_edit_box ;
 	QPushButton * m_runtime_dir_browse_button ;
+	QLabel * m_notice_label ;
 	bool m_is_mac ;
 	bool m_other_dir_changed ;
 } ;
@@ -334,6 +338,8 @@ private:
 	QPushButton * m_log_output_file_browse_button ;
 	QCheckBox * m_log_fields_time_checkbox ;
 	QCheckBox * m_log_fields_address_checkbox ;
+	QCheckBox * m_log_fields_port_checkbox ;
+	QCheckBox * m_log_fields_msgid_checkbox ;
 } ;
 
 class ListeningPage : public Gui::Page
@@ -417,8 +423,8 @@ private slots:
 
 private:
 	QString format( const Installer::Output & ) ;
-	void addOutput( const Installer::Output & ) ;
-	void replaceOutput( const Installer::Output & ) ;
+	void addLineFromOutput( const Installer::Output & ) ;
+	void replaceLineFromOutput( const Installer::Output & ) ;
 	void addLine( const QString & text ) ;
 	void addText( const QString & text ) ;
 

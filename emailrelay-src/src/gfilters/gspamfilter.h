@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -41,7 +41,7 @@ namespace GFilters
 class GFilters::SpamFilter : public GSmtp::Filter
 {
 public:
-	SpamFilter( GNet::ExceptionSink , GStore::FileStore & ,
+	SpamFilter( GNet::EventState , GStore::FileStore & ,
 		Filter::Type , const Filter::Config & ,
 		const std::string & server_location ,
 		bool read_only , bool always_pass ) ;
@@ -75,7 +75,7 @@ private:
 	void onDoneTimeout() ;
 
 private:
-	GNet::ExceptionSink m_es ;
+	GNet::EventState m_es ;
 	GNet::Timer<SpamFilter> m_done_timer ;
 	G::Slot::Signal<int> m_done_signal ;
 	GStore::FileStore & m_file_store ;

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -128,7 +128,7 @@ private:
 	void showUds( bool e = false , const std::string & eod = {} ) const ;
 	void showPop( bool e = false , const std::string & eod = {} ) const ;
 	static const G::Option * parserFind( const G::Options & , const std::string & , std::string * = nullptr ) ;
-	static std::string configFile( const std::string & ) ;
+	static G::Path configFile( const std::string & ) ;
 	void dump() const ;
 
 private:

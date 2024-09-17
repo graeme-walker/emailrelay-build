@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -47,7 +47,7 @@ namespace GNet
 			GDEF_IGNORE_PARAM( a ) ;
 			#endif
 		}
-		constexpr std::size_t psize()
+		constexpr std::size_t psize() noexcept
 		{
 			return sizeof( sockaddr_un::sun_path ) ;
 		}
@@ -145,7 +145,7 @@ GNet::AddressLocal::AddressLocal( const sockaddr * addr , socklen_t len ) :
 	}
 }
 
-GNet::AddressLocal::AddressLocal( const std::string & host_part ) :
+GNet::AddressLocal::AddressLocal( std::string_view host_part ) :
 	AddressLocal(nullptr)
 {
 	namespace imp = AddressLocalImp ;
@@ -153,7 +153,7 @@ GNet::AddressLocal::AddressLocal( const std::string & host_part ) :
 	if( host_part.empty() || host_part.at(0) != '/' )
 		throw Address::BadString() ;
 
-	if( host_part == "/" || !G::Str::isPrintable(host_part) )
+	if( host_part == "/"_sv || !G::Str::isPrintable(host_part) )
 		throw Address::BadString() ;
 
 	if( host_part.size() >= imp::psize() )
@@ -186,7 +186,7 @@ void GNet::AddressLocal::setPort( unsigned int /*port*/ )
 {
 }
 
-bool GNet::AddressLocal::setZone( const std::string & /*ipv6_zone_name_or_scope_id*/ )
+bool GNet::AddressLocal::setZone( std::string_view /*ipv6_zone_name_or_scope_id*/ )
 {
 	return true ;
 }
@@ -215,7 +215,7 @@ bool GNet::AddressLocal::validData( const sockaddr * addr , socklen_t len )
 	return addr != nullptr && addr->sa_family == af() && len >= AddressLocalImp::minsize() && len <= sizeof(sockaddr_type) ;
 }
 
-bool GNet::AddressLocal::validString( const std::string & path , std::string * reason_p )
+bool GNet::AddressLocal::validString( std::string_view path , std::string * reason_p )
 {
 	const char * reason = nullptr ;
 	if( path.size() > AddressLocalImp::psize() )
@@ -231,7 +231,7 @@ bool GNet::AddressLocal::validString( const std::string & path , std::string * r
 	return reason == nullptr ;
 }
 
-bool GNet::AddressLocal::validStrings( const std::string & host_part , const std::string & /*port_part*/ ,
+bool GNet::AddressLocal::validStrings( std::string_view host_part , std::string_view /*port_part*/ ,
 	std::string * reason_p )
 {
 	return validString( host_part , reason_p ) ;

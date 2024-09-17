@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -25,7 +25,6 @@
 #include "commandline.h"
 #include "gpop.h"
 #include "options.h"
-#include "gmessagestore.h"
 #include "goptionparser.h"
 #include "goptionreader.h"
 #include "goptionsusage.h"
@@ -175,10 +174,10 @@ Main::CommandLine::CommandLine( Output & output , const G::Arg & args_in ,
 Main::CommandLine::~CommandLine()
 = default ;
 
-std::string Main::CommandLine::configFile( const std::string & arg )
+G::Path Main::CommandLine::configFile( const std::string & arg )
 {
-	std::string path = arg ;
-	G::Str::replace( path , "@app" , G::Path(G::Process::exe()).dirname().str() ) ;
+	G::Path path( arg ) ;
+	path.replace( "@app" , G::Process::exe().dirname().str() ) ;
 	return path ;
 }
 
@@ -395,7 +394,7 @@ void Main::CommandLine::showThreading( bool e , const std::string & eot ) const
 
 void Main::CommandLine::showUds( bool e , const std::string & eot ) const
 {
-	if( !G::is_windows() || G::is_wine() )
+	if( !G::is_windows() )
 	{
 		bool enabled = GNet::Address::supports( GNet::Address::Family::local ) ;
 		Show show( m_output , e , m_verbose ) ;

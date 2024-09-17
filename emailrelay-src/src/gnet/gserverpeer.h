@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -29,6 +29,7 @@
 #include "glinebuffer.h"
 #include "gtimer.h"
 #include "gconnection.h"
+#include "geventlogging.h"
 #include "gexceptionsource.h"
 #include "gevent.h"
 #include "gstringview.h"
@@ -54,10 +55,10 @@ namespace GNet
 ///
 /// \see GNet::Server, GNet::EventHandler
 ///
-class GNet::ServerPeer : private EventHandler , public Connection , private SocketProtocolSink , public ExceptionSource
+class GNet::ServerPeer : private EventHandler , public Connection , private SocketProtocolSink , public ExceptionSource , private EventLogging
 {
 public:
-	G_EXCEPTION( IdleTimeout , tx("idle timeout") ) ;
+	G_EXCEPTION( IdleTimeout , tx("idle timeout") )
 
 	struct Config /// A configuration structure for GNet::ServerPeer.
 	{
@@ -65,17 +66,21 @@ public:
 		unsigned int idle_timeout {0U} ;
 		bool kick_idle_timer_on_send {false} ; // idle timeout when nothing received (false) or sent-or-received (true)
 		bool no_throw_on_peer_disconnect {false} ; // see SocketProtocolSink::onPeerDisconnect()
+		bool log_address {false} ;
+		bool log_port {false} ;
 		Config & set_socket_protocol_config( const SocketProtocol::Config & ) ;
 		Config & set_idle_timeout( unsigned int ) noexcept ;
 		Config & set_kick_idle_timer_on_send( bool = true ) noexcept ;
 		Config & set_no_throw_on_peer_disconnect( bool = true ) noexcept ;
 		Config & set_all_timeouts( unsigned int ) noexcept ;
+		Config & set_log_address( bool = true ) noexcept ;
+		Config & set_log_port( bool = true ) noexcept ;
 	} ;
 
-	ServerPeer( ExceptionSink , ServerPeerInfo && , const LineBuffer::Config & ) ;
+	ServerPeer( EventState , ServerPeerInfo && , const LineBuffer::Config & ) ;
 		///< Constructor. This constructor is only used from within the
-		///< override of GNet::Server::newPeer(). The ExceptionSink refers
-		///< to the owning Server.
+		///< override of GNet::Server::newPeer(). The EventState exception
+		///< source refers to the owning Server.
 
 	~ServerPeer() override ;
 		///< Destructor.
@@ -87,10 +92,10 @@ public:
 		///< send() until onSendComplete() is triggered.
 		///< Throws on error.
 
-	bool send( G::string_view data ) ;
+	bool send( std::string_view data ) ;
 		///< Overload for string_view.
 
-	bool send( const std::vector<G::string_view> & data , std::size_t offset = 0U ) ;
+	bool send( const std::vector<std::string_view> & data , std::size_t offset = 0U ) ;
 		///< Overload to send data using scatter-gather segments. If false is
 		///< returned then segment data pointers must stay valid until
 		///< onSendComplete() is triggered.
@@ -111,9 +116,6 @@ public:
 		///< Returns the peer's TLS certificate.
 		///< Override from GNet::Connection.
 
-	void doOnDelete( const std::string & reason , bool done ) ;
-		///< Used by the Server class to call onDelete().
-
 	LineBufferState lineBuffer() const ;
 		///< Returns information about the state of the internal
 		///< line-buffer.
@@ -121,13 +123,22 @@ public:
 	void setIdleTimeout( unsigned int seconds ) ;
 		///< Sets the idle timeout.
 
+	void doOnDelete( const std::string & reason , bool done ) ;
+		///< Used by the GNet::Server class to call onDelete().
+
+	static std::string eventLoggingString( const Address & , const Config & ) ;
+		///< Assembles an event logging string for a new
+		///< ServerPeer object.
+
 protected:
 	virtual void onSendComplete() = 0 ;
 		///< Called after flow-control has been released and all
 		///< residual data sent.
 
 	virtual bool onReceive( const char * data , std::size_t size , std::size_t eolsize , std::size_t linesize , char c0 ) = 0 ;
-		///< Called on receipt of data. See GNet::LineBuffer.
+		///< Called on receipt of a complete line of data.
+		///< This method is the sink function for the internal
+		///< GNet::LineBuffer. See GNet::LineBuffer::apply().
 
 	virtual void onDelete( const std::string & reason ) = 0 ;
 		///< Called just before the Server deletes this ServerPeer as
@@ -164,11 +175,11 @@ protected:
 		///< Does a socket shutdown(). See also GNet::Client::finish().
 
 private: // overrides
-	void readEvent() override ; // Override from GNet::EventHandler.
-	void writeEvent() override ; // Override from GNet::EventHandler.
-	void otherEvent( EventHandler::Reason ) override ; // Override from GNet::EventHandler.
-	void onPeerDisconnect() override ; // Override from GNet::SocketProtocolSink.
-	std::string exceptionSourceId() const override ; // Override from GNet::ExceptionSource.
+	void readEvent() override ; // GNet::EventHandler
+	void writeEvent() override ; // GNet::EventHandler
+	void otherEvent( EventHandler::Reason ) override ; // GNet::EventHandler
+	void onPeerDisconnect() override ; // GNet::SocketProtocolSink
+	std::string_view eventLoggingString() const override ; // GNet::EventLogging
 
 protected:
 	void onData( const char * , std::size_t ) override ;
@@ -191,14 +202,14 @@ private:
 	bool onDataImp( const char * , std::size_t , std::size_t , std::size_t , char ) ;
 
 private:
-	ExceptionSink m_es ;
+	EventState m_es ;
 	Address m_address ;
 	std::unique_ptr<StreamSocket> m_socket ; // order dependency -- first
 	SocketProtocol m_sp ; // order dependency -- second
 	LineBuffer m_line_buffer ;
 	Config m_config ;
 	Timer<ServerPeer> m_idle_timer ;
-	mutable std::string m_exception_source_id ;
+	std::string m_event_logging_string ;
 } ;
 
 inline GNet::ServerPeer::Config & GNet::ServerPeer::Config::set_idle_timeout( unsigned int t ) noexcept { idle_timeout = t ; return *this ; }
@@ -206,5 +217,7 @@ inline GNet::ServerPeer::Config & GNet::ServerPeer::Config::set_kick_idle_timer_
 inline GNet::ServerPeer::Config & GNet::ServerPeer::Config::set_all_timeouts( unsigned int t ) noexcept { idle_timeout = t ; socket_protocol_config.secure_connection_timeout = t ; return *this ; }
 inline GNet::ServerPeer::Config & GNet::ServerPeer::Config::set_socket_protocol_config( const SocketProtocol::Config & config ) { socket_protocol_config = config ; return *this ; }
 inline GNet::ServerPeer::Config & GNet::ServerPeer::Config::set_no_throw_on_peer_disconnect( bool b ) noexcept { no_throw_on_peer_disconnect = b ; return *this ; }
+inline GNet::ServerPeer::Config & GNet::ServerPeer::Config::set_log_address( bool b ) noexcept { log_address = b ; return *this ; }
+inline GNet::ServerPeer::Config & GNet::ServerPeer::Config::set_log_port( bool b ) noexcept { log_port = b ; return *this ; }
 
 #endif

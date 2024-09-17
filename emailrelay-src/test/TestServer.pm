@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 #
-# Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+# Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -85,7 +85,7 @@ sub run
 	$sw = "" if !defined($sw) ;
 	$wait_cs ||= 50 ;
 
-	my $cmd = System::sanepath($this->exe())." --log-file $$this{m_logfile} --port $$this{m_port} --pid-file $$this{m_pidfile} $sw" ;
+	my $cmd = System::sanepath($this->exe())." --log-file $$this{m_logfile} --loopback --port $$this{m_port} --pid-file $$this{m_pidfile} $sw" ;
 	my $full_cmd = System::commandline( $cmd , { stdout => $this->{m_outfile} , stderr => $this->{m_outfile} , background => 1 } ) ;
 	System::log_( "running [$full_cmd]" ) ;
 	system( $full_cmd ) ;

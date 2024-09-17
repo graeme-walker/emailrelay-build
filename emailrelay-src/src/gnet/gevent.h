@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -25,8 +25,9 @@
 #include "geventloop.h"
 #include "geventhandler.h"
 #include "geventemitter.h"
+#include "geventstate.h"
+#include "geventlogging.h"
 #include "gexceptionhandler.h"
-#include "gexceptionsink.h"
 #include "gexceptionsource.h"
 
 #endif

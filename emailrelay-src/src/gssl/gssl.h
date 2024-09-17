@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -227,7 +227,7 @@ public:
 		///< Returns the size of the state() string in bytes,
 		///< or zero if state() is not implemented.
 
-	void add( G::string_view ) ;
+	void add( std::string_view ) ;
 		///< Adds data of arbitrary size.
 
 	std::string state() ;
@@ -254,8 +254,8 @@ private:
 class GSsl::Library
 {
 public:
-	G_EXCEPTION( NoInstance , tx("no tls library object") ) ;
-	G_EXCEPTION( BadProfileName , tx("invalid tls profile name") ) ;
+	G_EXCEPTION( NoInstance , tx("no tls library object") )
+	G_EXCEPTION( BadProfileName , tx("invalid tls profile name") )
 	using LogFn = void (*)(int, const std::string &) ;
 
 	explicit Library( bool active = true , const std::string & library_config = {} ,
@@ -406,7 +406,7 @@ public:
 	virtual Digester digester( const std::string & , const std::string & , bool ) const = 0 ;
 		///< Implements Library::digester().
 
-	static bool consume( G::StringArray & list , G::string_view item ) ;
+	static bool consume( G::StringArray & list , std::string_view item ) ;
 		///< A convenience function that removes the item from
 		///< the list and returns true iff is was removed.
 } ;
@@ -474,7 +474,7 @@ public:
 	virtual ~DigesterImpBase() = default ;
 		///< Destructor.
 
-	virtual void add( G::string_view ) = 0 ;
+	virtual void add( std::string_view ) = 0 ;
 		///< Implements Digester::add().
 
 	virtual std::string value() = 0 ;

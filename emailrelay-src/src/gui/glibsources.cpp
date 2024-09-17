@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -39,6 +39,8 @@
 #include "garg.cpp"
 #include "gbase64.cpp"
 #include "gbatchfile.cpp"
+#include "gcodepage.cpp"
+#include "gconvert.cpp"
 #include "gdate.cpp"
 #include "gdirectory.cpp"
 #include "gexception.cpp"
@@ -69,8 +71,6 @@
 #include "options.cpp"
 #ifdef G_WINDOWS
 #include "gcleanup_win32.cpp"
-#include "gconvert.cpp"
-#include "gconvert_win32.cpp"
 #include "gdirectory_win32.cpp"
 #include "gfile_win32.cpp"
 #include "gidentity_win32.cpp"

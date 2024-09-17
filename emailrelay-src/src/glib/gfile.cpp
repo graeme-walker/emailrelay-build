@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -22,49 +22,37 @@
 #include "glimits.h"
 #include "gfile.h"
 #include "gprocess.h"
+#include "gdate.h"
+#include "gtime.h"
+#include "gdatetime.h"
 #include "glog.h"
 #include <iostream>
 #include <cstdio>
 
-bool G::File::remove( const Path & path , std::nothrow_t ) noexcept
+bool G::File::renameImp( const char * from , const char * to , int * e ) noexcept
 {
-	int rc = std::remove( path.cstr() ) ;
-	return rc == 0 ;
-}
-
-void G::File::remove( const Path & path )
-{
-	int rc = std::remove( path.cstr() ) ;
-	int e = Process::errno_() ;
-	if( rc != 0 )
-	{
-		G_WARNING( "G::File::remove: cannot delete file [" << path << "]: " << Process::strerror(e) ) ;
-		throw CannotRemove( path.str() , Process::strerror(e) ) ;
-	}
+	bool ok = from && to && 0 == std::rename( from , to ) ;
+	if( e )
+		*e = ok ? 0 : ( (from && to) ? Process::errno_() : EINVAL ) ;
+	return ok ;
 }
 
 bool G::File::rename( const Path & from , const Path & to , std::nothrow_t ) noexcept
 {
-	return 0 == std::rename( from.cstr() , to.cstr() ) ;
+	static_assert( noexcept(from.cstr()) , "" ) ;
+	return renameImp( from.cstr() , to.cstr() , nullptr ) ;
 }
 
 void G::File::rename( const Path & from , const Path & to , bool ignore_missing )
 {
-	bool is_missing = false ;
-	bool ok = rename( from.cstr() , to.cstr() , is_missing ) ;
+	int e = 0 ;
+	bool ok = renameImp( from.cstr() , to.cstr() , &e ) ;
+	bool is_missing = !ok && e == ENOENT ;
 	if( !ok && !(is_missing && ignore_missing) )
 	{
 		throw CannotRename( std::string() + "[" + from.str() + "] to [" + to.str() + "]" ) ;
 	}
 	G_DEBUG( "G::File::rename: \"" << from << "\" -> \"" << to << "\": success=" << ok ) ;
-}
-
-bool G::File::rename( const char * from , const char * to , bool & enoent ) noexcept
-{
-	bool ok = 0 == std::rename( from , to ) ;
-	int error = Process::errno_() ;
-	enoent = ( !ok && error == ENOENT ) ;
-	return ok ;
 }
 
 #ifndef G_LIB_SMALL
@@ -84,7 +72,7 @@ bool G::File::copy( const Path & from , const Path & to , std::nothrow_t )
 #ifndef G_LIB_SMALL
 bool G::File::copyInto( const Path & from , const Path & to_dir , std::nothrow_t )
 {
-	G::Path to = to_dir + from.basename() ;
+	G::Path to = to_dir / from.basename() ;
 	bool ok = copy(from,to,0).empty() ;
 	if( ok && isExecutable(from,std::nothrow) )
 		ok = chmodx( to , std::nothrow ) ;
@@ -175,15 +163,17 @@ bool G::File::exists( const Path & path , bool error_return_value , bool do_thro
 	return true ;
 }
 
+#ifndef G_LIB_SMALL
 bool G::File::isLink( const Path & path , std::nothrow_t )
 {
-	Stat s = statImp( path.cstr() , true ) ;
+	Stat s = statImp( path.cstr() , /*symlink_nofollow=*/true ) ;
 	return 0 == s.error && s.is_link ;
 }
+#endif
 
-G::File::Stat G::File::stat( const Path & path , bool read_symlink )
+G::File::Stat G::File::stat( const Path & path , bool symlink_nofollow )
 {
-	return statImp( path.cstr() , read_symlink ) ;
+	return statImp( path.cstr() , symlink_nofollow ) ;
 }
 
 bool G::File::isDirectory( const Path & path , std::nothrow_t )
@@ -256,35 +246,37 @@ void G::File::mkdir( const Path & dir )
 }
 #endif
 
-bool G::File::mkdirsr( const Path & path , int & e , int & limit )
+bool G::File::mkdirsImp( const Path & path_in , int & e , int limit )
 {
-	// (recursive)
-
-	if( exists(path) )
+	if( path_in.empty() )
 		return true ;
 
-	if( path.str().empty() )
-		return true ;
-
-	bool ok = mkdirsr( path.dirname() , e , limit ) ; // (recursion)
-	if( !ok )
-		return false ;
-
-	e = mkdirImp( path ) ;
-	if( e == 0 && --limit < 0 )
+	auto parts = path_in.split() ;
+	Path path ;
+	for( const auto & part : parts )
 	{
-		e = ENOENT ; // sort of
-		return false ;
+		path.pathAppend( part ) ;
+		if( path.isRoot() )
+			continue ;
+		e = mkdirImp( path ) ;
+		if( e == EEXIST )
+			continue ;
+		else if( e )
+			break ;
+		if( --limit <= 0 )
+		{
+			e = E2BIG ;
+			break ;
+		}
 	}
-
-	return e == 0 ;
+	return e == 0 || e == EEXIST ;
 }
 
 #ifndef G_LIB_SMALL
 bool G::File::mkdirs( const Path & path , std::nothrow_t , int limit )
 {
 	int e = 0 ;
-	return mkdirsr( path , e , limit ) ;
+	return mkdirsImp( path , e , limit ) ;
 }
 #endif
 
@@ -292,7 +284,7 @@ bool G::File::mkdirs( const Path & path , std::nothrow_t , int limit )
 void G::File::mkdirs( const Path & path , int limit )
 {
 	int e = 0 ;
-	if( !mkdirsr(path,e,limit) && e != EEXIST )
+	if( !mkdirsImp(path,e,limit) )
 		throw CannotMkdir( path.str() , e ? G::Process::strerror(e) : std::string() ) ;
 }
 #endif
@@ -323,6 +315,26 @@ int G::File::compare( const Path & path_1 , const Path & path_2 , bool ignore_wh
 		}
 	}
 	return result ;
+}
+#endif
+
+#ifndef G_LIB_SMALL
+G::Path G::File::backup( const Path & path , std::nothrow_t )
+{
+	constexpr char prefix = G::is_windows() ? '~' : '.' ;
+	constexpr char sep = '~' ;
+	constexpr unsigned int limit = 100U ;
+	Path backup_path ;
+	for( unsigned int version = 1U  ; version <= limit ; version++ )
+	{
+		backup_path = path.dirname() /
+			std::string(1U,prefix).append(path.basename()).append(1U,sep).append(std::to_string(version==limit?1:version)) ;
+		if( !exists( backup_path , std::nothrow ) || version == limit )
+			break ;
+	}
+	Process::Umask umask( Process::Umask::Mode::Tightest ) ;
+	bool copied = File::copy( path , backup_path , std::nothrow ) ;
+	return copied ? backup_path : G::Path() ;
 }
 #endif
 

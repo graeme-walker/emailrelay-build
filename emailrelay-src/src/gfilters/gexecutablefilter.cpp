@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -29,7 +29,7 @@
 #include "gassert.h"
 #include <tuple>
 
-GFilters::ExecutableFilter::ExecutableFilter( GNet::ExceptionSink es ,
+GFilters::ExecutableFilter::ExecutableFilter( GNet::EventState es ,
 	GStore::FileStore & file_store , Filter::Type filter_type ,
 	const Filter::Config & filter_config ,
 	const std::string & path ) :
@@ -145,7 +145,7 @@ void GFilters::ExecutableFilter::onTaskDone( int exit_code , const std::string &
 }
 
 std::tuple<std::string,int,std::string> GFilters::ExecutableFilter::parseOutput( std::string s ,
-	const std::string & default_ ) const
+	const std::string & default_ )
 {
 	G_DEBUG( "GFilters::ExecutableFilter::parseOutput: in: \"" << G::Str::printable(s) << "\"" ) ;
 

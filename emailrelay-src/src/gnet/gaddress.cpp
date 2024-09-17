@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -90,7 +90,7 @@ GNet::Address::Address( const AddressStorage & storage ) :
 {
 }
 
-GNet::Address::Address( const std::string & s , bool with_local )
+GNet::Address::Address( std::string_view s , bool with_local )
 {
 	if( s.empty() )
 		throw Address::Error( "empty string" ) ;
@@ -107,7 +107,7 @@ GNet::Address::Address( const std::string & s , bool with_local )
 		throw Address::Error( r1 , r1==r2?std::string():r2 , G::Str::printable(s) ) ;
 }
 
-GNet::Address::Address( const std::string & host_part , const std::string & port_part )
+GNet::Address::Address( std::string_view host_part , std::string_view port_part )
 {
 	if( host_part.empty() )
 		throw Address::Error( "empty string" ) ;
@@ -124,7 +124,7 @@ GNet::Address::Address( const std::string & host_part , const std::string & port
 		throw Address::Error( r1 , r1==r2?std::string():r2 , G::Str::printable(host_part) , G::Str::printable(port_part) ) ;
 }
 
-GNet::Address::Address( const std::string & host_part , unsigned int port ) :
+GNet::Address::Address( std::string_view host_part , unsigned int port ) :
 	Address(host_part,G::Str::fromUInt(port))
 {
 }
@@ -175,27 +175,27 @@ GNet::Address & GNet::Address::operator=( const Address & other )
 GNet::Address & GNet::Address::operator=( Address && other ) noexcept
 = default ;
 
-GNet::Address GNet::Address::parse( const std::string & s )
+GNet::Address GNet::Address::parse( std::string_view s )
 {
 	return { s , true } ;
 }
 
-GNet::Address GNet::Address::parse( const std::string & s , Address::NotLocal )
+GNet::Address GNet::Address::parse( std::string_view s , Address::NotLocal )
 {
 	return { s , false } ;
 }
 
-GNet::Address GNet::Address::parse( const std::string & host_part , unsigned int port )
+GNet::Address GNet::Address::parse( std::string_view host_part , unsigned int port )
 {
 	return { host_part , port } ;
 }
 
-GNet::Address GNet::Address::parse( const std::string & host_part , const std::string & port_part )
+GNet::Address GNet::Address::parse( std::string_view host_part , std::string_view port_part )
 {
 	return { host_part , port_part } ;
 }
 
-bool GNet::Address::isFamilyLocal( const std::string & s ) noexcept
+bool GNet::Address::isFamilyLocal( std::string_view s ) noexcept
 {
 	return supports( Family::local ) && !s.empty() && s[0] == '/' ;
 }
@@ -380,7 +380,7 @@ std::string GNet::Address::queryString() const
 	return {} ;
 }
 
-bool GNet::Address::validString( const std::string & s , std::string * reason_p )
+bool GNet::Address::validString( std::string_view s , std::string * reason_p )
 {
 	return
 		Address4::validString( s , reason_p ) ||
@@ -388,14 +388,14 @@ bool GNet::Address::validString( const std::string & s , std::string * reason_p 
 		AddressLocal::validString( s , reason_p ) ;
 }
 
-bool GNet::Address::validString( const std::string & s , NotLocal , std::string * reason_p )
+bool GNet::Address::validString( std::string_view s , NotLocal , std::string * reason_p )
 {
 	return
 		Address4::validString( s , reason_p ) ||
 		Address6::validString( s , reason_p ) ;
 }
 
-bool GNet::Address::validStrings( const std::string & s1 , const std::string & s2 , std::string * reason_p )
+bool GNet::Address::validStrings( std::string_view s1 , std::string_view s2 , std::string * reason_p )
 {
 	return
 		Address4::validStrings( s1 , s2 , reason_p ) ||

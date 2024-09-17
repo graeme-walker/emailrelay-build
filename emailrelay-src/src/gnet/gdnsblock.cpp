@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -36,13 +36,13 @@ namespace GNet
 {
 	namespace DnsBlockImp
 	{
-		static constexpr G::string_view default_timeout_ms {"5000",4U} ;
+		static constexpr std::string_view default_timeout_ms {"5000",4U} ;
 		static constexpr unsigned int default_threshold {1U} ;
 
 		struct HostList /// A streamable adaptor for a list of addresses.
 		{
-			const std::vector<Address> & m_list ;
-			friend inline std::ostream & operator<<( std::ostream & stream , const HostList & list )
+			const std::vector<Address> & m_list ; // NOLINT cppcoreguidelines-avoid-const-or-ref-data-members
+			friend std::ostream & operator<<( std::ostream & stream , const HostList & list )
 			{
 				const char * sep = "" ;
 				for( auto p = list.m_list.begin() ; p != list.m_list.end() ; ++p , sep = " " )
@@ -66,7 +66,7 @@ namespace GNet
 	}
 }
 
-GNet::DnsBlock::DnsBlock( DnsBlockCallback & callback , ExceptionSink es , G::string_view config ) :
+GNet::DnsBlock::DnsBlock( DnsBlockCallback & callback , EventState es , std::string_view config ) :
 	m_callback(callback) ,
 	m_es(es) ,
 	m_timer(*this,&DnsBlock::onTimeout,es) ,
@@ -88,12 +88,12 @@ void GNet::DnsBlock::checkConfig( const std::string & config )
 	}
 }
 
-void GNet::DnsBlock::configure( G::string_view config )
+void GNet::DnsBlock::configure( std::string_view config )
 {
 	configureImp( config , this ) ;
 }
 
-void GNet::DnsBlock::configureImp( G::string_view config , DnsBlock * dnsblock_p )
+void GNet::DnsBlock::configureImp( std::string_view config , DnsBlock * dnsblock_p )
 {
 	// allow old format
 	//  tcp-address,timeout,threshold,domain[,domain...]
@@ -163,21 +163,21 @@ GNet::Address GNet::DnsBlock::nameServerAddress( const std::string & s )
 	return s.empty() ? nameServerAddress() : Address::parse(s,Address::NotLocal()) ;
 }
 
-bool GNet::DnsBlock::isDomain( G::string_view s ) noexcept
+bool GNet::DnsBlock::isDomain( std::string_view s ) noexcept
 {
 	// we need to distinguish between eg. "127.0.0.1" as an IP address and
 	// "127.0.0.com" as a domain -- all top-level domains are non-numeric
 	if( G::Str::isNumeric(s,true) ) return false ;
-	G::string_view tld = G::Str::tailView( s , s.rfind('.') ) ;
+	std::string_view tld = G::Str::tailView( s , s.rfind('.') ) ;
 	return tld.empty() || ( G::Str::isSimple(tld) && !G::Str::isNumeric(tld) ) ;
 }
 
-bool GNet::DnsBlock::isPositive( G::string_view s ) noexcept
+bool GNet::DnsBlock::isPositive( std::string_view s ) noexcept
 {
 	return s.empty() || s[0] != '-' ;
 }
 
-unsigned int GNet::DnsBlock::ms( G::string_view s )
+unsigned int GNet::DnsBlock::ms( std::string_view s )
 {
 	if( !s.empty() && s[s.size()-1U] == 's' )
 		return 1000U * static_cast<unsigned int>( std::abs(G::Str::toInt(s.substr(0U,s.size()-1U))) ) ;

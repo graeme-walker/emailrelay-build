@@ -12,8 +12,8 @@ The main principles in the design of E-MailRelay can be summarised as:
 
 Portability
 -----------
-The E-MailRelay code is written in C++11. Earlier versions of E-MailRelay used
-C++03.
+The E-MailRelay code is written in Modern C++, superficially using C++17 but
+remaining compatible with C++11.
 
 The header files "gdef.h" in "src/glib" is used to fix up some compiler
 portability issues such as missing standard types, non-standard system headers
@@ -51,7 +51,7 @@ At higher levels the C++ slot/signal design pattern is used to propagate events
 between objects (not to be confused with operating system signals). The
 slot/signal implementation has been simplified compared to Qt or boost by not
 supporting signal multicasting, so each signal connects to no more than one
-slot. The implementation now uses std::function.
+slot. The implementation is now a thin wrapper over std::function.
 
 The synchronous slot/signal pattern needs some care when when the signalling
 object gets destructed as a side-effect of raising a signal, and that situation
@@ -59,7 +59,7 @@ can be non-obvious precisely because of the slot/signal code decoupling. In
 most cases signals are emitted at the end of a function and the stack unwinds
 back to the event loop immediately afterwards, but in other situations,
 particularly when emitting more than one signal, defensive measures are
-required.
+required (see "glib/gcall.h").
 
 Module structure
 ----------------
@@ -131,7 +131,7 @@ namespace.
 
 The protocol, processor and message-store interfaces are brought together by
 the high-level "GSmtp::Server" and "GSmtp::Client" classes. Dependency
-injection is used to create the concrete instances of the "MessageStore",
+injection is used to provide them with concrete instances of the "MessageStore",
 "Filter" and "Verifier" interfaces.
 
 Event handling and exceptions
@@ -148,32 +148,46 @@ interface, timer events to the "TimerBase" interface, and 'future' events to
 the "FutureEventCallback" interface. If any of the these event handlers throws
 an exception then the event loop catches it and delivers it back to an
 exception handler through the "onException()" method of an associated
-"ExceptionHandler" interface. If an exception is thrown out of _this_ callback
-then the event loop code lets it propagate back to "main()", typically
-terminating the program.
+"ExceptionHandler" interface.
+
+ExceptionHandler interface pointers are passed around in "EventState"
+structures. All event-handling classes generally accept an EventState in their
+constructor and they pass a copy to all base classes and contained sub-objects.
+The default ExceptionHandler just rethrows the current exception, which
+typically propagates back to "main()" and terminates the program.
 
 However, sometimes there are objects that need to be more resilient to
 exceptions. In particular, a network server should not terminate just because
-one of its connections fails unexpectedly. In these cases the owning parent
-object receives the exception notification together with an "ExceptionSource"
-pointer that identifies the child object that threw the exception. This allows
-the parent object to absorb the exception and delete the child, without the
-exception killing the whole server.
+one of its connections fails unexpectedly and a network client should not
+terminate just because the peer disconnects. In these cases the ExceptionHandler
+can be set up to be the owning parent object, which can can choose to simply
+delete the child object without rethrowing and killing the whole program. The
+GNet::Server and GNet::ClientPtr classes do this.
 
 Event sources in the event loop are typically held as a file descriptor and a
 windows event handle, together known as a "Descriptor". Event loop
 implementations typically watch a set of Descriptors for events and call the
 relevant EventHandler/ExceptionHandler code via the "EventEmitter" class.
 
+EventState objects also contain a pointer to an EventLogging interface. This
+interface provides a string that describes some key attribute of the event
+handling object. EventLogging objects are arranged in a linked list that runs
+through the assemblage of event handling objects. Before delivering an event the
+EventEmitter combines the strings returned by this linked list and applies the
+result to the G::LogOutput singleton so that everything logged by the event
+handling code will have that prefix.
+
 Multi-threading
 ---------------
-Multi-threading is used to make DNS lookup and external program asynchronous so
-unless disabled at build-time std::thread is used in a future/promise pattern to
-wrap up "getaddrinfo()" and "waitpid()" system calls. The shared state comprises
-only the parameters and return results from these system calls, and
+Multi-threading is used only to make DNS lookup and external program execution
+asynchronous. A std::thread worker thread is used in a future/promise pattern to
+wrap up the "getaddrinfo()" and "waitpid()" system calls. The shared state
+comprises only the parameters and return results from these system calls, and
 synchronisation back to the main thread uses the main event loop (see
-"GNet::FutureEvent"). Threading is not used elsewhere so the C/C++ run-time
-library does not need to be thread-safe.
+"GNet::FutureEvent").
+
+Multi-threading is also used in the Windows event loop once the number of
+handles goes above the WaitForMultipleObjects() limit.
 
 E-MailRelay GUI
 ---------------
@@ -195,7 +209,7 @@ During development the user interface pages and the installer can be tested
 separately since the interface between them is a simple text stream containing
 key-value pairs.
 
-When run in configure mode the GUI normally ends up simply editing the
+When run in configure mode the GUI normally ends up just editing the
 "emailrelay.conf" file (or "emailrelay-start.bat" on Windows) and/or the
 "emailrelay.auth" secrets file.
 
@@ -207,10 +221,42 @@ to copy its files.
 
 When building the GUI program the library code shared with the main server
 executable is compiled separately so that different GUI-specific compiler
-options can be used. This is done as a 'unity build', concatenating the shared
-code into one source file and compiling that for the GUI. (This technique
-requires that private 'detail' namespaces are named rather than anonymous so
-that there cannot be any name clashes within the combined anonymous namespace.)
+options can be used. This is done as a 'unity build', using the pre-processor
+to concatenate the shared code into one source file and compiling that for the
+GUI. (This technique requires that private 'detail' namespaces are explicitly
+named rather than anonymous so that there cannot be any name clashes within the
+combined anonymous namespace.)
+
+Character encoding on Windows
+-----------------------------
+E-MailRelay on Windows generally holds all its internal strings in UTF-8,
+independent of the current active code page or locale. This is relevant mostly
+to file system paths, but also to event viewer output, configuration file
+contents, command-lines assembled to run external programs, system account
+information, registry paths and environment variables.
+
+The header file "gnowide.h" has inline functions that convert to and from UTF-8
+before calling the "wide" Windows API functions. The actual convertion between
+UTF-8 and UTF-16 wide characters is done by the G::Convert class. As a temporary
+measure the G_ANSI pre-processor switch can be defined to go back to using
+"ansi" functions.
+
+The G::Path class holds filesystem paths using UTF-8. Windows-specific source
+code, such as in "gfile_win32.cpp", passes the UTF-8 strings to the "nowide"
+inline functions which in turn call wide runtime library functions like
+_wopen(). The exception is that the G::Path::iopath() method can be used to
+initialise std::fstreams directly, without using the "nowide" functions.
+
+The G::Arg class can be used to capture the Windows command-line in its wide
+form and then convert to UTF-8. The main() and WinMain() functions use the
+G::Arg::windows() factory function to do this.
+
+Configuration files are expected to use UTF-8 character encoding. The secrets
+file also notionally uses UTF-8, but Base64 or xtext encoding is used for the
+account details, so the encoding is less relevant there. The startup batch file
+("emailrelay-start.bat") necessarily uses the OEM code page and the E-MailRelay
+GUI now tries to ensure that the user's choice of install directory is
+compatible with this.
 
 Windows build
 -------------
@@ -222,18 +268,18 @@ For active development use "winbuild.bat" to set up an environment that uses
 
 The "winbuild.bat" script expects to find mbedtls source code in a child or
 sibling directory and Qt libraries under "c:\qt", but refer to "winbuild.pm" for
-the details. The build proceeds using "cmake" and "msbuild" resulting in
+the details. The build proceeds using "cmake" and "cmake --build", resulting in
 statically-linked executables but with the GUI typically dynamically-linked.
 
 The mbedtls code is built if necessary by running "cmake" and "cmake --build" in
 a "mbedtls-x64" build sub-directory. The mbedtls headers are copied into the
-build tree. The mbedtls configuration header (mbedtls_config.h) is optionally
-edited to enable TLS v1.3. If necessary delete the "mbedtls-x64" build directory
-to trigger a rebuild.
+mbedtls build tree. The mbedtls configuration header (mbedtls_config.h) is
+optionally edited to enable TLS v1.3. If necessary delete the "mbedtls-x64"
+build directory to trigger a rebuild.
 
 A release assembly can be created by running "winbuild-install.bat" or
 "perl winbuild.pl install". This makes use of the Qt "windeployqt" utility to
-assemble DLLs and it also generates the Qt translation files ("*.qm").
+assemble DLLs and it also generates the Qt ".qm" translation files.
 
 For public release builds the E-MailRelay GUI must be statically linked. Start
 with a normal build with a dynamically-linked GUI and use "winbuild.pl install"
@@ -260,7 +306,8 @@ by "winbuild.pl install" with a statically-built GUI copied in manually (see
 above).
 
 The setup program is the emailrelay GUI running in setup mode, with a "payload"
-directory containing the files to be installed.
+directory containing the files to be installed. Refer to the comments in
+"src/gui/guimain.cpp" for more details.
 
 Unix build
 ----------
@@ -270,11 +317,16 @@ the settings from the "configure" script, so run "configure" or "configure.sh"
 before "make2cmake". The "configure" script is normally part of the release but
 it can itself be generated by running the "bootstrap" script.
 
+For a 'unity build' run "configure" (typically with compiler options passed via
+"CXXFLAGS") and then "make unity". Code-size optimisations such as "-Os" and
+"-fwhole-program" are particularly effective for a unity build. Refer to the
+comments in "unity/Makefile.am" for more information.
+
 Unix packaging
 --------------
-On Unix-like operating systems it is more natural to use some sort of package
-derived from the "make install" process rather than an installer program, so
-the emailrelay GUI is not normally used.
+On Unix-like operating systems the native packaging system is normally used
+rather than the E-MailRelay GUI installer, so the configure script should be
+given the "--disable-gui" command-line option.
 
 Top-level makefile targets "dist", "deb" and "rpm" can be used to create a
 binary tarball, debian package, and RPM package respectively.
@@ -284,16 +336,15 @@ Internationalisation
 The GUI code has i18n support using the Qt framework, with the tr() function
 used throughout the GUI source code. The GUI main() function loads translations
 from the "translations" sub-directory (relative to the executable), although
-that can be overridden with the "--qm" command-line option. Qt's "-reverse"
-option can also be used to reverse the widgets when using RTL languages.
+that can be overridden with the "--qm" command-line option.
 
 The non-GUI code has some i18n support by using gettext() via the inline txt()
 and tx() functions defined in "src/glib/ggettext.h". The configure script
 detects gettext support in the C run-time library, but without trying different
 compile and link options. See also "po/Makefile.am".
 
-On Windows the main server executable has a tabbed dialog-box as its user
-interface, but that does not have any support for i18n.
+On Windows the main server executable "emailrelay.exe" has a tabbed dialog-box
+as its user interface, but that does not have any support for i18n.
 
 Source control
 --------------
@@ -302,17 +353,17 @@ The source code is stored in the SourceForge "svn" and/or "git" repository.
 For example:
 
 	$ svn co https://svn.code.sf.net/p/emailrelay/code emailrelay
-	$ cd emailrelay/tags/V_2_5_2
+	$ cd emailrelay/tags/V_2_6
 
 or
 
 	$ git clone https://git.code.sf.net/p/emailrelay/git emailrelay
 	$ cd emailrelay
-	$ git checkout V_2_5_2
+	$ git checkout V_2_6
 
-Code that has been formally released will be tagged with a tag like "V_2_5_2"
+Code that has been formally released will be tagged with a tag like "V_2_6"
 and any post-release or back-ported fixes will be on a "fixes" branch like
-"V_2_5_2_fixes".
+"V_2_6_fixes".
 
 Compile-time features
 ---------------------
@@ -331,4 +382,4 @@ Use "./configure --help" to see a complete list of options.
 
 
 _____________________________________
-Copyright (C) 2001-2023 Graeme Walker
+Copyright (C) 2001-2024 Graeme Walker

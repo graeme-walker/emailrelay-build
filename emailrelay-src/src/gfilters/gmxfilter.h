@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -26,9 +26,11 @@
 #include "gmxlookup.h"
 #include "gfilestore.h"
 #include "gstoredfile.h"
+#include "gstringview.h"
 #include "gtimer.h"
-#include "gexceptionsink.h"
+#include "geventstate.h"
 #include <utility>
+#include <memory>
 
 namespace GFilters
 {
@@ -37,15 +39,15 @@ namespace GFilters
 
 //| \class GFilters::MxFilter
 /// A concrete GSmtp::Filter class for message routing: if the
-/// message's 'forward-to' field is set then the 'forward-to-address'
-/// envelope field is populated with the result of a MX lookup.
-/// Does nothing if run as a client filter because by then it
-/// will have already run as a routing filter.
+/// message's 'forward-to' envelope field is set then the
+/// 'forward-to-address' field is populated with the result of
+/// a MX lookup. Does nothing if run as a client filter because
+/// by then it will have already run as a routing filter.
 ///
 class GFilters::MxFilter : public GSmtp::Filter
 {
 public:
-	MxFilter( GNet::ExceptionSink es , GStore::FileStore & ,
+	MxFilter( GNet::EventState es , GStore::FileStore & ,
 		Filter::Type , const Filter::Config & , const std::string & spec ) ;
 			///< Constructor.
 
@@ -75,19 +77,25 @@ private:
 	void lookupDone( GStore::MessageId , std::string , std::string ) ;
 	GStore::FileStore::State storestate() const ;
 	std::string prefix() const ;
-	static MxLookup::Config mxconfig( const std::string & spec ) ;
-	static std::vector<GNet::Address> mxnameservers( const std::string & spec ) ;
-	static std::string parseForwardToDomain( const std::string & ) ;
-	static unsigned int parseForwardToPort( const std::string & ) ;
-	static std::pair<std::string,unsigned int> parseForwardTo( const std::string & ) ;
+	static MxLookup::Config parseSpec( std::string_view , std::vector<GNet::Address> & ) ;
+	struct ParserResult
+	{
+		std::string domain ;
+		unsigned int port ;
+		std::string address ;
+	} ;
+	static ParserResult parseForwardTo( const std::string & ) ;
+	static std::string addressLiteral( std::string_view s , unsigned int port = 0U ) ;
 
 private:
 	using FileOp = GStore::FileStore::FileOp ;
-	GNet::ExceptionSink m_es ;
+	GNet::EventState m_es ;
 	GStore::FileStore & m_store ;
 	Filter::Type m_filter_type ;
 	Filter::Config m_filter_config ;
 	std::string m_spec ;
+	MxLookup::Config m_mxlookup_config ;
+	std::vector<GNet::Address> m_mxlookup_nameservers ;
 	std::string m_id ;
 	Result m_result {Result::fail} ;
 	bool m_special {false} ;

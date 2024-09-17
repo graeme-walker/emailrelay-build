@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -36,6 +36,7 @@ namespace G
 {
 	namespace FileImp
 	{
+		bool removeImp( const char * path , int * e ) noexcept ;
 		std::pair<bool,mode_t> newmode( mode_t , const std::string & ) ;
 		std::pair<std::time_t,unsigned int> mtime( struct stat & statbuf ) noexcept
 		{
@@ -87,36 +88,45 @@ std::filebuf * G::File::open( std::filebuf & fb , const Path & path , InOut inou
 			fb.open( path.cstr() , std::ios_base::out | std::ios_base::binary ) ;
 }
 
-int G::File::open( const char * path , InOutAppend mode ) noexcept
+int G::File::open( const Path & path , InOutAppend mode , bool ) noexcept
 {
+	static_assert( noexcept(path.cstr()) , "" ) ;
+	const char * path_cstr = path.cstr() ;
 	if( mode == InOutAppend::In )
-		return ::open( path , O_RDONLY ) ; // NOLINT
+		return ::open( path_cstr , O_RDONLY ) ; // NOLINT
 	else if( mode == InOutAppend::Out )
-		return ::open( path , O_WRONLY|O_CREAT|O_TRUNC , 0666 ) ; // NOLINT
+		return ::open( path_cstr , O_WRONLY|O_CREAT|O_TRUNC , 0666 ) ; // NOLINT
+	else if( mode == InOutAppend::OutNoCreate )
+		return ::open( path_cstr , O_WRONLY , 0666 ) ; // NOLINT
 	else
-		return ::open( path , O_WRONLY|O_CREAT|O_APPEND , 0666 ) ; // NOLINT
+		return ::open( path_cstr , O_WRONLY|O_CREAT|O_APPEND , 0666 ) ; // NOLINT
 }
 
 #ifndef G_LIB_SMALL
-int G::File::open( const char * path , CreateExclusive ) noexcept
+int G::File::open( const Path & path , CreateExclusive ) noexcept
 {
-	return ::open( path , O_WRONLY|O_CREAT|O_EXCL , 0666 ) ; // NOLINT
+	static_assert( noexcept(path.cstr()) , "" ) ;
+	return ::open( path.cstr() , O_WRONLY|O_CREAT|O_EXCL , 0666 ) ; // NOLINT
 }
 #endif
 
 #ifndef G_LIB_SMALL
-std::FILE * G::File::fopen( const char * path , const char * mode ) noexcept
+std::FILE * G::File::fopen( const Path & path , const char * mode ) noexcept
 {
-	return std::fopen( path , mode ) ;
+	return std::fopen( path.cstr() , mode ) ;
 }
 #endif
 
-bool G::File::probe( const char * path ) noexcept
+bool G::File::probe( const Path & path ) noexcept
 {
-	int fd = ::open( path , O_WRONLY|O_CREAT|O_EXCL , 0666 ) ; // NOLINT
+	static_assert( noexcept(path.cstr()) , "" ) ;
+	static_assert( noexcept(File::remove(path,std::nothrow)) , "" ) ;
+
+	int fd = ::open( path.cstr() , O_WRONLY|O_CREAT|O_EXCL , 0666 ) ; // NOLINT
 	if( fd < 0 )
 		return false ;
-	std::remove( path ) ; // NOLINT ignore result
+
+	File::remove( path , std::nothrow ) ;
 	::close( fd ) ;
 	return true ;
 }
@@ -151,6 +161,36 @@ void G::File::close( int fd ) noexcept
 	::close( fd ) ;
 }
 
+bool G::FileImp::removeImp( const char * path , int * e ) noexcept
+{
+	bool ok = path && 0 == std::remove( path ) ;
+	if( e )
+		*e = ok ? 0 : ( path ? Process::errno_() : EINVAL ) ;
+	return ok ;
+}
+
+bool G::File::cleanup( const Cleanup::Arg & arg ) noexcept
+{
+	return FileImp::removeImp( arg.str() , nullptr ) ;
+}
+
+bool G::File::remove( const Path & path , std::nothrow_t ) noexcept
+{
+	static_assert( noexcept(path.cstr()) , "" ) ;
+	return FileImp::removeImp( path.cstr() , nullptr ) ;
+}
+
+void G::File::remove( const Path & path )
+{
+	int e = 0 ;
+	bool ok = FileImp::removeImp( path.cstr() , &e ) ;
+	if( !ok )
+	{
+		G_WARNING( "G::File::remove: cannot delete file [" << path << "]: " << Process::strerror(e) ) ;
+		throw CannotRemove( path.str() , Process::strerror(e) ) ;
+	}
+}
+
 int G::File::mkdirImp( const Path & dir ) noexcept
 {
 	int rc = ::mkdir( dir.cstr() , 0777 ) ; // open permissions, but limited by umask
@@ -166,11 +206,11 @@ int G::File::mkdirImp( const Path & dir ) noexcept
 	}
 }
 
-G::File::Stat G::File::statImp( const char * path , bool read_symlink ) noexcept
+G::File::Stat G::File::statImp( const char * path , bool symlink_nofollow ) noexcept
 {
 	Stat s ;
 	struct stat statbuf {} ;
-	if( 0 == ( read_symlink ? (::lstat(path,&statbuf)) : (::stat(path,&statbuf)) ) )
+	if( 0 == ( symlink_nofollow ? (::lstat(path,&statbuf)) : (::stat(path,&statbuf)) ) )
 	{
 		s.error = 0 ;
 		s.enoent = false ;
@@ -359,7 +399,7 @@ void G::File::link( const Path & target , const Path & new_link )
 		return ;
 
 	if( exists(new_link) )
-		remove( new_link , std::nothrow ) ;
+		File::remove( new_link , std::nothrow ) ;
 
 	int error = linkImp( target.cstr() , new_link.cstr() ) ;
 
@@ -379,7 +419,7 @@ bool G::File::link( const Path & target , const Path & new_link , std::nothrow_t
 		return true ;
 
 	if( exists(new_link) )
-		remove( new_link , std::nothrow ) ;
+		File::remove( new_link , std::nothrow ) ;
 
 	return 0 == linkImp( target.cstr() , new_link.cstr() ) ;
 }
@@ -440,8 +480,11 @@ std::streamoff G::File::seek( int fd , std::streamoff offset , Seek origin ) noe
 void G::File::setNonBlocking( int fd ) noexcept
 {
 	int flags = ::fcntl( fd , F_GETFL ) ; // NOLINT
-	flags |= O_NONBLOCK ; // NOLINT
-	GDEF_IGNORE_RETURN ::fcntl( fd , F_SETFL , flags ) ; // NOLINT
+	if( flags != -1 )
+	{
+		flags |= O_NONBLOCK ; // NOLINT
+		GDEF_IGNORE_RETURN ::fcntl( fd , F_SETFL , flags ) ; // NOLINT
+	}
 }
 #endif
 

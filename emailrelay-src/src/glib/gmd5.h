@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -49,8 +49,8 @@ namespace G
 class G::Md5
 {
 public:
-	G_EXCEPTION( Error , tx("internal md5 error") ) ;
-	G_EXCEPTION_CLASS( InvalidState , tx("invalid md5 hash state") ) ;
+	G_EXCEPTION( Error , tx("internal md5 error") )
+	G_EXCEPTION_CLASS( InvalidState , tx("invalid md5 hash state") )
 	using big_t = std::size_t ; // To hold at least 32 bits.
 	using small_t = std::size_t ; // To hold at least a std::size_t and no bigger than a big_t.
 	struct digest_state /// Holds the four parts of the md5 state.
@@ -100,7 +100,7 @@ public:
 		///< A convenience function that returns a digest from
 		///< one input.
 
-	static std::string digest( G::string_view input ) ;
+	static std::string digest( std::string_view input ) ;
 		///< A convenience function that returns a digest from
 		///< one input.
 
@@ -108,7 +108,7 @@ public:
 		///< A convenience function that returns a digest from
 		///< two inputs.
 
-	static std::string digest( G::string_view input_1 , G::string_view input_2 ) ;
+	static std::string digest( std::string_view input_1 , std::string_view input_2 ) ;
 		///< A convenience function that returns a digest from
 		///< two inputs.
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -40,7 +40,7 @@ namespace GNet
 class GNet::InterfacesNotifierImp : public InterfacesNotifier
 {
 public:
-	InterfacesNotifierImp( Interfaces * , ExceptionSink es ) ;
+	InterfacesNotifierImp( Interfaces * , EventState es ) ;
 		// Constructor.
 
 	~InterfacesNotifierImp() override ;
@@ -68,7 +68,7 @@ bool GNet::Interfaces::active()
 	return true ;
 }
 
-void GNet::Interfaces::loadImp( ExceptionSink es , std::vector<Item> & list )
+void GNet::Interfaces::loadImp( EventState es , std::vector<Item> & list )
 {
 	if( !m_notifier.get() )
 		m_notifier = std::make_unique<InterfacesNotifierImp>( this ,es ) ;
@@ -103,9 +103,7 @@ void GNet::Interfaces::loadImp( ExceptionSink es , std::vector<Item> & list )
 		{
 			Item item ;
 			item.name = std::string( p->AdapterName ) ;
-			G::Convert::utf8 altname ;
-			G::Convert::convert( altname , std::wstring(p->FriendlyName) ) ;
-			item.altname = altname.s ;
+			item.altname = G::Convert::narrow( std::wstring(p->FriendlyName) ) ;
 			item.up = p->OperStatus == IfOperStatusUp ;
 			item.loopback = p->IfType == IF_TYPE_SOFTWARE_LOOPBACK ;
 
@@ -134,7 +132,7 @@ void GNet::Interfaces::loadImp( ExceptionSink es , std::vector<Item> & list )
 
 // ==
 
-GNet::InterfacesNotifierImp::InterfacesNotifierImp( Interfaces * outer , ExceptionSink es ) :
+GNet::InterfacesNotifierImp::InterfacesNotifierImp( Interfaces * outer , EventState es ) :
 	m_magic(MAGIC) ,
 	m_notify_1(HNULL) ,
 	m_notify_2(HNULL) ,

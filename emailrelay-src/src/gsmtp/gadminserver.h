@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -56,7 +56,7 @@ namespace GSmtp
 class GSmtp::AdminServerPeer : public GNet::ServerPeer
 {
 public:
-	AdminServerPeer( GNet::ExceptionSinkUnbound , GNet::ServerPeerInfo && , AdminServerImp & ,
+	AdminServerPeer( GNet::EventStateUnbound , GNet::ServerPeerInfo && , AdminServerImp & ,
 		const std::string & remote , const G::StringMap & info_commands ,
 		bool with_terminate ) ;
 			///< Constructor.
@@ -85,8 +85,8 @@ public:
 
 private:
 	void clientDone( const std::string & ) ;
-	static bool is( G::string_view , G::string_view ) ;
-	static std::pair<bool,std::string> find( G::string_view , const G::StringMap & map ) ;
+	static bool is( std::string_view , std::string_view ) ;
+	static std::pair<bool,std::string> find( std::string_view , const G::StringMap & map ) ;
 	void flush() ;
 	void forward() ;
 	void help() ;
@@ -102,7 +102,7 @@ private:
 	void sendImp( const std::string & ) ;
 
 private:
-	GNet::ExceptionSink m_es ;
+	GNet::EventState m_es ;
 	AdminServerImp & m_server_imp ;
 	std::string m_prompt ;
 	bool m_blocked {false} ;
@@ -121,7 +121,7 @@ private:
 class GSmtp::AdminServer
 {
 public:
-	G_EXCEPTION( NotImplemented , tx("admin server not implemented") ) ;
+	G_EXCEPTION( NotImplemented , tx("admin server not implemented") )
 	struct Config /// A configuration structure for GSmtp::AdminServer.
 	{
 		unsigned int port {10026U} ;
@@ -152,7 +152,7 @@ public:
 	static bool enabled() ;
 		///< Returns true if the server is enabled.
 
-	AdminServer( GNet::ExceptionSink , GStore::MessageStore & store , FilterFactoryBase & ,
+	AdminServer( GNet::EventState , GStore::MessageStore & store , FilterFactoryBase & ,
 		const GAuth::SaslClientSecrets & client_secrets , const G::StringArray & interfaces ,
 		const Config & config ) ;
 			///< Constructor.

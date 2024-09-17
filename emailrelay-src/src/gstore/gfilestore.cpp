@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -113,6 +113,7 @@ GStore::FileStore::FileStore( const G::Path & dir , const G::Path & delivery_dir
 	m_config(config)
 {
 	checkPath( dir ) ;
+	osinit() ;
 }
 
 G::Path GStore::FileStore::directory() const
@@ -163,7 +164,6 @@ void GStore::FileStore::checkPath( const G::Path & directory_path )
 	G::Directory dir_test( directory_path ) ;
 	bool ok = false ;
 	int error = 0 ;
-	std::string reason  ;
 
 	// fail if not readable (after switching effective userid)
 	{
@@ -210,13 +210,13 @@ G::Path GStore::FileStore::contentPath( const MessageId & id ) const
 G::Path GStore::FileStore::envelopePath( const MessageId & id , State state ) const
 {
 	if( state == State::New )
-		return m_dir + id.str().append(".envelope.new") ;
+		return m_dir / id.str().append(".envelope.new") ;
 	else if( state == State::Locked )
-		return m_dir + id.str().append(".envelope.busy") ;
+		return m_dir / id.str().append(".envelope.busy") ;
 	else if( state == State::Bad )
-		return m_dir + id.str().append(".envelope.bad") ;
+		return m_dir / id.str().append(".envelope.bad") ;
 	else
-		return m_dir + id.str().append(".envelope") ;
+		return m_dir / id.str().append(".envelope") ;
 }
 
 GStore::MessageId GStore::FileStore::newId()
@@ -426,7 +426,7 @@ int GStore::FileStore::FileOp::fdopen( const G::Path & path )
 {
 	FileReader claim_reader ;
 	errno_() = 0 ;
-	int fd = G::File::open( path.cstr() , G::File::InOutAppend::In ) ;
+	int fd = G::File::open( path , G::File::InOutAppend::In ) ;
 	errno_() = G::Process::errno_() ;
 	return fd ;
 }
@@ -472,7 +472,7 @@ bool GStore::FileStore::FileOp::hardlink( const G::Path & src , const G::Path & 
 	if( linked )
 	{
 		auto dir_stat = G::File::stat( dst.simple() ? G::Path(".") : dst.dirname() ) ;
-		if( !dir_stat.error && dir_stat.inherit )
+		if( !dir_stat.error && !dir_stat.is_link && dir_stat.inherit )
 			G::File::chgrp( dst , dir_stat.gid , std::nothrow ) ;
 	}
 

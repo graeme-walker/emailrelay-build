@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -27,17 +27,17 @@
 #include <utility>
 #include <algorithm>
 
-GFilters::FilterChain::FilterChain( GNet::ExceptionSink es , GSmtp::FilterFactoryBase & ff ,
+GFilters::FilterChain::FilterChain( GNet::EventState es , GSmtp::FilterFactoryBase & ff ,
 	Filter::Type filter_type , const Filter::Config & filter_config ,
 	const GSmtp::FilterFactoryBase::Spec & spec ) :
 		m_message_id(GStore::MessageId::none())
 {
 	using Spec = GSmtp::FilterFactoryBase::Spec ;
 	G_ASSERT( spec.first == "chain" ) ;
-	for( G::StringToken t( spec.second , ","_sv ) ; t ; ++t )
+	for( G::StringToken t( spec.second , "," ) ; t ; ++t )
 	{
-		std::string first = G::Str::head( t() , ":"_sv , false ) ;
-		std::string second = G::Str::tail( t() , ":"_sv ) ;
+		std::string first = G::Str::head( t() , ":" , false ) ;
+		std::string second = G::Str::tail( t() , ":" ) ;
 		add( es , ff , filter_type , filter_config , Spec(first,second) ) ;
 	}
 
@@ -45,7 +45,7 @@ GFilters::FilterChain::FilterChain( GNet::ExceptionSink es , GSmtp::FilterFactor
 		add( es , ff , filter_type , filter_config , {"exit","0"} ) ;
 }
 
-void GFilters::FilterChain::add( GNet::ExceptionSink es , GSmtp::FilterFactoryBase & ff ,
+void GFilters::FilterChain::add( GNet::EventState es , GSmtp::FilterFactoryBase & ff ,
 	Filter::Type filter_type , const Filter::Config & filter_config ,
 	const GSmtp::FilterFactoryBase::Spec & spec )
 {

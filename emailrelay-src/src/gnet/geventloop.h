@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
 
 #include "gdef.h"
 #include "geventhandler.h"
-#include "gexceptionsink.h"
+#include "geventstate.h"
 #include "gexception.h"
 #include "gdescriptor.h"
 #include "gsignalsafe.h"
@@ -62,9 +62,9 @@ namespace GNet
 class GNet::EventLoop
 {
 public:
-	G_EXCEPTION( Error , tx("event loop error") ) ;
-	G_EXCEPTION( NoInstance , tx("no event loop instance") ) ;
-	G_EXCEPTION( Overflow , tx("event loop overflow") ) ;
+	G_EXCEPTION( Error , tx("event loop error") )
+	G_EXCEPTION( NoInstance , tx("no event loop instance") )
+	G_EXCEPTION( Overflow , tx("event loop overflow") )
 
 protected:
 	EventLoop() ;
@@ -108,17 +108,17 @@ public:
 	virtual void quit( const G::SignalSafe & ) = 0 ;
 		///< A signal-safe overload to quit() the event loop.
 
-	virtual void addRead( Descriptor fd , EventHandler & , ExceptionSink ) = 0 ;
+	virtual void addRead( Descriptor fd , EventHandler & , EventState ) = 0 ;
 		///< Adds the given event source descriptor and associated
 		///< handler to the read list.
 		///< See also Socket::addReadHandler().
 
-	virtual void addWrite( Descriptor fd , EventHandler & , ExceptionSink ) = 0 ;
+	virtual void addWrite( Descriptor fd , EventHandler & , EventState ) = 0 ;
 		///< Adds the given event source descriptor and associated
 		///< handler to the write list.
 		///< See also Socket::addWriteHandler().
 
-	virtual void addOther( Descriptor fd , EventHandler & , ExceptionSink ) = 0 ;
+	virtual void addOther( Descriptor fd , EventHandler & , EventState ) = 0 ;
 		///< Adds the given event source descriptor and associated
 		///< handler to the exception list.
 		///< See also Socket::addOtherHandler().

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -121,46 +121,35 @@ void Gui::Page::dumpItem( std::ostream & stream , bool , const std::string & key
 	G::MapFile::writeItem( stream , key , value ) ;
 }
 
-std::string Gui::Page::value( bool b )
+QString Gui::Page::qstr( const std::string & s )
+{
+	return QString::fromUtf8( s.data() , static_cast<int>(s.size()) ) ;
+}
+
+std::string Gui::Page::value_yn( bool b )
 {
 	return b ? "y" : "n" ;
 }
 
-std::string Gui::Page::value( const QAbstractButton * p )
+std::string Gui::Page::value_yn( const QAbstractButton * p )
 {
 	return p && p->isChecked() ? "y" : "n" ;
 }
 
-std::string Gui::Page::stdstr( const QString & s )
-{
-	// (config files and batch scripts are in the local 8bit code page)
-	return GQt::stdstr( s ) ;
-}
-
-std::string Gui::Page::stdstr_utf8( const QString & s )
-{
-	// (userids and passwords are in utf8 (RFC-4954) and then either xtext-ed or hashed)
-	return GQt::stdstr( s , GQt::Utf8 ) ;
-}
-
-QString Gui::Page::qstr( const std::string & s )
-{
-	return GQt::qstr( s ) ;
-}
-
 std::string Gui::Page::value_utf8( const QLineEdit * p )
 {
-	return stdstr_utf8( p->text().trimmed() ) ;
+	return p ? GQt::u8string_from_qstring( p->text().trimmed() ) : std::string() ;
 }
 
-std::string Gui::Page::value( const QLineEdit * p )
+std::string Gui::Page::value_number( const QLineEdit * p , const std::string & default_ )
 {
-	return p ? stdstr( p->text().trimmed() ) : std::string() ;
+	std::string s = value_utf8( p ) ;
+	return !s.empty() && G::Str::isNumeric(s) ? s : default_ ;
 }
 
-std::string Gui::Page::value( const QComboBox * p )
+G::Path Gui::Page::value_path( const QLineEdit * p )
 {
-	return p ? stdstr( p->currentText().trimmed() ) : std::string() ;
+	return p ? GQt::path_from_qstring( p->text().trimmed() ) : G::Path() ;
 }
 
 void Gui::Page::setTestMode( int test_mode )
@@ -222,13 +211,14 @@ void Gui::Page::addHelpAction()
 
 void Gui::Page::helpKeyTriggered()
 {
-	std::string language = GQt::stdstr( QLocale().bcp47Name() ) ;
+	std::string language = GQt::u8string_from_qstring( QLocale().bcp47Name() ) ;
 	std::string url = helpUrl( language.empty() || language == "C" ? std::string("en") : G::Str::head(language,"-",false) ) ;
 	QDesktopServices::openUrl( QString(url.c_str()) ) ;
 }
 
-std::string Gui::Page::helpUrl( const std::string & language ) const
+std::string Gui::Page::helpUrl( const std::string & /*language*/ ) const
 {
-	return "http://emailrelay.sourceforge.net/help/" + G::Str::lower(m_name) + "#" + language ;
+	//return "http://emailrelay.sourceforge.net/help/" + G::Str::lower(m_name) + "#" + language ;
+	return "https://sourceforge.net/p/emailrelay/support-requests/" ;
 }
 

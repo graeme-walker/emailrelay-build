@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@
 #include "gdef.h"
 #include "gaddress4.h"
 #include "gstr.h"
+#include "gstringview.h"
 #include "gstringfield.h"
 #include "gtest.h"
 #include "gassert.h"
@@ -36,7 +37,7 @@ namespace GNet
 {
 	namespace Address4Imp
 	{
-		constexpr const char * port_separators = ":" ;
+		constexpr std::string_view port_separators {":",1U} ;
 		constexpr char port_separator = ':' ;
 	}
 }
@@ -85,32 +86,32 @@ GNet::Address4::Address4( const sockaddr * addr , socklen_t len ) :
 	m_inet = *(reinterpret_cast<const sockaddr_type*>(addr)) ;
 }
 
-GNet::Address4::Address4( const std::string & host_part , const std::string & port_part ) :
+GNet::Address4::Address4( std::string_view host_part , std::string_view port_part ) :
 	Address4(nullptr)
 {
 	const char * reason = setHostAddress( m_inet , host_part ) ;
 	if( !reason )
 		reason = setPort( m_inet , port_part ) ;
 	if( reason )
-		throw Address::BadString( std::string(reason).append(": [").append(host_part).append("][").append(port_part).append(1U,']') ) ;
+		throw Address::BadString( std::string(reason).append(": [").append(host_part.data(),host_part.size()).append("][").append(port_part.data(),port_part.size()).append(1U,']') ) ;
 }
 
-GNet::Address4::Address4( const std::string & display_string ) :
+GNet::Address4::Address4( std::string_view display_string ) :
 	Address4(nullptr)
 {
 	const char * reason = setAddress( m_inet , display_string ) ;
 	if( reason )
-		throw Address::BadString( std::string(reason).append(": ").append(display_string) ) ;
+		throw Address::BadString( std::string(reason).append(": ").append(display_string.data(),display_string.size()) ) ;
 }
 
-const char * GNet::Address4::setAddress( sockaddr_type & inet , G::string_view display_string )
+const char * GNet::Address4::setAddress( sockaddr_type & inet , std::string_view display_string )
 {
 	const std::string::size_type pos = display_string.find_last_of( Address4Imp::port_separators ) ;
 	if( pos == std::string::npos )
 		return "no port separator" ;
 
-	G::string_view host_part = G::Str::headView( display_string , pos ) ;
-	G::string_view port_part = G::Str::tailView( display_string , pos ) ;
+	std::string_view host_part = G::Str::headView( display_string , pos ) ;
+	std::string_view port_part = G::Str::tailView( display_string , pos ) ;
 
 	const char * reason = setHostAddress( inet , host_part ) ;
 	if( !reason )
@@ -118,7 +119,7 @@ const char * GNet::Address4::setAddress( sockaddr_type & inet , G::string_view d
 	return reason ;
 }
 
-const char * GNet::Address4::setHostAddress( sockaddr_type & inet , G::string_view host_part )
+const char * GNet::Address4::setHostAddress( sockaddr_type & inet , std::string_view host_part )
 {
 	// start with a stricter check than inet_pton(), inet_addr() etc. since they allow eg. "123.123"
 	if( !Address4::format(host_part) )
@@ -135,7 +136,7 @@ void GNet::Address4::setPort( unsigned int port )
 		throw Address::Error( "invalid port number" ) ;
 }
 
-const char * GNet::Address4::setPort( sockaddr_type & inet , G::string_view port_part )
+const char * GNet::Address4::setPort( sockaddr_type & inet , std::string_view port_part )
 {
 	if( port_part.empty() ) return "empty port string" ;
 	if( !G::Str::isNumeric(port_part) || !G::Str::isUInt(port_part) ) return "non-numeric port string" ;
@@ -150,7 +151,7 @@ const char * GNet::Address4::setPort( sockaddr_type & inet , unsigned int port )
 	return nullptr ;
 }
 
-bool GNet::Address4::setZone( const std::string & /*ipv6_zone_name_or_scope_id*/ )
+bool GNet::Address4::setZone( std::string_view /*ipv6_zone_name_or_scope_id*/ )
 {
 	return true ;
 }
@@ -190,7 +191,7 @@ bool GNet::Address4::validData( const sockaddr * addr , socklen_t len )
 	return addr != nullptr && addr->sa_family == af() && len == sizeof(sockaddr_type) ;
 }
 
-bool GNet::Address4::validString( const std::string & s , std::string * reason_p )
+bool GNet::Address4::validString( std::string_view s , std::string * reason_p )
 {
 	sockaddr_type inet {} ;
 	const char * reason = setAddress( inet , s ) ;
@@ -199,7 +200,7 @@ bool GNet::Address4::validString( const std::string & s , std::string * reason_p
 	return reason == nullptr ;
 }
 
-bool GNet::Address4::validStrings( const std::string & host_part , const std::string & port_part ,
+bool GNet::Address4::validStrings( std::string_view host_part , std::string_view port_part ,
 	std::string * reason_p )
 {
 	sockaddr_type inet {} ;
@@ -275,12 +276,12 @@ G::StringArray GNet::Address4::wildcards() const
 	result.reserve( 38U ) ;
 	result.push_back( ip_str ) ;
 
-	G::string_view ip_sv( ip_str.data() , ip_str.size() ) ;
-	G::StringFieldT<G::string_view> part( ip_sv , "." , 1U ) ;
-	G::string_view part0 = part() ;
-	G::string_view part1 = (++part)() ;
-	G::string_view part2 = (++part)() ;
-	G::string_view part3 = (++part)() ;
+	std::string_view ip_sv( ip_str.data() , ip_str.size() ) ;
+	G::StringFieldT<std::string_view> part( ip_sv , "." , 1U ) ;
+	std::string_view part0 = part() ;
+	std::string_view part1 = (++part)() ;
+	std::string_view part2 = (++part)() ;
+	std::string_view part3 = (++part)() ;
 
 	G_ASSERT( part.valid() ) ;
 	if( !part.valid() )
@@ -349,7 +350,7 @@ G::StringArray GNet::Address4::wildcards() const
 	return result ;
 }
 
-void GNet::Address4::add( G::StringArray & result , G::string_view head , unsigned int n , const char * tail )
+void GNet::Address4::add( G::StringArray & result , std::string_view head , unsigned int n , const char * tail )
 {
 	result.push_back( G::sv_to_string(head).append(G::Str::fromUInt(n)).append(tail) ) ;
 }
@@ -359,7 +360,7 @@ void GNet::Address4::add( G::StringArray & result , unsigned int n , const char 
 	result.push_back( G::Str::fromUInt(n).append(tail) ) ;
 }
 
-void GNet::Address4::add( G::StringArray & result , G::string_view head , const char * tail )
+void GNet::Address4::add( G::StringArray & result , std::string_view head , const char * tail )
 {
 	result.push_back( G::sv_to_string(head).append(tail) ) ;
 }
@@ -369,7 +370,7 @@ void GNet::Address4::add( G::StringArray & result , const char * tail )
 	result.emplace_back( tail ) ;
 }
 
-bool GNet::Address4::format( G::string_view s )
+bool GNet::Address4::format( std::string_view s )
 {
 	// an independent check for the IPv4 dotted-quad format
 

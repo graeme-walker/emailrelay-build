@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -61,7 +61,7 @@ private:
 
 // ==
 
-GSmtp::ClientProtocol::ClientProtocol( GNet::ExceptionSink es , Sender & sender ,
+GSmtp::ClientProtocol::ClientProtocol( GNet::EventState es , Sender & sender ,
 	const GAuth::SaslClientSecrets & secrets , const std::string & sasl_client_config ,
 	const Config & config , bool in_secure_tunnel ) :
 		GNet::TimerBase(es) ,
@@ -74,6 +74,12 @@ GSmtp::ClientProtocol::ClientProtocol( GNet::ExceptionSink es , Sender & sender 
 	m_config.bdat_chunk_size = std::max( std::size_t(64U) , m_config.bdat_chunk_size ) ;
 	m_config.reply_size_limit = std::max( std::size_t(100U) , m_config.reply_size_limit ) ;
 	m_message_line.reserve( 200U ) ;
+}
+
+void GSmtp::ClientProtocol::reconfigure( const std::string & ehlo )
+{
+	G_ASSERT( !ehlo.empty() ) ;
+	m_config.ehlo = ehlo ;
 }
 
 void GSmtp::ClientProtocol::start( std::weak_ptr<GStore::StoredMessage> message_in )
@@ -367,11 +373,11 @@ bool GSmtp::ClientProtocol::applyEvent( const ClientReply & reply )
 	else if( m_protocol.state == State::Filtering && reply.is(ClientReply::Value::Internal_filter_ok) )
 	{
 		// filter finished with 'ok' -- send MAIL-FROM if ok
-		std::string reason = checkSendable() ; // eg. eight-bit message to seven-bit server
+		std::string_view reason = checkSendable() ; // eg. eight-bit message to seven-bit server
 		if( !reason.empty() )
 		{
 			m_protocol.state = State::MessageDone ;
-			raiseDoneSignal( 0 , "failed" , reason ) ;
+			raiseDoneSignal( 0 , "failed" , G::sv_to_string(reason) ) ;
 		}
 		else
 		{
@@ -523,7 +529,7 @@ GStore::StoredMessage & GSmtp::ClientProtocol::message()
 	return *m_message_p ;
 }
 
-GAuth::SaslClient::Response GSmtp::ClientProtocol::initialResponse( const GAuth::SaslClient & sasl , G::string_view selector )
+GAuth::SaslClient::Response GSmtp::ClientProtocol::initialResponse( const GAuth::SaslClient & sasl , std::string_view selector )
 {
 	return sasl.initialResponse( selector , 450U ) ; // RFC-2821 total command line length of 512
 }
@@ -581,7 +587,7 @@ void GSmtp::ClientProtocol::raiseDoneSignal( int response_code , const std::stri
 	const std::string & reason )
 {
 	if( !response.empty() && response_code == 0 )
-		G_WARNING( "GSmtp::ClientProtocol: smtp client protocol: " << response ) ;
+		G_WARNING( "GSmtp::ClientProtocol: smtp client protocol: " << response << std::string_view(": ",reason.empty()?0U:2U) << G::Str::printable(reason) ) ;
 
 	m_message_p = nullptr ;
 	cancelTimer() ;
@@ -594,7 +600,7 @@ bool GSmtp::ClientProtocol::endOfContent()
 	return !message().contentStream().good() ;
 }
 
-std::string GSmtp::ClientProtocol::checkSendable()
+std::string_view GSmtp::ClientProtocol::checkSendable()
 {
 	const bool eightbitmime_mismatch =
 		message().bodyType() == BodyType::EightBitMime &&
@@ -625,6 +631,7 @@ std::string GSmtp::ClientProtocol::checkSendable()
 	}
 	else
 	{
+		// issue one-off warnings if being lenient...
 		if( eightbitmime_mismatch && !m_eightbit_warned )
 		{
 			m_eightbit_warned = true ;
@@ -779,12 +786,12 @@ bool GSmtp::ClientProtocol::sendNextContentLine( std::string & line )
 
 void GSmtp::ClientProtocol::sendEhlo()
 {
-	send( "EHLO "_sv , m_config.thishost_name , "\r\n"_sv ) ;
+	send( "EHLO "_sv , m_config.ehlo , "\r\n"_sv ) ;
 }
 
 void GSmtp::ClientProtocol::sendHelo()
 {
-	send( "HELO "_sv , m_config.thishost_name , "\r\n"_sv ) ;
+	send( "HELO "_sv , m_config.ehlo , "\r\n"_sv ) ;
 }
 
 void GSmtp::ClientProtocol::sendEot()
@@ -800,15 +807,15 @@ void GSmtp::ClientProtocol::sendRsp( const GAuth::SaslClient::Response & rsp )
 
 void GSmtp::ClientProtocol::sendCommandLines( const std::string & lines )
 {
-	sendImp( lines.data() ) ;
+	sendImp( {lines.data(),lines.size()} ) ;
 }
 
-void GSmtp::ClientProtocol::send( G::string_view s )
+void GSmtp::ClientProtocol::send( std::string_view s )
 {
 	sendImp( s ) ;
 }
 
-void GSmtp::ClientProtocol::send( G::string_view s0 , G::string_view s1 , G::string_view s2 , G::string_view s3 , bool s2_sensitive )
+void GSmtp::ClientProtocol::send( std::string_view s0 , std::string_view s1 , std::string_view s2 , std::string_view s3 , bool s2_sensitive )
 {
 	std::string line = std::string(s0.data(),s0.size()).append(s1.data(),s1.size()).append(s2.data(),s2.size()).append(s3.data(),s3.size()) ;
 	sendImp( line , ( s2_sensitive && !s2.empty() ) ? (s0.size()+s1.size()) : std::string::npos ) ;
@@ -872,18 +879,18 @@ bool GSmtp::ClientProtocol::sendBdatAndChunk( std::size_t size , const std::stri
 
 void GSmtp::ClientProtocol::sendChunkImp( const char * p , std::size_t n )
 {
-	G::string_view sv( p , n ) ;
+	std::string_view sv( p , n ) ;
 
 	if( m_config.response_timeout != 0U )
 		startTimer( m_config.response_timeout ) ; // response timer on every bdat block
 
-	if( G::Log::atVerbose() )
+	if( G::LogOutput::Instance::atVerbose() )
 	{
 		std::size_t pos = sv.find( "\r\n"_sv ) ;
-		G::string_view cmd = G::Str::headView( sv , pos , {p,std::size_t(0U)} ) ;
+		std::string_view cmd = G::Str::headView( sv , pos , {p,std::size_t(0U)} ) ;
 		G::StringTokenView t( cmd , " "_sv ) ;
-		G::string_view count = t.next()() ;
-		G::string_view end = count.size() == 1U && count[0] == '1' ? "]"_sv : "s]"_sv ;
+		std::string_view count = t.next()() ;
+		std::string_view end = count.size() == 1U && count[0] == '1' ? "]"_sv : "s]"_sv ;
 		G_LOG( "GSmtp::ClientProtocol: tx>>: \"" << cmd << "\" [" << count << " byte" << end ) ;
 	}
 
@@ -898,7 +905,7 @@ bool GSmtp::ClientProtocol::sendContentLineImp( const std::string & line , std::
 	return all_sent ;
 }
 
-bool GSmtp::ClientProtocol::sendImp( G::string_view line , std::size_t sensitive_from )
+bool GSmtp::ClientProtocol::sendImp( std::string_view line , std::size_t sensitive_from )
 {
 	G_ASSERT( line.size() > 2U && line.rfind('\n') == (line.size()-1U) ) ;
 
@@ -908,7 +915,7 @@ bool GSmtp::ClientProtocol::sendImp( G::string_view line , std::size_t sensitive
 		startTimer( m_config.response_timeout ) ; // response timer on every smtp command
 
 	std::size_t pos = 0U ;
-	for( G::StringFieldT<G::string_view> f(line,"\r\n",2U) ; f && !f.last() ; pos += (f.size()+2U) , ++f )
+	for( G::StringFieldT<std::string_view> f(line,"\r\n",2U) ; f && !f.last() ; pos += (f.size()+2U) , ++f )
 	{
 		if( sensitive_from == std::string::npos || (pos+f.size()) < sensitive_from )
 			G_LOG( "GSmtp::ClientProtocol: tx>>: "

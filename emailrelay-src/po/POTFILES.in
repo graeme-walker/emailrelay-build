@@ -28,6 +28,7 @@
 ./src/glib/gbase64.cpp
 ./src/glib/gbatchfile.cpp
 ./src/glib/gcleanup_unix.cpp
+./src/glib/gcodepage.cpp
 ./src/glib/gconvert.cpp
 ./src/glib/gdaemon_unix.cpp
 ./src/glib/gdate.cpp
@@ -47,6 +48,7 @@
 ./src/glib/ghash.cpp
 ./src/glib/ghostname_unix.cpp
 ./src/glib/gidentity_unix.cpp
+./src/glib/gidn.cpp
 ./src/glib/glog.cpp
 ./src/glib/glogoutput.cpp
 ./src/glib/glogoutput_unix.cpp
@@ -96,12 +98,13 @@
 ./src/gnet/geventemitter.cpp
 ./src/gnet/geventhandler.cpp
 ./src/gnet/geventloggingcontext.cpp
+./src/gnet/geventlogging.cpp
 ./src/gnet/geventloop.cpp
 ./src/gnet/geventloop_epoll.cpp
-./src/gnet/geventloophandles_st.cpp
+./src/gnet/geventloophandles.cpp
 ./src/gnet/geventloop_select.cpp
+./src/gnet/geventstate.cpp
 ./src/gnet/gexceptionhandler.cpp
-./src/gnet/gexceptionsink.cpp
 ./src/gnet/gexceptionsource.cpp
 ./src/gnet/gfutureevent_unix.cpp
 ./src/gnet/ginterfaces_common.cpp
@@ -109,7 +112,8 @@
 ./src/gnet/ginterfaces_unix.cpp
 ./src/gnet/glinebuffer.cpp
 ./src/gnet/glinestore.cpp
-./src/gnet/glocal.cpp
+./src/gnet/glisteners.cpp
+./src/gnet/glocal_unix.cpp
 ./src/gnet/glocation.cpp
 ./src/gnet/gmonitor.cpp
 ./src/gnet/gmultiserver.cpp
@@ -193,6 +197,7 @@
 ./src/main/start.cpp
 ./src/main/submission.cpp
 ./src/main/submit.cpp
+./src/main/submitparser.cpp
 ./src/main/unit.cpp
 ./src/main/winapp.cpp
 ./src/main/winform.cpp

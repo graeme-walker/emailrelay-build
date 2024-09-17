@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 #include "gdef.h"
 #include "gpath.h"
 #include "gexception.h"
+#include "gcleanup.h"
 #include "gdatetime.h"
 #include <cstdio> // std::remove(), std::FILE
 #include <new> // std::nothrow
@@ -42,20 +43,20 @@ namespace G
 class G::File
 {
 public:
-	G_EXCEPTION( StatError , tx("cannot access file") ) ;
-	G_EXCEPTION( CannotRemove , tx("cannot delete file") ) ;
-	G_EXCEPTION( CannotRename , tx("cannot rename file") ) ;
-	G_EXCEPTION( CannotCopy , tx("cannot copy file") ) ;
-	G_EXCEPTION( CannotMkdir , tx("cannot create directory") ) ;
-	G_EXCEPTION( CannotChmod , tx("cannot chmod file") ) ;
-	G_EXCEPTION( CannotChgrp , tx("cannot chgrp file") ) ;
-	G_EXCEPTION( CannotLink , tx("cannot create symlink") ) ;
-	G_EXCEPTION( CannotCreate , tx("cannot create file") ) ;
-	G_EXCEPTION( CannotReadLink , tx("cannot read symlink") ) ;
-	G_EXCEPTION( SizeOverflow , tx("file size overflow") ) ;
-	G_EXCEPTION( TimeError , tx("cannot get file modification time") ) ;
+	G_EXCEPTION( StatError , tx("cannot access file") )
+	G_EXCEPTION( CannotRemove , tx("cannot delete file") )
+	G_EXCEPTION( CannotRename , tx("cannot rename file") )
+	G_EXCEPTION( CannotCopy , tx("cannot copy file") )
+	G_EXCEPTION( CannotMkdir , tx("cannot create directory") )
+	G_EXCEPTION( CannotChmod , tx("cannot chmod file") )
+	G_EXCEPTION( CannotChgrp , tx("cannot chgrp file") )
+	G_EXCEPTION( CannotLink , tx("cannot create symlink") )
+	G_EXCEPTION( CannotCreate , tx("cannot create file") )
+	G_EXCEPTION( CannotReadLink , tx("cannot read symlink") )
+	G_EXCEPTION( SizeOverflow , tx("file size overflow") )
+	G_EXCEPTION( TimeError , tx("cannot get file modification time") )
 	enum class InOut { In , Out } ;
-	enum class InOutAppend { In , Out , Append } ;
+	enum class InOutAppend { In , Out , Append , OutNoCreate } ;
 	enum class Seek { Start , Current , End } ;
 	class Append /// An overload discriminator for G::File::open().
 		{} ;
@@ -88,6 +89,10 @@ public:
 	static void remove( const Path & path ) ;
 		///< Deletes the file or directory. Throws an exception on error.
 
+	static bool cleanup( const Cleanup::Arg & path_arg ) noexcept ;
+		///< Deletes the file. Returns false on error. Used in
+		///< G::Cleanup handlers:
+
 	static bool rename( const Path & from , const Path & to , std::nothrow_t ) noexcept ;
 		///< Renames the file. Whether it fails if 'to' already
 		///< exists depends on the o/s (see also renameOnto()).
@@ -111,6 +116,11 @@ public:
 	static void copy( std::istream & from , std::ostream & to ,
 		std::streamsize limit = 0U , std::size_t block = 0U ) ;
 			///< Copies a stream with an optional size limit.
+
+	static Path backup( const Path & from , std::nothrow_t ) ;
+		///< Creates a backup copy of the given file in the same directory and
+		///< with a lightly-mangled filename. Sets a tight umask. Returns
+		///< the path of the backup file or the empty path on error.
 
 	static bool copyInto( const Path & from , const Path & to_dir , std::nothrow_t ) ;
 		///< Copies a file into a directory and does a chmodx()
@@ -170,10 +180,10 @@ public:
 		///< Returns true if the path exists() and is a directory.
 		///< Symlinks are followed. Returns false on error.
 
-	static Stat stat( const Path & path , bool read_symlink = false ) ;
-		///< Returns a file status structure. Returns with
-		///< the 'error' field set on error. Always fails if
-		///< 'read-link' on Windows.
+	static Stat stat( const Path & path , bool symlink_nofollow = false ) ;
+		///< Returns a file status structure. Returns with the
+		///< 'error' field set on error. The 'symlink_nofollow'
+		///< parameter value is ignored on Windows.
 
 	static SystemTime time( const Path & file ) ;
 		///< Returns the file's timestamp. Throws on error.
@@ -255,19 +265,20 @@ public:
 		///< of the given filebuf, or nullptr on failure.
 		///< Uses SH_DENYNO and O_BINARY on windows.
 
-	static int open( const char * , InOutAppend ) noexcept ;
+	static int open( const Path & , InOutAppend , bool windows_inherit = false ) noexcept ;
 		///< Opens a file descriptor. Returns -1 on error.
-		///< Uses SH_DENYNO and O_BINARY on windows.
+		///< Uses SH_DENYNO, O_BINARY and optionally O_NOINHERIT
+		///< on windows. The inherit flag is ignored on unix.
 
-	static int open( const char * , CreateExclusive ) noexcept ;
+	static int open( const Path & , CreateExclusive ) noexcept ;
 		///< Creates a file and returns a writable file descriptor.
 		///< Fails if the file already exists. Returns -1 on error.
 		///< Uses SH_DENYNO and O_BINARY on windows.
 
-	static std::FILE * fopen( const char * , const char * mode ) noexcept ;
+	static std::FILE * fopen( const Path & , const char * mode ) noexcept ;
 		///< Calls std::fopen().
 
-	static bool probe( const char * ) noexcept ;
+	static bool probe( const Path & ) noexcept ;
 		///< Creates and deletes a temporary probe file. Fails if
 		///< the file already exists. Returns false on error.
 
@@ -288,6 +299,23 @@ public:
 
 public:
 	File() = delete ;
+	// deletions to avoid implicit Path construction for noexcept methods
+	static bool remove( const char * , std::nothrow_t ) = delete ;
+	static bool remove( const std::string & , std::nothrow_t ) = delete ;
+	static bool rename( const char * , const Path & , std::nothrow_t ) = delete ;
+	static bool rename( const std::string & , const Path & , std::nothrow_t ) = delete ;
+	static bool rename( const char * , const char * , std::nothrow_t ) = delete ;
+	static bool rename( const std::string & , const std::string & , std::nothrow_t ) = delete ;
+	static bool renameOnto( const char * , const char * , std::nothrow_t ) = delete ;
+	static bool renameOnto( const std::string & , const std::string & , std::nothrow_t ) = delete ;
+	static int open( const char * , InOutAppend ) = delete ;
+	static int open( const std::string & , InOutAppend ) = delete ;
+	static int open( const char * , CreateExclusive )  = delete ;
+	static int open( const std::string & , CreateExclusive )  = delete ;
+	static std::FILE * fopen( const char * , const char * mode )  = delete ;
+	static std::FILE * fopen( const std::string & , const char * mode )  = delete ;
+	static bool probe( const char * )  = delete ;
+	static bool probe( const std::string & )  = delete ;
 
 private:
 	static const int rdonly = 1<<0 ;
@@ -301,12 +329,12 @@ private:
 	static bool exists( const Path & , bool , bool ) ;
 	static bool existsImp( const char * , bool & , bool & ) noexcept ;
 	static Stat statImp( const char * , bool = false ) noexcept ;
-	static bool rename( const char * , const char * to , bool & enoent ) noexcept ;
+	static bool renameImp( const char * , const char * , int * ) noexcept ;
 	static bool chmodx( const Path & file , bool ) ;
 	static int linkImp( const char * , const char * ) ;
 	static bool linked( const Path & , const Path & ) ;
 	static int mkdirImp( const Path & dir ) noexcept ;
-	static bool mkdirsr( const Path & dir , int & , int & ) ;
+	static bool mkdirsImp( const Path & dir , int & , int ) ;
 	static bool chmod( const Path & , const std::string & , std::nothrow_t ) ;
 } ;
 

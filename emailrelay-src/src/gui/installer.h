@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -27,6 +27,7 @@
 #include "gmapfile.h"
 #include "gexecutablecommand.h"
 #include <string>
+#include <memory>
 
 class InstallerImp ;
 
@@ -63,13 +64,16 @@ public:
 	bool next() ;
 		///< Iterator. Returns true if there is something to run().
 
+	// installer progress output -- see also ProgressPage::format() --
+	// eg. "installing a file [/some/file] ... nothing to do"
+	//
 	struct Output
 	{
-		std::string action_utf8 ;
-		std::string subject ;
-		std::string result_utf8 ;
-		std::string error ;
-		std::string error_utf8 ;
+		std::string action ; // eg. "installing a file" (translated)
+		std::string subject ; // eg. "/some/file"
+		std::string result ; // eg. "nothing to do" (translated)
+		std::string error ; // eg. "could not install" (translated)
+		std::string error_more ; // eg. "file not found"
 	} ;
 
 	Output output() ;

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@
 
 #include "gdef.h"
 #include "gaddress.h"
+#include "gstringview.h"
 #include <string>
 
 namespace GNet
@@ -39,8 +40,8 @@ public:
 	using sockaddr_type = sockaddr_in ;
 
 	explicit Address4( unsigned int ) ;
-	explicit Address4( const std::string & ) ;
-	Address4( const std::string & , const std::string & ) ;
+	explicit Address4( std::string_view ) ;
+	Address4( std::string_view , std::string_view ) ;
 	Address4( unsigned int port , int /*loopback_overload*/ ) ; // canonical loopback address
 	Address4( const sockaddr * addr , socklen_t len ) ;
 
@@ -52,10 +53,10 @@ public:
 	unsigned long scopeId( unsigned long default_ = 0UL ) const ;
 	unsigned int port() const ;
 	void setPort( unsigned int port ) ;
-	bool setZone( const std::string & ipv6_zone_name_or_scope_id ) ;
+	bool setZone( std::string_view ipv6_zone_name_or_scope_id ) ;
 	void setScopeId( unsigned long ipv6_scope_id ) ;
-	static bool validString( const std::string & , std::string * = nullptr ) ;
-	static bool validStrings( const std::string & , const std::string & , std::string * = nullptr ) ;
+	static bool validString( std::string_view , std::string * = nullptr ) ;
+	static bool validStrings( std::string_view , std::string_view , std::string * = nullptr ) ;
 	static bool validPort( unsigned int port ) ;
 	static bool validData( const sockaddr * addr , socklen_t len ) ;
 
@@ -72,18 +73,18 @@ public:
 	std::string hostPartString() const ;
 	std::string queryString() const ;
 	G::StringArray wildcards() const ;
-	static bool format( G::string_view ) ;
+	static bool format( std::string_view ) ;
 
 private:
 	explicit Address4( std::nullptr_t ) ;
-	static const char * setAddress( sockaddr_type & , G::string_view ) ;
-	static const char * setHostAddress( sockaddr_type & , G::string_view ) ;
+	static const char * setAddress( sockaddr_type & , std::string_view ) ;
+	static const char * setHostAddress( sockaddr_type & , std::string_view ) ;
 	static const char * setPort( sockaddr_type & , unsigned int ) ;
-	static const char * setPort( sockaddr_type & , G::string_view ) ;
+	static const char * setPort( sockaddr_type & , std::string_view ) ;
 	static bool sameAddr( const ::in_addr & a , const ::in_addr & b ) ;
-	static void add( G::StringArray & , G::string_view , unsigned int , const char * ) ;
+	static void add( G::StringArray & , std::string_view , unsigned int , const char * ) ;
 	static void add( G::StringArray & , unsigned int , const char * ) ;
-	static void add( G::StringArray & , G::string_view , const char * ) ;
+	static void add( G::StringArray & , std::string_view , const char * ) ;
 	static void add( G::StringArray & , const char * ) ;
 
 private:

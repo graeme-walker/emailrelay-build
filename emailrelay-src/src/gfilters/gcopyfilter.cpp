@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -27,19 +27,19 @@
 #include "gfile.h"
 #include "glog.h"
 
-GFilters::CopyFilter::CopyFilter( GNet::ExceptionSink es , GStore::FileStore & store ,
+GFilters::CopyFilter::CopyFilter( GNet::EventState es , GStore::FileStore & store ,
 	Filter::Type filter_type , const Filter::Config & filter_config , const std::string & spec ) :
 		SimpleFilterBase(es,filter_type,"copy:") ,
 		m_store(store) ,
 		m_filter_config(filter_config) ,
 		m_spec(spec)
 {
-	G::string_view spec_sv = spec ;
+	std::string_view spec_sv = spec ;
 	for( G::StringTokenView t( spec_sv , ";" , 1U ) ; t ; ++t )
 	{
-		if( t() == "p"_sv || t() == "pop"_sv ) m_pop_by_name = true ;
-		if( t() == "h"_sv || t() == "hardlink"_sv ) m_hardlink = true ;
-		if( t() == "n"_sv || t() == "nodelete"_sv || t() == "no_delete"_sv ) m_no_delete = true ;
+		if( t() == "p" || t() == "pop" ) m_pop_by_name = true ;
+		if( t() == "h" || t() == "hardlink" ) m_hardlink = true ;
+		if( t() == "n" || t() == "nodelete" || t() == "no_delete" ) m_no_delete = true ;
 	}
 }
 

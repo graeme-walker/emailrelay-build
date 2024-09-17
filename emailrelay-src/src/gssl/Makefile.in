@@ -152,7 +152,9 @@ libgsslextra_a_OBJECTS = $(am_libgsslextra_a_OBJECTS)
 libgsslkeygen_a_AR = $(AR) $(ARFLAGS)
 libgsslkeygen_a_LIBADD =
 am__libgsslkeygen_a_SOURCES_DIST = gssl_mbedtls_keygen.h \
-	gssl_mbedtls_keygen.cpp
+	gssl_mbedtls_keygen.cpp empty.cpp
+@GCONFIG_TLS_USE_BOTH_FALSE@@GCONFIG_TLS_USE_MBEDTLS_FALSE@@GCONFIG_TLS_USE_NONE_FALSE@@GCONFIG_TLS_USE_OPENSSL_TRUE@am__objects_3 = empty.$(OBJEXT)
+@GCONFIG_TLS_USE_BOTH_FALSE@@GCONFIG_TLS_USE_MBEDTLS_FALSE@@GCONFIG_TLS_USE_NONE_TRUE@am__objects_3 = empty.$(OBJEXT)
 @GCONFIG_TLS_USE_BOTH_FALSE@@GCONFIG_TLS_USE_MBEDTLS_TRUE@am__objects_3 = gssl_mbedtls_keygen.$(OBJEXT)
 @GCONFIG_TLS_USE_BOTH_TRUE@am__objects_3 =  \
 @GCONFIG_TLS_USE_BOTH_TRUE@	gssl_mbedtls_keygen.$(OBJEXT)
@@ -173,10 +175,10 @@ am__v_at_1 =
 DEFAULT_INCLUDES = -I.@am__isrc@ -I$(top_builddir)/src
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__maybe_remake_depfiles = depfiles
-am__depfiles_remade = ./$(DEPDIR)/gssl.Po ./$(DEPDIR)/gssl_mbedtls.Po \
-	./$(DEPDIR)/gssl_mbedtls_keygen.Po ./$(DEPDIR)/gssl_none.Po \
-	./$(DEPDIR)/gssl_openssl.Po ./$(DEPDIR)/gssl_use_both.Po \
-	./$(DEPDIR)/gssl_use_mbedtls.Po \
+am__depfiles_remade = ./$(DEPDIR)/empty.Po ./$(DEPDIR)/gssl.Po \
+	./$(DEPDIR)/gssl_mbedtls.Po ./$(DEPDIR)/gssl_mbedtls_keygen.Po \
+	./$(DEPDIR)/gssl_none.Po ./$(DEPDIR)/gssl_openssl.Po \
+	./$(DEPDIR)/gssl_use_both.Po ./$(DEPDIR)/gssl_use_mbedtls.Po \
 	./$(DEPDIR)/gssl_use_openssl.Po
 am__mv = mv -f
 CXXCOMPILE = $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
@@ -265,13 +267,14 @@ GCONFIG_HAVE_DOXYGEN = @GCONFIG_HAVE_DOXYGEN@
 GCONFIG_HAVE_MAN2HTML = @GCONFIG_HAVE_MAN2HTML@
 GCONFIG_QT_CFLAGS = @GCONFIG_QT_CFLAGS@
 GCONFIG_QT_LIBS = @GCONFIG_QT_LIBS@
+GCONFIG_QT_LRELEASE = @GCONFIG_QT_LRELEASE@
 GCONFIG_QT_MOC = @GCONFIG_QT_MOC@
 GCONFIG_TLS_LIBS = @GCONFIG_TLS_LIBS@
 GCONFIG_WINDMC = @GCONFIG_WINDMC@
 GCONFIG_WINDRES = @GCONFIG_WINDRES@
 GREP = @GREP@
 GZIP = @GZIP@
-HAVE_CXX11 = @HAVE_CXX11@
+HAVE_CXX17 = @HAVE_CXX17@
 INSTALL = @INSTALL@
 INSTALL_DATA = @INSTALL_DATA@
 INSTALL_PROGRAM = @INSTALL_PROGRAM@
@@ -297,9 +300,10 @@ PATH_SEPARATOR = @PATH_SEPARATOR@
 PKG_CONFIG = @PKG_CONFIG@
 PKG_CONFIG_LIBDIR = @PKG_CONFIG_LIBDIR@
 PKG_CONFIG_PATH = @PKG_CONFIG_PATH@
-QT_CFLAGS = @QT_CFLAGS@
-QT_LIBS = @QT_LIBS@
-QT_LRELEASE = @QT_LRELEASE@
+QT5_CFLAGS = @QT5_CFLAGS@
+QT5_LIBS = @QT5_LIBS@
+QT6_CFLAGS = @QT6_CFLAGS@
+QT6_LIBS = @QT6_LIBS@
 QT_MOC = @QT_MOC@
 RANLIB = @RANLIB@
 SED = @SED@
@@ -475,8 +479,12 @@ AM_CPPFLAGS = -I$(top_srcdir)/src/glib -DG_LIB_SMALL
 @GCONFIG_TLS_USE_MBEDTLS_TRUE@	gssl_mbedtls_keygen.h \
 @GCONFIG_TLS_USE_MBEDTLS_TRUE@	gssl_mbedtls_keygen.cpp
 
-@GCONFIG_TLS_USE_NONE_TRUE@SSL_KEYGEN_SOURCES = 
-@GCONFIG_TLS_USE_OPENSSL_TRUE@SSL_KEYGEN_SOURCES = 
+@GCONFIG_TLS_USE_NONE_TRUE@SSL_KEYGEN_SOURCES = \
+@GCONFIG_TLS_USE_NONE_TRUE@	empty.cpp
+
+@GCONFIG_TLS_USE_OPENSSL_TRUE@SSL_KEYGEN_SOURCES = \
+@GCONFIG_TLS_USE_OPENSSL_TRUE@	empty.cpp
+
 EXTRA_DIST = \
 	mbedtls-vsnprintf-fix.p1 \
 	mbedtls-vsnprintf-fix-new.p1 \
@@ -491,6 +499,7 @@ libgsslkeygen_a_SOURCES = \
 libgsslextra_a_SOURCES = \
 	$(SSL_EXTRA_SOURCES)
 
+CLEANFILES = empty.cpp
 all: all-am
 
 .SUFFIXES:
@@ -549,6 +558,7 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/empty.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gssl.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gssl_mbedtls.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gssl_mbedtls_keygen.Po@am__quote@ # am--include-marker
@@ -690,6 +700,7 @@ install-strip:
 mostlyclean-generic:
 
 clean-generic:
+	-test -z "$(CLEANFILES)" || rm -f $(CLEANFILES)
 
 distclean-generic:
 	-test -z "$(CONFIG_CLEAN_FILES)" || rm -f $(CONFIG_CLEAN_FILES)
@@ -703,7 +714,8 @@ clean: clean-am
 clean-am: clean-generic clean-noinstLIBRARIES mostlyclean-am
 
 distclean: distclean-am
-		-rm -f ./$(DEPDIR)/gssl.Po
+		-rm -f ./$(DEPDIR)/empty.Po
+	-rm -f ./$(DEPDIR)/gssl.Po
 	-rm -f ./$(DEPDIR)/gssl_mbedtls.Po
 	-rm -f ./$(DEPDIR)/gssl_mbedtls_keygen.Po
 	-rm -f ./$(DEPDIR)/gssl_none.Po
@@ -760,7 +772,8 @@ install-ps-am:
 installcheck-am:
 
 maintainer-clean: maintainer-clean-am
-		-rm -f ./$(DEPDIR)/gssl.Po
+		-rm -f ./$(DEPDIR)/empty.Po
+	-rm -f ./$(DEPDIR)/gssl.Po
 	-rm -f ./$(DEPDIR)/gssl_mbedtls.Po
 	-rm -f ./$(DEPDIR)/gssl_mbedtls_keygen.Po
 	-rm -f ./$(DEPDIR)/gssl_none.Po
@@ -805,6 +818,9 @@ uninstall-am:
 
 
 extra-local: libgsslextra.a
+
+empty.cpp:
+	-touch empty.cpp
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

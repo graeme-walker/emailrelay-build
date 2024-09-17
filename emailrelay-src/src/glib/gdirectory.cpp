@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -71,7 +71,7 @@ G::DirectoryList::DirectoryList()
 = default;
 
 #ifndef G_LIB_SMALL
-void G::DirectoryList::readAll( const G::Path & dir , std::vector<G::DirectoryList::Item> & out )
+void G::DirectoryList::readAll( const G::Path & dir , std::vector<Item> & out )
 {
 	DirectoryList list ;
 	list.readAll( dir ) ;
@@ -91,19 +91,18 @@ std::size_t G::DirectoryList::readDirectories( const G::Path & dir , unsigned in
 	return m_list.size() ;
 }
 
-std::size_t G::DirectoryList::readType( const G::Path & dir , G::string_view suffix , unsigned int limit )
+std::size_t G::DirectoryList::readType( const G::Path & dir , std::string_view suffix , unsigned int limit )
 {
 	readImp( dir , false , suffix , limit ) ;
 	return m_list.size() ;
 }
 
-void G::DirectoryList::readImp( const G::Path & dir , bool sub_dirs , G::string_view suffix , unsigned int limit )
+void G::DirectoryList::readImp( const G::Path & dir , bool sub_dirs , std::string_view suffix , unsigned int limit )
 {
 	Directory directory( dir ) ;
 	DirectoryIterator iter( directory ) ;
 	while( iter.more() && !iter.error() )
 	{
-		// (we do our own filename matching here to avoid glob())
 		if( sub_dirs ? iter.isDir() : ( suffix.empty() || Str::tailMatch(iter.fileName(),suffix) ) )
 		{
 			if( limit == 0U || m_list.size() < limit )
@@ -120,6 +119,13 @@ void G::DirectoryList::readImp( const G::Path & dir , bool sub_dirs , G::string_
 		}
 	}
 }
+
+#ifndef G_LIB_SMALL
+bool G::DirectoryList::empty() const noexcept
+{
+	return m_list.empty() ;
+}
+#endif
 
 bool G::DirectoryList::more()
 {

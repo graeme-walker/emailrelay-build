@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -30,15 +30,14 @@ bool GSmtp::AdminServer::enabled()
 	return false ;
 }
 
-GSmtp::AdminServer::AdminServer( GNet::ExceptionSink , GStore::MessageStore & ,
+GSmtp::AdminServer::AdminServer( GNet::EventState , GStore::MessageStore & ,
 	FilterFactoryBase & , const GAuth::SaslClientSecrets & ,
 	const G::StringArray & , const Config & )
 {
 }
 
 GSmtp::AdminServer::~AdminServer()
-{
-}
+= default ;
 
 void GSmtp::AdminServer::emitCommand( Command , unsigned int )
 {

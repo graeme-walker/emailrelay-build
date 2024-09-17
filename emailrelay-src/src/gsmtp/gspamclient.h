@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -27,7 +27,7 @@
 #include "gpath.h"
 #include "gslot.h"
 #include "gexception.h"
-#include "gexceptionsink.h"
+#include "geventstate.h"
 #include <fstream>
 #include <vector>
 
@@ -46,9 +46,9 @@ namespace GSmtp
 class GSmtp::SpamClient : public GNet::Client
 {
 public:
-	G_EXCEPTION( Error , tx("spam client error") ) ;
+	G_EXCEPTION( Error , tx("spam client error") )
 
-	SpamClient( GNet::ExceptionSink , const GNet::Location & host_and_service ,
+	SpamClient( GNet::EventState , const GNet::Location & host_and_service ,
 		bool read_only , unsigned int connection_timeout , unsigned int response_timeout ) ;
 			///< Constructor.
 

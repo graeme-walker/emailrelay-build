@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -26,7 +26,7 @@
 #include "gtimer.h"
 #include "geventhandler.h"
 #include "gexception.h"
-#include "gexceptionsink.h"
+#include "geventstate.h"
 #include <utility>
 #include <vector>
 
@@ -42,8 +42,8 @@ namespace GNet
 /// to the event loop on their behalf.
 ///
 /// Event loops should call TimerList::interval() to determine how long to
-/// wait before the first Timer goes off. If the timed-wait times-out or
-/// if the interval was zero then they must call TimerList::doTimeouts().
+/// wait before the first Timer goes off. If this is zero, or after their
+/// event-waiting times-out, they should call TimerList::doTimeouts().
 ///
 /// There can be a race where this class incorrectly sees no expired timers
 /// in doTimeouts() if, for example, the system clock is being stretched.
@@ -57,12 +57,7 @@ namespace GNet
 /// exception escapes the event loop. This is safe even if the exception
 /// handler object is destroyed by the original exception because the
 /// exception handler base-class destructor uses the timer list's disarm()
-/// mechanism. This is the same behaviour as in the EventHandlerList.
-///
-/// Exception handlers are combined with an additional 'source' pointer
-/// in an ExceptionSink tuple. The source pointer can be used to
-/// provide additional information to the exception handler, typically
-/// as a pointer to the event handler (sic) object.
+/// mechanism. This is the same behaviour as in the EventLoop.
 ///
 /// The implementation maintains a pointer to the timer that will
 /// expire soonest so that interval() is fast and O(1) when the set
@@ -75,7 +70,7 @@ namespace GNet
 class GNet::TimerList
 {
 public:
-	G_EXCEPTION( NoInstance , tx("no TimerList instance") ) ;
+	G_EXCEPTION( NoInstance , tx("no TimerList instance") )
 
 	TimerList() ;
 		///< Default constructor.
@@ -83,7 +78,7 @@ public:
 	~TimerList() ;
 		///< Destructor.
 
-	void add( TimerBase & , ExceptionSink ) ;
+	void add( TimerBase & , EventState ) ;
 		///< Adds a timer. Called from the Timer constructor.
 
 	void remove( TimerBase & ) noexcept ;
@@ -106,7 +101,7 @@ public:
 		///< Triggers the timeout callbacks of any expired timers.
 		///< Called by the event loop (GNet::EventLoop). Any exception
 		///< thrown out of an expired timer's callback is caught and
-		///< delivered back to the ExceptionSink associated with
+		///< delivered back to the EventState associated with
 		///< the timer.
 
 	static bool exists() ;
@@ -128,17 +123,16 @@ public:
 	TimerList & operator=( TimerList && ) = delete ;
 
 private:
-	struct Value /// A value type for the GNet::TimerList.
+	struct ListItem /// A value type for the GNet::TimerList.
 	{
 		TimerBase * m_timer{nullptr} ; // handler for the timeout event
-		ExceptionSink m_es ; // handler for any exception thrown
-		Value() ; // for uclibc++ std::vector
-		Value( TimerBase * t , ExceptionSink es ) ;
-		bool operator==( const Value & v ) const noexcept ;
+		EventState m_es ; // handler for any exception thrown
+		ListItem( TimerBase * t , EventState es ) ;
+		bool operator==( const ListItem & v ) const noexcept ;
 		void resetIf( TimerBase * p ) noexcept ;
 		void disarmIf( ExceptionHandler * eh ) noexcept ;
 	} ;
-	using List = std::vector<Value> ;
+	using List = std::vector<ListItem> ;
 	struct Lock /// A RAII class to lock and unlock GNet::TimerList.
 	{
 		explicit Lock( TimerList & ) ;
@@ -158,7 +152,7 @@ private:
 	void unlock() ;
 	void purgeRemoved() ;
 	void mergeAdded() ;
-	void doTimeout( Value & ) ;
+	void doTimeout( ListItem & ) ;
 	static void removeFrom( List & , TimerBase * ) noexcept ;
 	static void disarmIn( List & , ExceptionHandler * ) noexcept ;
 

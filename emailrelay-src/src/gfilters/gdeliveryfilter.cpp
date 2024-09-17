@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -24,7 +24,7 @@
 #include "gstringtoken.h"
 #include "glog.h"
 
-GFilters::DeliveryFilter::DeliveryFilter( GNet::ExceptionSink es , GStore::FileStore & store ,
+GFilters::DeliveryFilter::DeliveryFilter( GNet::EventState es , GStore::FileStore & store ,
 	Filter::Type filter_type , const Filter::Config & filter_config , const std::string & spec ) :
 		SimpleFilterBase(es,filter_type,"deliver:") ,
 		m_store(store) ,
@@ -38,12 +38,12 @@ GSmtp::Filter::Result GFilters::DeliveryFilter::run( const GStore::MessageId & m
 	bool & , GStore::FileStore::State )
 {
 	GStore::FileDelivery::Config config ;
-	G::string_view spec = m_spec ;
+	std::string_view spec = m_spec ;
 	for( G::StringTokenView t( spec , ";" , 1U ) ; t ; ++t )
 	{
-		if( t() == "h"_sv || t() == "hardlink"_sv ) config.hardlink = true ;
-		if( t() == "n"_sv || t() == "no_delete"_sv ) config.no_delete = true ;
-		if( t() == "p"_sv || t() == "pop"_sv ) config.pop_by_name = true ;
+		if( t() == "h" || t() == "hardlink" ) config.hardlink = true ;
+		if( t() == "n" || t() == "no_delete" || t() == "nodelete" ) config.no_delete = true ;
+		if( t() == "p" || t() == "pop" ) config.pop_by_name = true ;
 	}
 
 	GStore::FileDelivery delivery_imp( m_store , config ) ;

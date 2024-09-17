@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -24,9 +24,7 @@
 #include "gscope.h"
 #include "gfile.h"
 #include "ggettext.h"
-#include "gomembuf.h"
 #include "gstringview.h"
-#include "glimits.h"
 #include "groot.h"
 #include "gtest.h"
 #include <algorithm>
@@ -37,103 +35,100 @@
 #include <cstring>
 #include <array>
 
+G_LOG_THREAD_LOCAL G::LogOutput * G::LogOutput::m_instance = nullptr ;
+
 namespace G
 {
 	namespace LogOutputImp
 	{
 		constexpr int stdout_fileno = 1 ; // STDOUT_FILENO
 		constexpr int stderr_fileno = 2 ; // STDERR_FILENO
-		LogOutput * this_ = nullptr ;
-		constexpr std::size_t margin = 7U ;
-		constexpr std::size_t buffer_base_size = Limits<>::log + 40U ;
-		std::array<char,buffer_base_size+margin> buffer {} ;
-		struct ostream : std::ostream /// An ostream using G::omembuf.
+		std::size_t tellp( LogStream & log_stream )
 		{
-			explicit ostream( G::omembuf * p ) : std::ostream(p) {}
-			void reset() { clear() ; seekp(0) ; }
-		} ;
-		LogStream & ostream1()
-		{
-			static G::omembuf buf( buffer.data() , buffer.size() ) ; // bogus clang-tidy cert-err58-cpp
-			static ostream s( &buf ) ;
-			static LogStream logstream( &s ) ;
-			s.reset() ;
-			return logstream ;
+			if( log_stream.m_ostream == nullptr ) return 0U ;
+			log_stream.m_ostream->clear() ;
+			return static_cast<std::size_t>( std::max( std::streampos(0) , log_stream.m_ostream->tellp() ) ) ;
 		}
-		LogStream & ostream2() noexcept
+		std::string_view info()
 		{
-			// an ostream for junk that gets discarded
-			static LogStream logstream( nullptr ) ; // is noexcept
-			return logstream ;
-		}
-		std::size_t tellp( LogStream & logstream )
-		{
-			if( !logstream.m_ostream ) return 0U ;
-			logstream.m_ostream->clear() ;
-			return static_cast<std::size_t>( std::max( std::streampos(0) , logstream.m_ostream->tellp() ) ) ;
-		}
-		G::string_view info()
-		{
-			static std::string s( txt("info: ") ) ;
+			static const std::string s( txt("info: ") ) ;
 			return {s.data(),s.size()} ;
 		}
-		G::string_view warning()
+		std::string_view warning()
 		{
-			static std::string s( txt("warning: ") ) ;
+			static const std::string s( txt("warning: ") ) ;
 			return {s.data(),s.size()} ;
 		}
-		G::string_view error()
+		std::string_view error()
 		{
-			static std::string s( txt("error: ") ) ;
+			static const std::string s( txt("error: ") ) ;
 			return {s.data(),s.size()} ;
 		}
-		G::string_view fatal()
+		std::string_view assertion()
 		{
-			static std::string s( txt("fatal: ") ) ;
+			static const std::string s( txt("assertion error: ") ) ;
 			return {s.data(),s.size()} ;
 		}
 	}
 }
 
-G::LogOutput::LogOutput( const std::string & exename , const Config & config ,
-	const std::string & path ) :
-		m_exename(exename) ,
-		m_config(config) ,
-		m_path(path)
+G::LogOutput::LogOutput( Private , const std::string & exename , const Config & config ) :
+	m_exename(exename) ,
+	m_config(config) ,
+	m_buffer(m_buffer_size) ,
+	m_streambuf(m_buffer.data(),m_buffer.size()) ,
+	m_stream(&m_streambuf) ,
+	m_fd(m_config.m_stdout?LogOutputImp::stdout_fileno:LogOutputImp::stderr_fileno)
 {
 	updateTime() ;
-	updatePath( m_path , m_real_path ) ;
-	open( m_real_path , true ) ;
-	osinit() ;
-	if( LogOutputImp::this_ == nullptr )
-		LogOutputImp::this_ = this ;
 }
 
-#ifndef G_LIB_SMALL
-G::LogOutput::LogOutput( bool output_enabled_and_summary_info ,
-	bool verbose_info_and_debug , const std::string & path ) :
-		m_path(path)
+G::LogOutput::LogOutput( const std::string & exename , const Config & config , const Path & path ) :
+	LogOutput({},exename,config)
 {
-	m_config = Config()
-		.set_output_enabled(output_enabled_and_summary_info)
-		.set_summary_info(output_enabled_and_summary_info)
-		.set_verbose_info(verbose_info_and_debug)
-		.set_more_verbose_info(verbose_info_and_debug)
-		.set_debug(verbose_info_and_debug) ;
+	m_path = path ; // NOLINT initialiser list
+	init() ;
+}
 
-	updateTime() ;
-	updatePath( m_path , m_real_path ) ;
-	open( m_real_path , true ) ;
-	osinit() ;
-	if( LogOutputImp::this_ == nullptr )
-		LogOutputImp::this_ = this ;
+
+#ifndef G_LIB_SMALL
+G::LogOutput::LogOutput( const std::string & exename , const Config & config , int fd ) :
+	LogOutput({},exename,config)
+{
+	m_fd = fd ; // NOLINT initialiser list
+	init() ;
 }
 #endif
 
-G::LogOutput::Config G::LogOutput::config() const
+#ifndef G_LIB_SMALL
+G::LogOutput::LogOutput( bool enabled , bool verbose , const Path & path ) :
+	LogOutput({},"",{enabled,verbose})
+{
+	m_path = path ; // NOLINT initialiser list
+	init() ;
+}
+#endif
+
+void G::LogOutput::init()
+{
+	updatePath( m_path , m_real_path ) ;
+	open( m_real_path , /*do_throw=*/true ) ;
+	osinit() ;
+	if( m_instance == nullptr )
+		m_instance = this ;
+}
+
+G::LogOutput::Config G::LogOutput::config() const noexcept
 {
 	return m_config ;
 }
+
+#ifndef G_LIB_SMALL
+int G::LogOutput::fd() const noexcept
+{
+	return m_fd ;
+}
+#endif
 
 void G::LogOutput::configure( const Config & config )
 {
@@ -142,9 +137,13 @@ void G::LogOutput::configure( const Config & config )
 
 G::LogOutput::~LogOutput()
 {
-	if( LogOutputImp::this_ == this )
+	static_assert( noexcept(m_path.empty()) , "" ) ;
+	static_assert( noexcept(G::File::close(m_fd)) , "" ) ;
+	static_assert( noexcept(oscleanup()) , "" ) ;
+
+	if( m_instance == this )
 	{
-		LogOutputImp::this_ = nullptr ;
+		m_instance = nullptr ;
 	}
 	if( !m_path.empty() && m_fd >= 0 &&
 		m_fd != LogOutputImp::stderr_fileno &&
@@ -157,10 +156,10 @@ G::LogOutput::~LogOutput()
 
 G::LogOutput * G::LogOutput::instance() noexcept
 {
-	return LogOutputImp::this_ ;
+	return m_instance ;
 }
 
-void G::LogOutput::context( std::string (*fn)(void *) , void * fn_arg ) noexcept
+void G::LogOutput::context( std::string_view (*fn)(void *) , void * fn_arg ) noexcept
 {
 	LogOutput * p = instance() ;
 	if( p )
@@ -170,38 +169,40 @@ void G::LogOutput::context( std::string (*fn)(void *) , void * fn_arg ) noexcept
 	}
 }
 
+#ifndef G_LIB_SMALL
 void * G::LogOutput::contextarg() noexcept
 {
 	LogOutput * p = instance() ;
 	return p ? p->m_context_fn_arg : nullptr ;
 }
+#endif
 
-bool G::LogOutput::at( Log::Severity severity ) const noexcept
+bool G::LogOutput::at( Severity severity ) const noexcept
 {
 	bool do_output = m_config.m_output_enabled ;
-	if( severity == Log::Severity::Debug )
+	if( severity == Severity::Debug )
 		do_output = m_config.m_output_enabled && m_config.m_debug ;
-	else if( severity == Log::Severity::InfoSummary )
+	else if( severity == Severity::InfoSummary )
 		do_output = m_config.m_output_enabled && m_config.m_summary_info ;
-	else if( severity == Log::Severity::InfoVerbose )
+	else if( severity == Severity::InfoVerbose )
 		do_output = m_config.m_output_enabled && m_config.m_verbose_info ;
-	else if( severity == Log::Severity::InfoMoreVerbose )
+	else if( severity == Severity::InfoMoreVerbose )
 		do_output = m_config.m_output_enabled && m_config.m_more_verbose_info ;
 	return do_output ;
 }
 
-G::LogStream & G::LogOutput::start( Log::Severity severity , const char * , int ) noexcept
+G::LogStream G::LogOutput::start( Severity severity , const char * , int ) noexcept
 {
 	try
 	{
 		if( instance() )
 			return instance()->start( severity ) ; // not noexcept
 		else
-			return LogOutputImp::ostream2() ;
+			return LogStream( nullptr ) ;
 	}
 	catch(...)
 	{
-		return LogOutputImp::ostream2() ; // is noexcept
+		return LogStream( nullptr ) ; // is noexcept
 	}
 }
 
@@ -217,51 +218,40 @@ void G::LogOutput::output( LogStream & s ) noexcept
 	}
 }
 
-bool G::LogOutput::updatePath( const std::string & path_in , std::string & path_out ) const
+bool G::LogOutput::updatePath( const Path & path_in , Path & path_out ) const
 {
 	bool changed = false ;
 	if( !path_in.empty() )
 	{
-		std::string new_path_out = makePath( path_in ) ;
+		Path new_path_out = makePath( path_in ) ;
 		changed = new_path_out != path_out ;
 		path_out.swap( new_path_out ) ;
 	}
 	return changed ;
 }
 
-std::string G::LogOutput::makePath( const std::string & path_in ) const
+G::Path G::LogOutput::makePath( const Path & path_in ) const
 {
-	// this is called at most hourly, so not optimised
-	std::string path_out = path_in ;
-	std::size_t pos = 0U ;
-	if( (pos=path_out.find("%d")) != std::string::npos ) // NOLINT assignment
-	{
-		std::string yyyymmdd( m_time_buffer.data() , 8U ) ;
-		path_out.replace( pos , 2U , yyyymmdd ) ;
-	}
-	if( (pos=path_out.find("%h")) != std::string::npos ) // NOLINT assignment
-	{
-		path_out[pos] = m_time_buffer[9] ;
-		path_out[pos+1U] = m_time_buffer[10] ;
-	}
+	// this is called at most hourly (see updateTime()), so not optimised
+	std::string_view yyyymmdd( m_time_buffer.data() , 8U ) ;
+	std::string_view hh( m_time_buffer.data()+9 , 2U ) ;
+	Path path_out = path_in ;
+	path_out.replace( "%d" , yyyymmdd , /*ex_root=*/true ) ;
+	path_out.replace( "%h" , hh , /*ex_root=*/true ) ;
 	return path_out ;
 }
 
-void G::LogOutput::open( const std::string & path , bool do_throw )
+void G::LogOutput::open( const Path & path , bool do_throw )
 {
-	if( path.empty() )
-	{
-		m_fd = m_config.m_stdout ? LogOutputImp::stdout_fileno : LogOutputImp::stderr_fileno ;
-	}
-	else
+	if( !path.empty() )
 	{
 		int fd = -1 ;
 		{
 			Process::Umask set_umask( m_config.m_umask ) ;
 			Root claim_root ;
-			fd = File::open( path.c_str() , File::InOutAppend::Append ) ;
+			fd = File::open( path , File::InOutAppend::Append ) ;
 			if( fd < 0 && do_throw )
-				throw LogFileError( path ) ;
+				throw LogFileError( path.str() ) ;
 		}
 		if( fd >= 0 )
 		{
@@ -272,49 +262,52 @@ void G::LogOutput::open( const std::string & path , bool do_throw )
 	}
 }
 
-G::LogStream & G::LogOutput::start( Log::Severity severity )
+G::LogStream G::LogOutput::start( Severity severity )
 {
 	m_depth++ ;
 	if( m_depth > 1 )
-		return LogOutputImp::ostream2() ;
+		return LogStream( nullptr ) ;
 
 	if( updateTime() && updatePath(m_path,m_real_path) )
 		open( m_real_path , false ) ;
 
-	LogStream & logstream = LogOutputImp::ostream1() ;
-	logstream << std::dec ;
-	if( m_exename.length() )
-		logstream << m_exename << ": " ;
-	if( m_config.m_with_timestamp )
-		appendTimeTo( logstream ) ;
-	if( m_config.m_with_level )
-		logstream << levelString( severity ) ;
-	if( m_config.m_with_context && m_context_fn )
-		logstream << (*m_context_fn)( m_context_fn_arg ) ;
+	m_stream.reset() ;
+	LogStream log_stream( &m_stream ) ;
 
-	m_start_pos = LogOutputImp::tellp( logstream ) ;
+	log_stream << std::dec ;
+	if( !m_exename.empty() )
+		log_stream << m_exename << ": " ;
+	if( m_config.m_with_timestamp )
+		appendTimeTo( log_stream ) ;
+	if( m_config.m_with_level )
+		log_stream << levelString( severity ) ;
+	if( m_config.m_with_context && m_context_fn )
+		log_stream << (*m_context_fn)( m_context_fn_arg ) ;
+
+	m_start_pos = LogOutputImp::tellp( log_stream ) ;
 	m_severity = severity ;
-	return logstream ;
+	return log_stream ;
 }
 
-void G::LogOutput::output( LogStream & logstream , int )
+void G::LogOutput::output( LogStream & log_stream , int )
 {
 	// reject nested logging
 	if( m_depth ) m_depth-- ;
 	if( m_depth ) return ;
 
-	char * buffer = LogOutputImp::buffer.data() ;
-	std::size_t n = LogOutputImp::tellp( logstream ) ;
+	char * buffer = m_buffer.data() ;
+	std::size_t n = LogOutputImp::tellp( log_stream ) ;
 
 	// elipsis on overflow
-	if( n >= LogOutputImp::buffer_base_size )
+	if( n >= m_buffer_base_size )
 	{
-		char * margin = buffer + LogOutputImp::buffer_base_size ;
+		static_assert( m_rhs_margin > 4U , "" ) ;
+		char * margin = buffer + m_buffer_base_size ;
 		margin[0] = ' ' ;
 		margin[1] = '.' ;
 		margin[2] = '.' ;
 		margin[3] = '.' ;
-		n = LogOutputImp::buffer_base_size + 4U ;
+		n = m_buffer_base_size + 4U ;
 	}
 
 	// strip the first word from the text - expected to be the method name
@@ -345,20 +338,25 @@ void G::LogOutput::output( LogStream & logstream , int )
 	osoutput( m_fd , m_severity , p , n ) ;
 }
 
-void G::LogOutput::assertionFailure( const char * file , int line , const char * test_expression ) noexcept
+void G::LogOutput::assertionFailure( LogOutput * instance , const char * file , int line , const char * test_expression ) noexcept
 {
 	// ('noexcept' on this fn so we std::terminate() if any of this throws)
-	if( instance() )
+	if( instance )
 	{
-		LogStream & logstream = LogOutputImp::ostream1() ;
-		logstream << txt("assertion error: ") << basename(file) << "(" << line << "): " << test_expression ;
-		char * p = LogOutputImp::buffer.data() ;
-		std::size_t n = LogOutputImp::tellp( logstream ) ;
-		instance()->osoutput( instance()->m_fd , Log::Severity::Assertion , p , n ) ;
+		// (not strictly thread-safe, but we are std::abort()ing anyway)
+		static std::array<char,m_buffer_size> buffer ;
+		omembuf streambuf( buffer.data() , buffer.size() ) ;
+		Stream stream( &streambuf ) ;
+		LogStream log_stream( &stream ) ;
+
+		log_stream << LogOutputImp::assertion() << basename(file) << "(" << line << "): " << test_expression ;
+		char * p = buffer.data() ;
+		std::size_t n = std::min( std::size_t(m_buffer_base_size) , LogOutputImp::tellp(log_stream) ) ; // (size_t cast is gcc workround)
+		instance->osoutput( instance->m_fd , Severity::Assertion , p , n ) ;
 	}
 	else
 	{
-		std::cerr << txt("assertion error: ") << basename(file) << "(" << line << "): " << test_expression << std::endl ;
+		std::cerr << LogOutputImp::assertion() << basename(file) << "(" << line << "): " << test_expression << std::endl ;
 	}
 }
 
@@ -387,9 +385,9 @@ bool G::LogOutput::updateTime()
 	return new_hour ;
 }
 
-void G::LogOutput::appendTimeTo( LogStream & logstream )
+void G::LogOutput::appendTimeTo( LogStream & log_stream )
 {
-	logstream
+	log_stream
 		<< m_time_buffer.data()
 		<< static_cast<char>( '0' + ( ( m_time_us / 100000U ) % 10U ) )
 		<< static_cast<char>( '0' + ( ( m_time_us / 10000U ) % 10U ) )
@@ -405,113 +403,30 @@ const char * G::LogOutput::basename( const char * file ) noexcept
 	return p1 > p2 ? (p1+1) : (p2?(p2+1):file) ;
 }
 
-G::string_view G::LogOutput::levelString( Log::Severity s ) noexcept
+std::string_view G::LogOutput::levelString( Severity s ) noexcept
 {
 	namespace imp = LogOutputImp ;
-	if( s == Log::Severity::Debug ) return "debug: " ;
-	else if( s == Log::Severity::InfoSummary ) return imp::info() ;
-	else if( s == Log::Severity::InfoVerbose ) return imp::info() ;
-	else if( s == Log::Severity::InfoMoreVerbose ) return imp::info() ;
-	else if( s == Log::Severity::Warning ) return imp::warning() ;
-	else if( s == Log::Severity::Error ) return imp::error() ;
-	else if( s == Log::Severity::Assertion ) return imp::fatal() ;
+	if( s == Severity::Debug ) return "debug: " ;
+	else if( s == Severity::InfoSummary ) return imp::info() ;
+	else if( s == Severity::InfoVerbose ) return imp::info() ;
+	else if( s == Severity::InfoMoreVerbose ) return imp::info() ;
+	else if( s == Severity::Warning ) return imp::warning() ;
+	else if( s == Severity::Error ) return imp::error() ;
+	else if( s == Severity::Assertion ) return imp::assertion() ;
 	return "" ;
 }
 
 // ==
 
-G::LogOutput::Config::Config()
+G::LogOutput::Config::Config() noexcept
 = default;
 
-G::LogOutput::Config & G::LogOutput::Config::set_output_enabled( bool value )
+G::LogOutput::Config::Config( bool enabled , bool verbose ) noexcept :
+	m_output_enabled(enabled),
+	m_summary_info(enabled),
+	m_verbose_info(verbose),
+	m_more_verbose_info(verbose),
+	m_debug(verbose)
 {
-	m_output_enabled = value ;
-	return *this ;
 }
-
-G::LogOutput::Config & G::LogOutput::Config::set_summary_info( bool value )
-{
-	m_summary_info = value ;
-	return *this ;
-}
-
-G::LogOutput::Config & G::LogOutput::Config::set_verbose_info( bool value )
-{
-	m_verbose_info = value ;
-	return *this ;
-}
-
-G::LogOutput::Config & G::LogOutput::Config::set_more_verbose_info( bool value )
-{
-	m_more_verbose_info = value ;
-	return *this ;
-}
-
-G::LogOutput::Config & G::LogOutput::Config::set_debug( bool value )
-{
-	m_debug = value ;
-	return *this ;
-}
-
-G::LogOutput::Config & G::LogOutput::Config::set_with_level( bool value )
-{
-	m_with_level = value ;
-	return *this ;
-}
-
-G::LogOutput::Config & G::LogOutput::Config::set_with_timestamp( bool value )
-{
-	m_with_timestamp = value ;
-	return *this ;
-}
-
-G::LogOutput::Config & G::LogOutput::Config::set_with_context( bool value )
-{
-	m_with_context = value ;
-	return *this ;
-}
-
-G::LogOutput::Config & G::LogOutput::Config::set_strip( bool value )
-{
-	m_strip = value ;
-	return *this ;
-}
-
-G::LogOutput::Config & G::LogOutput::Config::set_quiet_stderr( bool value )
-{
-	m_quiet_stderr = value ;
-	return *this ;
-}
-
-G::LogOutput::Config & G::LogOutput::Config::set_use_syslog( bool value )
-{
-	m_use_syslog = value ;
-	return *this ;
-}
-
-G::LogOutput::Config & G::LogOutput::Config::set_allow_bad_syslog( bool value )
-{
-	m_allow_bad_syslog = value ;
-	return *this ;
-}
-
-G::LogOutput::Config & G::LogOutput::Config::set_facility( SyslogFacility facility )
-{
-	m_facility = facility ;
-	return *this ;
-}
-
-G::LogOutput::Config & G::LogOutput::Config::set_umask( Process::Umask::Mode umask )
-{
-	m_umask = umask ;
-	return *this ;
-}
-
-#ifndef G_LIB_SMALL
-G::LogOutput::Config & G::LogOutput::Config::set_stdout( bool value )
-{
-	m_stdout = value ;
-	return *this ;
-}
-#endif
 

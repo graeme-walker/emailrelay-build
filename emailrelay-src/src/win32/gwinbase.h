@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -44,7 +44,7 @@ public:
 	virtual ~WindowBase() ;
 		///< Virtual destructor.
 
-	HWND handle() const ;
+	HWND handle() const noexcept ;
 		///< Returns the window handle.
 
 	Size externalSize() const ;
@@ -62,7 +62,7 @@ public:
 		/// \see GGui::ApplicationInstance
 
 protected:
-	void setHandle( HWND hwnd ) ;
+	void setHandle( HWND hwnd ) noexcept ;
 		///< Sets the window handle.
 
 public:
@@ -76,7 +76,7 @@ private:
 } ;
 
 inline
-HWND GGui::WindowBase::handle() const
+HWND GGui::WindowBase::handle() const noexcept
 {
 	return m_hwnd ;
 }

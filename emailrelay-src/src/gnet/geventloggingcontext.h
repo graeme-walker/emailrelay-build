@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -22,7 +22,9 @@
 #define G_NET_EVENT_LOGGING_CONTEXT_H
 
 #include "gdef.h"
-#include "gexceptionsource.h"
+#include "geventlogging.h"
+#include "geventstate.h"
+#include "gstringview.h"
 
 namespace GNet
 {
@@ -35,16 +37,20 @@ namespace GNet
 class GNet::EventLoggingContext
 {
 public:
-	explicit EventLoggingContext( ExceptionSource * esrc ) ;
-		///< Constructor that sets the logging context to
-		///< whatever ExceptionSource::exceptionSourceId()
-		///< returns.
+	explicit EventLoggingContext( EventState ) ;
+		///< Constructor that sets the G::LogOutput logging context to
+		///< the accumulation of EventLogging::eventLoggingString()s.
 
-	explicit EventLoggingContext( const std::string & ) ;
-		///< Constructor that sets the logging context to
+	explicit EventLoggingContext( std::string_view ) ;
+		///< Constructor that sets the G::LogOutput logging context to
 		///< the given string.
 
-	~EventLoggingContext() noexcept ;
+	EventLoggingContext( EventState , const std::string & ) ;
+		///< Constructor that sets the G::LogOutput logging context to
+		///< the accumulation of EventLogging::eventLoggingString()s
+		///< and the given string.
+
+	~EventLoggingContext() ;
 		///< Destructor. Restores the logging context.
 
 public:
@@ -54,14 +60,13 @@ public:
 	EventLoggingContext & operator=( EventLoggingContext && ) = delete ;
 
 private:
-	static std::string fn( void * ) ;
-	std::string str() ;
+	static std::string_view fn( void * ) ;
+	static void set( std::string & , EventState ) ;
 
 private:
 	static EventLoggingContext * m_inner ;
 	EventLoggingContext * m_outer ;
-	ExceptionSource * m_esrc ;
-	std::string m_s ;
+	static std::string m_s ;
 } ;
 
 #endif

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -38,17 +38,17 @@ namespace GFilters
 class GFilters::NullFilter : public GSmtp::Filter
 {
 public:
-	NullFilter( GNet::ExceptionSink , GStore::FileStore & ,
+	NullFilter( GNet::EventState , GStore::FileStore & ,
 		Filter::Type , const Filter::Config & ) ;
 			///< Constructor for a do-nothing filter.
 
-	NullFilter( GNet::ExceptionSink , GStore::FileStore & ,
+	NullFilter( GNet::EventState , GStore::FileStore & ,
 		Filter::Type , const Filter::Config & , unsigned int exit_code ) ;
 			///< Constructor for a filter that behaves like an
 			///< executable that always exits with the given
 			///< exit code.
 
-	NullFilter( GNet::ExceptionSink , GStore::FileStore & ,
+	NullFilter( GNet::EventState , GStore::FileStore & ,
 		Filter::Type , const Filter::Config & , G::TimeInterval ) ;
 			///< Constructor for a do-nothing filter that takes
 			///< its time.

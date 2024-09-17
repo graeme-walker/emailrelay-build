@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -27,7 +27,7 @@ void G::Cleanup::init()
 	// no-op
 }
 
-void G::Cleanup::add( bool (*)(SignalSafe,const char*) , const char * )
+void G::Cleanup::add( bool (*)(const Arg &) noexcept , Arg )
 {
 	// not implemented
 }
@@ -47,20 +47,35 @@ void G::Cleanup::release() noexcept
 	// not implemented
 }
 
-namespace
+G::Cleanup::Arg G::Cleanup::arg( const char * )
 {
-	const char * strdup_ignore_leaks( const char * p )
-	{
-		return _strdup( p ) ; // NOLINT
-	}
+	return {} ;
 }
 
-const char * G::Cleanup::strdup( const char * p )
+G::Cleanup::Arg G::Cleanup::arg( const std::string & )
 {
-	return strdup_ignore_leaks( p ) ;
+	return {} ;
 }
 
-const char * G::Cleanup::strdup( const std::string & s )
+G::Cleanup::Arg G::Cleanup::arg( const Path & )
 {
-	return strdup_ignore_leaks( s.c_str() ) ;
+	Arg arg ;
+	//arg.m_is_path = true ; // fwiw
+	return arg ;
 }
+
+G::Cleanup::Arg G::Cleanup::arg( std::nullptr_t )
+{
+	return {} ;
+}
+
+const char * G::Cleanup::Arg::str() const noexcept
+{
+	return m_ptr ;
+}
+
+bool G::Cleanup::Arg::isPath() const noexcept
+{
+	return m_is_path ;
+}
+

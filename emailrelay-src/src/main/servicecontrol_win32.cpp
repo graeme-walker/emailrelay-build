@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -19,6 +19,7 @@
 ///
 
 #include "gdef.h"
+#include "gnowide.h"
 #include "servicecontrol.h"
 #include "ggettext.h"
 #include <sstream>
@@ -37,6 +38,7 @@ namespace ServiceControl
 struct ServiceControl::Error : std::runtime_error
 {
 	Error( const std::string & s , DWORD ) ;
+	DWORD m_error {0} ;
 	static std::string decode( DWORD ) ;
 } ;
 
@@ -96,7 +98,6 @@ private:
 	void stop( SC_HANDLE , std::nothrow_t ) ;
 	DWORD status() const ;
 	SC_HANDLE h() const ;
-	SC_HANDLE createImp( SC_HANDLE , const std::string & , const std::string & , DWORD , const std::string & ) ;
 
 private:
 	SC_HANDLE m_h{0} ;
@@ -105,7 +106,8 @@ private:
 // ==
 
 ServiceControl::Error::Error( const std::string & s , DWORD e ) :
-	std::runtime_error(s+": "+decode(e))
+	std::runtime_error(s+": "+decode(e)) ,
+	m_error(e)
 {
 }
 
@@ -135,7 +137,7 @@ std::string ServiceControl::Error::decode( DWORD e )
 
 ServiceControl::Manager::Manager( DWORD access )
 {
-	m_h = OpenSCManager( nullptr , nullptr , access ) ;
+	m_h = G::nowide::openSCManagerW( access ) ;
 	if( m_h == 0 )
 	{
 		DWORD e = GetLastError() ;
@@ -168,7 +170,7 @@ ServiceControl::Service::~Service()
 
 SC_HANDLE ServiceControl::Service::open( SC_HANDLE hmanager , const std::string & name )
 {
-	SC_HANDLE h = OpenServiceA( hmanager , name.c_str() ,
+	SC_HANDLE h = G::nowide::openServiceW( hmanager , name ,
 		DELETE | SERVICE_STOP | SERVICE_QUERY_STATUS | SERVICE_START ) ;
 
 	if( h == 0 )
@@ -184,24 +186,16 @@ SC_HANDLE ServiceControl::Service::h() const
 	return m_h ;
 }
 
-SC_HANDLE ServiceControl::Service::createImp( SC_HANDLE hmanager , const std::string & name ,
-	const std::string & display_name , DWORD start_type , const std::string & commandline )
-{
-	return CreateServiceA( hmanager , name.c_str() , display_name.c_str() ,
-		SERVICE_ALL_ACCESS , SERVICE_WIN32_OWN_PROCESS , start_type , SERVICE_ERROR_NORMAL ,
-		commandline.c_str() ,
-		nullptr , nullptr , nullptr , nullptr , nullptr ) ;
-}
-
 void ServiceControl::Service::create( const Manager & manager , const std::string & name ,
 	const std::string & display_name , DWORD start_type , const std::string & commandline )
 {
-	m_h = createImp( manager.h() , name , display_name , start_type , commandline ) ;
+	m_h = G::nowide::createServiceW( manager.h() , name , display_name , start_type , commandline ) ;
 	if( m_h == 0 )
 	{
 		DWORD e = GetLastError() ;
 		if( e == ERROR_SERVICE_EXISTS )
 		{
+			// remove it
 			{
 				SC_HANDLE h = open( manager.h() , name ) ;
 				ScopeExitCloser closer( h ) ;
@@ -209,7 +203,8 @@ void ServiceControl::Service::create( const Manager & manager , const std::strin
 				removeImp( h , std::nothrow ) ;
 			}
 
-			m_h = createImp( manager.h() , name , display_name , start_type , commandline ) ;
+			// try again
+			m_h = G::nowide::createServiceW( manager.h() , name , display_name , start_type , commandline ) ;
 			if( m_h == 0 )
 				e = GetLastError() ;
 		}
@@ -222,7 +217,7 @@ void ServiceControl::Service::configure( const std::string & description_in , co
 {
 	std::string description = description_in ;
 	if( description.empty() )
-		description = ( display_name + " service" ) ;
+		description = display_name + " service" ;
 
 	static constexpr std::size_t limit = 2048U ;
 	if( (description.length()+5U) > limit )
@@ -231,9 +226,7 @@ void ServiceControl::Service::configure( const std::string & description_in , co
 		description.append( "..." ) ;
 	}
 
-	SERVICE_DESCRIPTIONA service_description ;
-	service_description.lpDescription = const_cast<char*>(description.c_str()) ;
-	ChangeServiceConfig2A( m_h , SERVICE_CONFIG_DESCRIPTION , &service_description ) ; // ignore errors
+	G::nowide::changeServiceConfigW( m_h , description ) ; // ignore errors
 }
 
 void ServiceControl::Service::stop()
@@ -290,8 +283,7 @@ bool ServiceControl::Service::stopped() const
 
 void ServiceControl::Service::start()
 {
-	auto rc = StartService( m_h , 0 , nullptr ) ;
-	if( !rc )
+	if( !G::nowide::startServiceW(m_h) )
 	{
 		DWORD e = GetLastError() ;
 		throw Error( "cannot start the service" , e ) ;
@@ -300,29 +292,33 @@ void ServiceControl::Service::start()
 
 // ==
 
-std::string service_install( const std::string & commandline , const std::string & name ,
+std::pair<std::string,DWORD> service_install( const std::string & commandline , const std::string & name ,
 	const std::string & display_name , const std::string & description , bool autostart )
 {
 	using namespace ServiceControl ;
 	try
 	{
 		if( name.empty() || display_name.empty() )
-			throw std::runtime_error( "invalid zero-length service name" ) ;
+			throw Error( "invalid zero-length service name" , ERROR_INVALID_NAME ) ;
 
 		Manager manager ;
 		Service service ;
 		DWORD start_type = autostart ? SERVICE_AUTO_START : SERVICE_DEMAND_START ;
 		service.create( manager , name , display_name , start_type , commandline ) ;
 		service.configure( description , display_name ) ;
-		return std::string() ;
+		return {{},0} ;
+	}
+	catch( Error & e )
+	{
+		return {e.what(),e.m_error} ;
 	}
 	catch( std::exception & e )
 	{
-		return e.what() ;
+		return {e.what(),ERROR_SERVICE_SPECIFIC_ERROR} ;
 	}
 	catch(...)
 	{
-		return "failed" ;
+		return {"failed",ERROR_SERVICE_SPECIFIC_ERROR} ;
 	}
 }
 
@@ -341,7 +337,7 @@ bool service_installed( const std::string & name )
 	}
 }
 
-std::string service_remove( const std::string & name )
+std::pair<std::string,DWORD> service_remove( const std::string & name )
 {
 	using namespace ServiceControl ;
 	try
@@ -350,19 +346,23 @@ std::string service_remove( const std::string & name )
 		Service service( manager , name , DELETE | SERVICE_STOP ) ;
 		service.stop() ;
 		service.remove() ;
-		return std::string() ;
+		return {{},0} ;
+	}
+	catch( Error & e )
+	{
+		return {e.what(),e.m_error} ;
 	}
 	catch( std::exception & e )
 	{
-		return e.what() ;
+		return {e.what(),ERROR_SERVICE_SPECIFIC_ERROR} ;
 	}
 	catch(...)
 	{
-		return "failed" ;
+		return {"failed",ERROR_SERVICE_SPECIFIC_ERROR} ;
 	}
 }
 
-std::string service_start( const std::string & name )
+std::pair<std::string,DWORD> service_start( const std::string & name )
 {
 	using namespace ServiceControl ;
 	try
@@ -370,17 +370,21 @@ std::string service_start( const std::string & name )
 		Manager manager( SC_MANAGER_ALL_ACCESS ) ;
 		Service service( manager , name , SERVICE_START ) ;
 		if( !service.stopped() )
-			throw std::runtime_error( "already running" ) ;
+			throw Error( "already running" , ERROR_SERVICE_ALREADY_RUNNING ) ;
 		service.start() ;
-		return std::string() ;
+		return {{},0} ;
+	}
+	catch( Error & e )
+	{
+		return {e.what(),e.m_error} ;
 	}
 	catch( std::exception & e )
 	{
-		return e.what() ;
+		return {e.what(),ERROR_SERVICE_SPECIFIC_ERROR} ;
 	}
 	catch(...)
 	{
-		return "failed" ;
+		return {"failed",ERROR_SERVICE_SPECIFIC_ERROR} ;
 	}
 }
 

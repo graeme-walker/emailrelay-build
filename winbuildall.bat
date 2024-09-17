@@ -1,5 +1,21 @@
 @echo off
 rem
+rem Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
+rem 
+rem This program is free software: you can redistribute it and/or modify
+rem it under the terms of the GNU General Public License as published by
+rem the Free Software Foundation, either version 3 of the License, or
+rem (at your option) any later version.
+rem 
+rem This program is distributed in the hope that it will be useful,
+rem but WITHOUT ANY WARRANTY; without even the implied warranty of
+rem MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+rem GNU General Public License for more details.
+rem 
+rem You should have received a copy of the GNU General Public License
+rem along with this program.  If not, see <http://www.gnu.org/licenses/>.
+rem ===
+rem
 rem winbuildall.bat
 rem
 rem Builds perl, libressl, mbedtls, qt and emailrelay from source when
@@ -33,11 +49,11 @@ rem
 rem Download qt5:
 rem $ git clone https://code.qt.io/qt/qt5.git qt-src
 rem $ git -C qt-src checkout 5.15.2
-rem $ cd qt-src && perl init-repository --module-subset=qtbase
+rem $ cd qt-src && perl init-repository --module-subset=qtbase,qttools,qttranslations
 rem
 rem Download emailrelay:
 rem $ git clone https://git.code.sf.net/p/emailrelay/git emailrelay-src
-rem $ git -C emailrelay-src checkout 2.5.2
+rem $ git -C emailrelay-src checkout 2.6
 rem $ copy emailrelay-src\libexec\winbuildall.bat .
 rem
 

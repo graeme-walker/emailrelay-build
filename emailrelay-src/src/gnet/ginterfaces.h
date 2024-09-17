@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -24,7 +24,7 @@
 #include "gdef.h"
 #include "gaddress.h"
 #include "gstringarray.h"
-#include "gexceptionsink.h"
+#include "geventstate.h"
 #include "geventhandler.h"
 #include "gfutureevent.h"
 #include "gsocket.h"
@@ -63,11 +63,11 @@ public:
 	} ;
 	using const_iterator = std::vector<Item>::const_iterator ;
 
-	Interfaces() ;
-		///< Default constructor resulting in an empty list.
+	explicit Interfaces( EventState ) ;
+		///< Constructor resulting in an empty list.
 		///< Use load() to initialise.
 
-	Interfaces( ExceptionSink , InterfacesHandler & ) ;
+	Interfaces( EventState , InterfacesHandler & ) ;
 		///< Constructor resulting in an empty list with an
 		///< attached event handler. Use load() or addresses() to
 		///< initialise the list and activate the event
@@ -119,11 +119,11 @@ public:
 
 private:
 	using AddressList = std::vector<Address> ;
-	void loadImp( ExceptionSink , std::vector<Item> & list ) ;
+	void loadImp( EventState , std::vector<Item> & list ) ;
 	static int index( const std::string & ) ;
 
 private:
-	ExceptionSink m_es ;
+	EventState m_es ;
 	InterfacesHandler * m_handler{nullptr} ;
 	mutable bool m_loaded{false} ;
 	mutable std::vector<Item> m_list ;

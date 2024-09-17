@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -35,10 +35,10 @@ namespace GVerifiers
 //| \class GVerifiers::NetworkVerifier
 /// A Verifier that talks to a remote address verifier over the network.
 ///
-class GVerifiers::NetworkVerifier : public GSmtp::Verifier
+class GVerifiers::NetworkVerifier : public GSmtp::Verifier , private GNet::ExceptionHandler
 {
 public:
-	NetworkVerifier( GNet::ExceptionSink , const GSmtp::Verifier::Config & config ,
+	NetworkVerifier( GNet::EventState , const GSmtp::Verifier::Config & config ,
 		const std::string & server ) ;
 			///< Constructor.
 
@@ -46,10 +46,10 @@ public:
 		///< Destructor.
 
 private: // overrides
-	void verify( GSmtp::Verifier::Command , const std::string & rcpt_to_parameter ,
-		const GSmtp::Verifier::Info & ) override ; // GSmtp::Verifier
+	void verify( const GSmtp::Verifier::Request & ) override ; // GSmtp::Verifier
 	G::Slot::Signal<GSmtp::Verifier::Command,const GSmtp::VerifierStatus&> & doneSignal() override ; // GSmtp::Verifier
 	void cancel() override ; // GSmtp::Verifier
+	void onException( GNet::ExceptionSource * , std::exception & , bool ) override ; // GNet::ExceptionHandler
 
 public:
 	NetworkVerifier( const NetworkVerifier & ) = delete ;
@@ -58,12 +58,12 @@ public:
 	NetworkVerifier & operator=( NetworkVerifier && ) = delete ;
 
 private:
-	void clientEvent( const std::string & , const std::string & , const std::string & ) ;
-	void clientDeleted( const std::string & ) ;
+	void clientEvent( const std::string & s1 , const std::string & s2 , const std::string & ) ;
 
 private:
-	GNet::ExceptionSink m_es ;
+	GNet::EventState m_es ;
 	G::Slot::Signal<GSmtp::Verifier::Command,const GSmtp::VerifierStatus&> m_done_signal ;
+	GSmtp::Verifier::Config m_config ;
 	GNet::Location m_location ;
 	unsigned int m_connection_timeout ;
 	unsigned int m_response_timeout ;

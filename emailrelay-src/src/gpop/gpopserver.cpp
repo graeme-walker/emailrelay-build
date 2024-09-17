@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -25,10 +25,10 @@
 #include "glog.h"
 #include <string>
 
-GPop::ServerPeer::ServerPeer( GNet::ExceptionSinkUnbound esu , GNet::ServerPeerInfo && peer_info , Store & store ,
+GPop::ServerPeer::ServerPeer( GNet::EventStateUnbound esu , GNet::ServerPeerInfo && peer_info , Store & store ,
 	const GAuth::SaslServerSecrets & server_secrets , const std::string & sasl_server_config ,
 	std::unique_ptr<ServerProtocol::Text> ptext , const ServerProtocol::Config & protocol_config ) :
-		GNet::ServerPeer(esu.bind(this),std::move(peer_info),GNet::LineBuffer::Config::pop()) ,
+		GNet::ServerPeer(esbind(esu,this),std::move(peer_info),GNet::LineBuffer::Config::pop()) ,
 		m_ptext(ptext.release()) ,
 		m_protocol(*this,*this,store,server_secrets,sasl_server_config,*m_ptext,peerAddress(),protocol_config)
 {
@@ -53,9 +53,9 @@ void GPop::ServerPeer::processLine( const std::string & line )
 	m_protocol.apply( line ) ;
 }
 
-bool GPop::ServerPeer::protocolSend( G::string_view line , std::size_t offset )
+bool GPop::ServerPeer::protocolSend( std::string_view line , std::size_t offset )
 {
-	G::string_view output = line.substr( std::min(offset,line.size()) ) ;
+	std::string_view output = line.substr( std::min(offset,line.size()) ) ;
 	return output.empty() ? true : send( output ) ; // GNet::ServerPeer::send()
 }
 
@@ -84,7 +84,7 @@ void GPop::ServerPeer::onSecure( const std::string & , const std::string & , con
 
 // ===
 
-GPop::Server::Server( GNet::ExceptionSink es , Store & store , const GAuth::SaslServerSecrets & secrets , const Config & config ) :
+GPop::Server::Server( GNet::EventState es , Store & store , const GAuth::SaslServerSecrets & secrets , const Config & config ) :
 	GNet::MultiServer(es,config.addresses,config.port,"pop",config.net_server_peer_config,config.net_server_config) ,
 	m_config(config) ,
 	m_store(store) ,
@@ -104,7 +104,7 @@ void GPop::Server::report( const std::string & group ) const
 		<< "pop server authentication secrets from \"" << m_secrets.source() << "\"" ) ;
 }
 
-std::unique_ptr<GNet::ServerPeer> GPop::Server::newPeer( GNet::ExceptionSinkUnbound esu , GNet::ServerPeerInfo && peer_info , GNet::MultiServer::ServerInfo )
+std::unique_ptr<GNet::ServerPeer> GPop::Server::newPeer( GNet::EventStateUnbound esu , GNet::ServerPeerInfo && peer_info , GNet::MultiServer::ServerInfo )
 {
 	std::unique_ptr<GNet::ServerPeer> ptr ;
 	try
@@ -117,8 +117,8 @@ std::unique_ptr<GNet::ServerPeer> GPop::Server::newPeer( GNet::ExceptionSinkUnbo
 		else
 		{
 			GNet::Address peer_address = peer_info.m_address ;
-			ptr = std::make_unique<ServerPeer>( esu , std::move(peer_info) , m_store , m_secrets , m_config.sasl_server_config ,
-				newProtocolText(peer_address) , ServerProtocol::Config() ) ; // up-cast (GPop::ServerPeer to GNet::ServerPeer)
+			ptr = std::make_unique<ServerPeer>( esu , std::move(peer_info) , m_store , m_secrets ,
+				m_config.sasl_server_config , newProtocolText(peer_address) , m_config.protocol_config ) ;
 		}
 	}
 	catch( std::exception & e ) // newPeer()

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -24,6 +24,9 @@
 #include "gdef.h"
 #include "gstringarray.h"
 #include "gstringview.h"
+#ifdef G_WINDOWS
+#include "gconvert.h"
+#endif
 #include <string>
 #include <iostream>
 #include <initializer_list>
@@ -31,7 +34,6 @@
 namespace G
 {
 	class Path ;
-	class PathFriend ;
 }
 
 //| \class G::Path
@@ -57,7 +59,14 @@ namespace G
 /// in the degenerate case.
 ///
 /// This class is agnostic on the choice of UTF-8 or eight-bit characters since
-/// the delimiters are all seven-bit ascii.
+/// the delimiters are all seven-bit ascii. Wide characters are not used,
+/// following "utf8everywhere.org" rather than std::filesystem::path (but
+/// see G_ANSI as a temporary deprecated feature).
+///
+/// Most file operations should be handled in o/s-aware source (see G::File,
+/// G::Environment, G::Process etc) so that the Path character encoding is
+/// opaque. However, std::fstream objects can be initialised directly by
+/// using G::Path::iopath().
 ///
 /// Both posix and windows behaviours are available at run-time; the default
 /// behaviour is the native behaviour, but this can be overridden, typically
@@ -72,14 +81,22 @@ namespace G
 class G::Path
 {
 public:
-	Path() ;
+	using value_type = char ;
+	using string_type = std::string ;
+	#if defined(G_WINDOWS) && !defined(G_ANSI)
+		using iopath_char_type = wchar_t ;
+	#else
+		using iopath_char_type = char ;
+	#endif
+
+	Path() noexcept(noexcept(std::string())) ;
 		///< Default constructor for a zero-length path.
 		///< Postcondition: empty()
 
 	Path( const std::string & path ) ;
 		///< Implicit constructor from a string.
 
-	Path( string_view path ) ;
+	Path( std::string_view path ) ;
 		///< Implicit constructor from a string view.
 
 	Path( const char * path ) ;
@@ -94,22 +111,19 @@ public:
 	Path( const Path & path , const std::string & tail_1 , const std::string & tail_2 , const std::string & tail_3 ) ;
 		///< Constructor with three implicit pathAppend()s.
 
-	Path( std::initializer_list<std::string> ) ;
-		///< Constructor with implicit pathAppend()s. (Recall that this
-		///< overload will be strongly preferred when using curly-brace
-		///< initialisation.)
-
-	std::size_t size() const noexcept ;
-		///< Returns the length of the path string.
-
 	bool empty() const noexcept ;
-		///< Returns true if size() is zero.
+		///< Returns true if the path is empty.
 
 	std::string str() const ;
 		///< Returns the path string.
 
-	const char * cstr() const noexcept ;
-		///< Returns the path string.
+	const iopath_char_type * iopath() const ;
+		///< Returns the path's string with a type that is suitable for
+		///< initialising std::fstreams.
+
+	const value_type * cstr() const noexcept ;
+		///< Returns the path's c-string. Typically used by o/s-aware
+		///< code such as G::File.
 
 	bool simple() const ;
 		///< Returns true if the path has a single component (ignoring "." parts),
@@ -145,6 +159,10 @@ public:
 		///< Returns a path without the root part. This has no effect
 		///< if the path isRelative().
 
+	bool isRoot() const noexcept ;
+		///< Returns true if the path is a root, like "/", "c:",
+		///< "c:/", "\\server\volume" etc.
+
 	bool isAbsolute() const noexcept ;
 		///< Returns !isRelative().
 
@@ -153,6 +171,11 @@ public:
 
 	Path & pathAppend( const std::string & tail ) ;
 		///< Appends a filename or a relative path to this path.
+
+	bool replace( const std::string_view & from , const std::string_view & to , bool ex_root = false ) ;
+		///< Replaces the first occurrence of 'from' with 'to',
+		///< optionally excluding the root part. Returns true
+		///< if replaced.
 
 	StringArray split() const ;
 		///< Spits the path into a list of component parts (ignoring "." parts
@@ -184,10 +207,10 @@ public:
 	void swap( Path & other ) noexcept ;
 		///< Swaps this with other.
 
-	bool operator==( const Path & path ) const ;
+	bool operator==( const Path & path ) const noexcept(noexcept(std::string().compare(std::string()))) ;
 		///< Comparison operator.
 
-	bool operator!=( const Path & path ) const ;
+	bool operator!=( const Path & path ) const noexcept(noexcept(std::string().compare(std::string()))) ;
 		///< Comparison operator.
 
 	static void setPosixStyle() ;
@@ -204,20 +227,16 @@ public:
 		///< UTF-8 paths.
 
 private:
-	friend class G::PathFriend ;
 	std::string m_str ;
+	#if defined(G_WINDOWS) && !defined(G_ANSI)
+	mutable std::wstring m_wstr ;
+	#endif
 } ;
 
 inline
 bool G::Path::empty() const noexcept
 {
 	return m_str.empty() ;
-}
-
-inline
-std::size_t G::Path::size() const noexcept
-{
-	return m_str.size() ;
 }
 
 inline
@@ -232,6 +251,17 @@ const char * G::Path::cstr() const noexcept
 	return m_str.c_str() ;
 }
 
+inline
+const G::Path::iopath_char_type * G::Path::iopath() const
+{
+	#if defined(G_WINDOWS) && !defined(G_ANSI)
+		m_wstr = Convert::widen( m_str ) ;
+		return m_wstr.c_str() ;
+	#else
+		return m_str.c_str() ;
+	#endif
+}
+
 namespace G
 {
 	inline
@@ -241,17 +271,20 @@ namespace G
 	}
 
 	inline
-	Path & operator+=( Path & p , const std::string & str )
+	Path & operator/=( Path & p , const std::string & str )
 	{
 		p.pathAppend( str ) ;
 		return p ;
 	}
 
 	inline
-	Path operator+( const Path & p , const std::string & str )
+	Path operator/( const Path & p , const std::string & str )
 	{
 		return Path( p , str ) ; // NOLINT not return {...}
 	}
+
+	Path & operator+=( Path & , const std::string & ) = delete ;
+	Path & operator+( const Path & , const std::string & ) = delete ;
 
 	inline
 	void swap( Path & p1 , Path & p2 ) noexcept

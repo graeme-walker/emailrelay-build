@@ -1,5 +1,5 @@
 #
-## Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+## Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 ## 
 ## This program is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
@@ -41,24 +41,28 @@ COMMON_SOURCES = \
 	geventemitter.h \
 	geventhandler.cpp \
 	geventhandler.h \
+	geventlogging.cpp \
+	geventlogging.h \
 	geventloggingcontext.cpp \
 	geventloggingcontext.h \
 	geventloop.cpp \
 	geventloop.h \
 	gexceptionhandler.cpp \
 	gexceptionhandler.h \
-	gexceptionsink.cpp \
-	gexceptionsink.h \
+	geventstate.cpp \
+	geventstate.h \
 	gexceptionsource.cpp \
 	gexceptionsource.h \
 	gfutureevent.h \
+	ggetaddrinfo.h \
 	ginterfaces.h \
 	glinebuffer.cpp \
 	glinebuffer.h \
 	glinestore.cpp \
 	glinestore.h \
 	glistener.h \
-	glocal.cpp \
+	glisteners.cpp \
+	glisteners.h \
 	glocal.h \
 	glocation.cpp \
 	glocation.h \
@@ -100,6 +104,7 @@ OS_SOURCES = \
 	gdescriptor_win32.cpp \
 	geventloop_win32.cpp \
 	gfutureevent_win32.cpp \
+	glocal_win32.cpp \
 	gnameservers_win32.cpp \
 	gsocket_win32.cpp
 
@@ -118,6 +123,7 @@ AM_CPPFLAGS = -I$(top_srcdir)/src/glib -I$(top_srcdir)/src/gssl -DG_LIB_SMALL
 OS_SOURCES = \
 	gdescriptor_unix.cpp \
 	gfutureevent_unix.cpp \
+	glocal_unix.cpp \
 	gnameservers_unix.cpp \
 	gsocket_unix.cpp
 
@@ -259,7 +265,7 @@ if GCONFIG_WINDOWS
 
 EVENTLOOP_SOURCES = \
 	geventloophandles.h \
-	geventloophandles_st.cpp
+	geventloophandles.cpp
 
 EVENTLOOP_EXTRA_SOURCES =
 
@@ -280,7 +286,7 @@ EVENTLOOP_EXTRA_SOURCES = \
 EVENTLOOP_EXTRA_DIST = \
 	geventloop_select.cpp \
 	geventloophandles.h \
-	geventloophandles_st.cpp
+	geventloophandles.cpp
 
 else
 
@@ -293,7 +299,7 @@ EVENTLOOP_EXTRA_SOURCES = \
 EVENTLOOP_EXTRA_DIST = \
 	geventloop_epoll.cpp \
 	geventloophandles.h \
-	geventloophandles_st.cpp
+	geventloophandles.cpp
 
 endif
 

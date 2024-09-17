@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -26,14 +26,11 @@
 #include "goptions.h"
 #include "goptionvalue.h"
 #include "goptionparser.h"
-#include "goptional.h"
 #include "garg.h"
 #include "gpath.h"
 #include "gstringview.h"
 #include "gstringarray.h"
-#include "gexception.h"
 #include <string>
-#include <list>
 
 namespace G
 {
@@ -101,10 +98,10 @@ public:
 		///< cannot be opened. Parsing errors are added to errorList().
 
 	const std::vector<Option> & options() const ;
-		///< Returns the list of option specification objects.
+		///< Exposes the list of option specification objects.
 
 	const OptionMap & map() const ;
-		///< Returns the map of option-values.
+		///< Exposes the map of option-values.
 
 	Arg args() const ;
 		///< Returns the G::Arg command-line, excluding options.
@@ -128,27 +125,24 @@ public:
 		///< Returns true if the command-line contains the option identified by its
 		///< short-form letter.
 
-	bool contains( string_view option_name ) const ;
+	bool contains( std::string_view option_name ) const ;
 		///< Returns true if the command-line contains the option identified by its
 		///< long-form name.
 
-	std::size_t count( string_view option_name ) const ;
+	std::size_t count( std::string_view option_name ) const ;
 		///< Returns the option's repeat count.
 
-	std::string value( string_view option_name , string_view default_ = {} ) const ;
+	std::string value( std::string_view option_name , std::string_view default_ = {} ) const ;
 		///< Returns the value for the option identified by its long-form name.
 		///< If the option is multi-valued then the returned value is a
 		///< comma-separated list. If the option-value is 'on' then
 		///< Str::positive() is returned; if the option-value is 'off'
 		///< then the given default is returned.
 
-	std::string value( char option_letter , string_view default_ = {} ) const ;
+	std::string value( char option_letter , std::string_view default_ = {} ) const ;
 		///< An overload that returns the value of the option identified
 		///< by its short-form letter.
 		///< Precondition: contains(option_letter)
-
-	G::optional<std::string> optional( string_view option_name ) const ;
-		///< Returns an optional value identified by its long-form name.
 
 	static StringArray readOptionsFromFile( const Path & ) ;
 		///< Reads options from file as a list of strings like "--foo=bar".

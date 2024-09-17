@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -24,11 +24,12 @@
 #include "gfile.h"
 #include "gtest.h"
 #include "gspamclient.h"
+#include "glog.h"
 #include <sstream>
 
 std::string GSmtp::SpamClient::m_username ;
 
-GSmtp::SpamClient::SpamClient( GNet::ExceptionSink es , const GNet::Location & location , bool read_only ,
+GSmtp::SpamClient::SpamClient( GNet::EventState es , const GNet::Location & location , bool read_only ,
 	unsigned int connection_timeout , unsigned int response_timeout ) :
 		GNet::Client(es,location,
 			GNet::Client::Config()
@@ -155,7 +156,7 @@ bool GSmtp::SpamClient::Request::sendMore()
 	else
 	{
 		G_DEBUG( "GSmtp::SpamClient::Request::sendMore: spam request sending " << n << " bytes" ) ;
-		return m_client->send( G::string_view(m_buffer.data(),static_cast<std::size_t>(n)) ) ;
+		return m_client->send( std::string_view(m_buffer.data(),static_cast<std::size_t>(n)) ) ;
 	}
 }
 
@@ -168,10 +169,16 @@ GSmtp::SpamClient::Response::Response( bool read_only ) :
 
 GSmtp::SpamClient::Response::~Response()
 {
-	if( m_stream.is_open() )
+	try
 	{
-		m_stream.close() ;
-		G::File::remove( m_path_tmp.c_str() , std::nothrow ) ;
+		if( m_stream.is_open() )
+		{
+			m_stream.close() ;
+			G::File::remove( G::Path(m_path_tmp) , std::nothrow ) ;
+		}
+	}
+	catch(...)
+	{
 	}
 }
 
@@ -188,7 +195,7 @@ void GSmtp::SpamClient::Response::add( const std::string & path , const std::str
 		m_path_tmp = path + ".spamd" ;
 		if( !m_read_only && !m_stream.is_open() )
 		{
-			G::File::open( m_stream , m_path_tmp ) ;
+			G::File::open( m_stream , G::Path(m_path_tmp) ) ;
 			if( !m_stream.good() )
 				throw SpamClient::Error( "cannot write temporary content file" , m_path_tmp ) ;
 		}
@@ -227,8 +234,8 @@ void GSmtp::SpamClient::Response::add( const std::string & path , const std::str
 				if( m_stream.fail() )
 					throw SpamClient::Error( "cannot write temporary content file" , m_path_tmp ) ;
 
-				G::File::remove( m_path_final ) ;
-				G::File::rename( m_path_tmp , m_path_final ) ;
+				G::File::remove( G::Path(m_path_final) ) ;
+				G::File::rename( G::Path(m_path_tmp) , G::Path(m_path_final) ) ;
 			}
 
 			m_state = 3 ;
@@ -246,7 +253,7 @@ bool GSmtp::SpamClient::Response::ok( const std::string & line ) const
 	// eg. "SPAMD/1.0 99 Timeout", "SPAMD/1.1 0 OK"
 	if( line.empty() ) return false ;
 	if( line.find("SPAMD/") != 0U ) return false ;
-	G::string_view line_sv( line ) ;
+	std::string_view line_sv( line ) ;
 	G::StringTokenView t( line_sv , G::Str::ws() ) ;
 	++t ;
 	return t.valid() ? ( t() == "0"_sv ) : false ;

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -32,8 +32,9 @@ namespace G
 }
 
 //| \class G::fbuf
-/// A simple file streambuf using a file descriptor and three
+/// A simple file streambuf using a "file descriptor" and three
 /// function pointers for read, write and close operations.
+///
 /// The file descriptor type is templated to allow for non-integer
 /// file descriptors, such as std::FILE. Does not support seeking.
 ///
@@ -46,7 +47,7 @@ namespace G
 /// stream << "hello, world!\n" ;
 /// \endcode
 ///
-/// The implementation specialises std::streambuf, overriding
+/// The implementation inherits from std::streambuf, overriding
 /// overflow(), underflow() and sync() to operate the internal
 /// character buffer and file descriptor.
 ///
@@ -56,7 +57,7 @@ class G::fbuf : public std::streambuf
 public:
 	using read_fn_t = std::function<ssize_t(T,char*,std::size_t)> ;
 	using write_fn_t = std::function<ssize_t(T,const char*,std::size_t)> ;
-	using close_fn_t = std::function<void(T)> ;
+	using close_fn_t = std::function<void(T)> ; // noexcept
 
 	explicit fbuf( read_fn_t , write_fn_t , close_fn_t ) ;
 		///< Constructor. Use open() to initialise.
@@ -116,6 +117,7 @@ G::fbuf<T,N>::fbuf( G::fbuf<T,N>::read_fn_t read , G::fbuf<T,N>::write_fn_t writ
 	m_file_open(false) ,
 	m_file()
 {
+	static_assert( N > 0 , "" ) ;
 }
 
 template <typename T,int N>
@@ -128,6 +130,7 @@ G::fbuf<T,N>::fbuf( T file , G::fbuf<T,N>::read_fn_t read , G::fbuf<T,N>::write_
 	m_file_open(false) ,
 	m_file()
 {
+	static_assert( N > 0 , "" ) ;
 	open( file ) ;
 }
 
@@ -136,7 +139,13 @@ namespace G
 	template <typename T,int N>
 	fbuf<T,N>::~fbuf()
 	{
-		close() ;
+		try
+		{
+			close() ;
+		}
+		catch(...) // dtor
+		{
+		}
 	}
 }
 

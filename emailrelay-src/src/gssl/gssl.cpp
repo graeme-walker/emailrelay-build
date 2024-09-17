@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -220,7 +220,7 @@ GSsl::Digester::Digester( std::unique_ptr<DigesterImpBase> p ) :
 {
 }
 
-void GSsl::Digester::add( G::string_view sv )
+void GSsl::Digester::add( std::string_view sv )
 {
 	m_imp->add( sv ) ;
 }
@@ -252,7 +252,7 @@ std::size_t GSsl::Digester::statesize() const noexcept
 
 // ==
 
-bool GSsl::LibraryImpBase::consume( G::StringArray & list , G::string_view key )
+bool GSsl::LibraryImpBase::consume( G::StringArray & list , std::string_view key )
 {
 	auto p = std::find( list.begin() , list.end() , G::sv_to_string(key) ) ;
 	if( p != list.end() )

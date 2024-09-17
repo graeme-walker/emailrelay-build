@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -49,7 +49,7 @@ public:
 		int fd_to_send ) ;
 			///< A sendmsg() wrapper. Not always implemented.
 
-	static ssize_t sendto( SOCKET , const std::vector<string_view> & , int flags , const sockaddr * , socklen_t ) ;
+	static ssize_t sendto( SOCKET , const std::vector<std::string_view> & , int flags , const sockaddr * , socklen_t ) ;
 		///< A sendto() wrapper with scatter-gather data chunks. Not always implemented.
 
 	static ssize_t recv( SOCKET , void * , std::size_t , int flags ) noexcept ;

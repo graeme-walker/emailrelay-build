@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -21,8 +21,9 @@
 #include "gdef.h"
 #include "gstr.h"
 #include "grequestclient.h"
+#include "glog.h"
 
-GSmtp::RequestClient::RequestClient( GNet::ExceptionSink es , const std::string & key , const std::string & ok ,
+GSmtp::RequestClient::RequestClient( GNet::EventState es , const std::string & key , const std::string & ok ,
 	const GNet::Location & location , unsigned int connection_timeout , unsigned int response_timeout ,
 	unsigned int idle_timeout ) :
 		GNet::Client(es,location,

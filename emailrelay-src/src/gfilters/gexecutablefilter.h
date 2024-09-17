@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -43,7 +43,7 @@ namespace GFilters
 class GFilters::ExecutableFilter : public GSmtp::Filter, private GNet::TaskCallback
 {
 public:
-	ExecutableFilter( GNet::ExceptionSink , GStore::FileStore & , Filter::Type ,
+	ExecutableFilter( GNet::EventState , GStore::FileStore & , Filter::Type ,
 		const Filter::Config & , const std::string & path ) ;
 			///< Constructor.
 
@@ -70,7 +70,7 @@ public:
 	ExecutableFilter & operator=( ExecutableFilter && ) = delete ;
 
 private:
-	std::tuple<std::string,int,std::string> parseOutput( std::string , const std::string & ) const ;
+	static std::tuple<std::string,int,std::string> parseOutput( std::string , const std::string & ) ;
 	void onTimeout() ;
 	std::string prefix() const ;
 

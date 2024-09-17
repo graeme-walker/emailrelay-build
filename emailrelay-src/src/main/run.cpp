@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -56,7 +56,7 @@ namespace Main { std::string localedir() { return {} ; } }
 
 std::string Main::Run::versionNumber()
 {
-	return "2.5.2" ;
+	return "2.6" ;
 }
 
 Main::Run::Run( Main::Output & output , const G::Arg & arg , bool has_gui ) :
@@ -106,6 +106,8 @@ void Main::Run::configure( const G::Options & options_spec )
 	{
 		m_configurations.emplace_back( m_commandline->configurationOptionMap(i) ,
 			m_commandline->configurationName(i) , appDir() , cwd ) ;
+		if( i > 0U )
+			m_configurations.back().merge( m_configurations[0] ) ;
 	}
 }
 
@@ -240,8 +242,8 @@ void Main::Run::run()
 
 	// set up the output event queue
 	//
-	auto log_only = GNet::ExceptionSink::logOnly() ;
-	m_queue_timer = std::make_unique<GNet::Timer<Run>>( *this , &Run::onQueueTimeout , log_only ) ;
+	auto es_log_only = GNet::EventState::create( std::nothrow ) ;
+	m_queue_timer = std::make_unique<GNet::Timer<Run>>( *this , &Run::onQueueTimeout , es_log_only ) ;
 
 	// early check on multi-threading behaviour
 	//

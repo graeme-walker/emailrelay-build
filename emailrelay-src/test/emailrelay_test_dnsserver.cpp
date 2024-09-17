@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -26,6 +26,7 @@
 //    MX(*localhost*) -> A(smtp.*localhost*) -> 127.0.0.1
 //    MX(*one*) -> A(smtp.*one*) -> 127.0.1.1
 //    MX(*two*) -> A(smtp.*two*) -> 127.0.2.1
+//    MX(*three*) -> A(smtp.*three*) -> 127.0.3.1
 //    MX(*) -> A(smtp.*) -> 127.0.0.1
 //
 // Testing:
@@ -45,12 +46,11 @@
 #include "gsocket.h"
 #include "glogoutput.h"
 #include "gexception.h"
+#include "glog.h"
 #include <array>
-#include <functional> // std::hash
 #include <exception>
 #include <stdexcept>
 #include <iostream>
-#include <cstring> // std::memcpy()
 
 namespace GNet
 {
@@ -82,20 +82,22 @@ public:
 	} ;
 
 public:
-	Server( GNet::ExceptionSink es , Config ) ;
+	Server( GNet::EventState es , Config ) ;
 	~Server() override ;
 
 private: // overrides
 	void readEvent() override ;
+
+private:
 	void sendResponse( const GNet::Address & , GNet::DnsMessage ) ;
 
 private:
-	GNet::ExceptionSink m_es ;
+	GNet::EventState m_es ;
 	Config m_config ;
 	GNet::DatagramSocket m_socket ;
 } ;
 
-Server::Server( GNet::ExceptionSink es , Config config ) :
+Server::Server( GNet::EventState es , Config config ) :
 	m_es(es) ,
 	m_config(config) ,
 	m_socket(m_config.family,0,m_config.socket_config)
@@ -271,8 +273,8 @@ int main( int argc , char * argv [] )
 
 		Server::Config config ;
 		config.port = opt.contains("port") ? G::Str::toUInt(opt.value("port")) : 10053U ;
-		config.answer_a = opt.value( "address" , "127.0.@.1" ) ;
-		config.answer_mx = "smtp.@" ;
+		config.answer_a = opt.value( "address" , "127.0.@.1" ) ; // @ -> "1" if query contains "one" etc.
+		config.answer_mx = "smtp.@" ; // @ -> <qname>
 		bool debug = opt.contains( "debug" ) ;
 		std::string pid_file_name = opt.value( "pid-file" , "."+argv0.str()+".pid" ) ;
 		std::string log_file = opt.value( "log-file" , "" ) ;
@@ -298,8 +300,8 @@ int main( int argc , char * argv [] )
 			pid_file << G::Process::Id().str() << std::endl ;
 		}
 
-		std::unique_ptr<GNet::EventLoop> event_loop = GNet::EventLoop::create() ;
-		GNet::ExceptionSink es ;
+		auto event_loop = GNet::EventLoop::create() ;
+		auto es = GNet::EventState::create() ;
 		GNet::TimerList timer_list ;
 		Server server( es , config ) ;
 

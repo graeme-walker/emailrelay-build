@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 #
-# Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+# Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -71,8 +71,9 @@ sub find_cmake
 
 sub find_qt_x86
 {
-	my $parent_dir = File::Basename::dirname( File::Basename::dirname($0) ) ;
-	my $qt = _find_basic( "find-qt(x86)" , "qt-x86" , $parent_dir ) ; # see qtbuild.pl
+	my $up_dir = File::Basename::dirname( Cwd::realpath(File::Basename::dirname($0)) ) ;
+	my $up_up_dir = File::Basename::dirname( $up_dir ) ;
+	my $qt = _find_basic( "find-qt(x86)" , "qt-bin-x86" , $up_dir , $up_up_dir ) ; # see qtbuild.pl
 	return $qt if $qt ;
 	my @dirs = ( "$ENV{HOMEDRIVE}$ENV{HOMEPATH}/qt" , "$ENV{SystemDrive}/qt" ) ;
 	my $qt_include =
@@ -85,8 +86,9 @@ sub find_qt_x86
 
 sub find_qt_x64
 {
-	my $parent_dir = File::Basename::dirname( File::Basename::dirname($0) ) ;
-	my $qt = _find_basic( "find-qt(x64)" , "qt-x64" , $parent_dir ) ; # see qtbuild.pl
+	my $up_dir = File::Basename::dirname( Cwd::realpath(File::Basename::dirname($0)) ) ;
+	my $up_up_dir = File::Basename::dirname( $up_dir ) ;
+	my $qt = _find_basic( "find-qt(x64)" , "qt-bin-x64" , $up_dir , $up_up_dir ) ; # see qtbuild.pl
 	return $qt if $qt ;
 	my @dirs = ( "$ENV{HOMEDRIVE}$ENV{HOMEPATH}/qt" , "$ENV{SystemDrive}/qt" ) ;
 	my $qt_include =
@@ -332,7 +334,7 @@ sub touch
 
 sub file_copy
 {
-	my ( $src , $dst ) = @_ ;
+	my ( $src , $dst , $to_crlf ) = @_ ;
 
 	if( $dst =~ m:/$: )
 	{
@@ -345,7 +347,6 @@ sub file_copy
 		File::Path::make_path( File::Basename::dirname($dst) ) ;
 	}
 
-	my $to_crlf = undef ;
 	for my $ext ( "txt" , "js" , "pl" , "pm" )
 	{
 		if( -d $dst )
@@ -362,11 +363,12 @@ sub file_copy
 	{
 		if( -d $dst ) { $dst = "$dst/".File::Basename::basename($src) }
 		my $fh_in = new FileHandle( $src , "r" ) ;
-		my $fh_out = new FileHandle( $dst , "w" ) ;
+		my $fh_out = new FileHandle( $dst , ">:raw" ) ;
 		( $fh_in && $fh_out ) or die "error: failed to copy [$src] to [$dst]\n" ;
 		while(<$fh_in>)
 		{
 			chomp( my $line = $_ ) ;
+			$line =~ s/\r$// ;
 			print $fh_out $line , "\r\n" ;
 		}
 		$fh_out->close() or die "error: failed to copy [$src] to [$dst]\n" ;

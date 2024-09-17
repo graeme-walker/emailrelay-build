@@ -18,6 +18,9 @@
 /* Define true if compiler has std::make_unique */
 #undef GCONFIG_HAVE_CXX_MAKE_UNIQUE
 
+/* Define true if compiler supports c++ optional */
+#undef GCONFIG_HAVE_CXX_OPTIONAL
+
 /* Define true if compiler has std::thread */
 #undef GCONFIG_HAVE_CXX_STD_THREAD
 
@@ -45,8 +48,11 @@
 /* Define true if _fsopen() is available */
 #undef GCONFIG_HAVE_FSOPEN
 
+/* Define true if getaddrinfo() supports AI_IDN */
+#undef GCONFIG_HAVE_GAI_IDN
+
 /* Define true if gai_strerror() is available */
-#undef GCONFIG_HAVE_GAISTRERROR
+#undef GCONFIG_HAVE_GAI_STRERROR
 
 /* Define true if getenv_s in stdlib.h */
 #undef GCONFIG_HAVE_GETENV_S
@@ -104,9 +110,6 @@
 
 /* Define true if inttypes.h is available */
 #undef GCONFIG_HAVE_INTTYPES_H
-
-/* Define true if struct iovec has a simple layout */
-#undef GCONFIG_HAVE_IOVEC_SIMPLE
 
 /* Define true if ipv6 is available */
 #undef GCONFIG_HAVE_IPV6
@@ -249,6 +252,12 @@
 /* Define true if unistd.h is available */
 #undef GCONFIG_HAVE_UNISTD_H
 
+/* Define true if _wcserror_s is available */
+#undef GCONFIG_HAVE_WCSERROR_S
+
+/* Define true if _wgetenv_s is available */
+#undef GCONFIG_HAVE_WGETENV_S
+
 /* Define true if windows CreateEventEx is available */
 #undef GCONFIG_HAVE_WINDOWS_CREATE_EVENT_EX
 
@@ -267,6 +276,12 @@
 /* Define true if versionhelpers.h is available */
 #undef GCONFIG_HAVE_WINDOWS_VERSIONHELPERS_H
 
+/* Define true if _wputenv_s in stdlib.h */
+#undef GCONFIG_HAVE_WPUTENV_S
+
+/* Define true if _wsopen_s() is available */
+#undef GCONFIG_HAVE_WSOPEN_S
+
 /* Define true for a windows build using the mingw tool chain */
 #undef GCONFIG_MINGW
 
@@ -279,11 +294,14 @@
 /* Define true for a windows build */
 #undef GCONFIG_WINDOWS
 
+/* Define true for a winxp windows build */
+#undef GCONFIG_WINXP
+
 /* Define to enable debug messages at compile-time */
 #undef G_WITH_DEBUG
 
-/* define if the compiler supports basic C++11 syntax */
-#undef HAVE_CXX11
+/* define if the compiler supports basic C++17 syntax */
+#undef HAVE_CXX17
 
 /* Define to 1 if the system has the type `gid_t'. */
 #undef HAVE_GID_T

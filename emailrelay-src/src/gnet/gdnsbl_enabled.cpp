@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -26,7 +26,7 @@
 class GNet::DnsblImp : private DnsBlockCallback
 {
 public:
-	DnsblImp( std::function<void(bool)> callback , ExceptionSink es , G::string_view config ) :
+	DnsblImp( std::function<void(bool)> callback , EventState es , std::string_view config ) :
 		m_callback(std::move(callback)) ,
 		m_block(*this,es,config)
 	{
@@ -41,7 +41,7 @@ public:
 	DnsBlock m_block ;
 } ;
 
-GNet::Dnsbl::Dnsbl( std::function<void(bool)> callback , ExceptionSink es , G::string_view config ) :
+GNet::Dnsbl::Dnsbl( std::function<void(bool)> callback , EventState es , std::string_view config ) :
 	m_imp(std::make_unique<DnsblImp>(callback,es,config))
 {
 }

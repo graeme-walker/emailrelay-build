@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -61,14 +61,14 @@ namespace G
 class G::NewProcess
 {
 public:
-	G_EXCEPTION( Error , tx("cannot spawn new process") ) ;
-	G_EXCEPTION( CannotFork , tx("cannot fork") ) ;
-	G_EXCEPTION( WaitError , tx("failed waiting for child process") ) ;
-	G_EXCEPTION( ChildError , tx("child process terminated abnormally") ) ;
-	G_EXCEPTION( Insecure , tx("refusing to exec while the user-id is zero") ) ;
-	G_EXCEPTION( PipeError , tx("pipe error") ) ;
-	G_EXCEPTION( InvalidPath , tx("invalid executable path -- must be absolute") ) ;
-	G_EXCEPTION( InvalidParameter , tx("invalid parameter") ) ;
+	G_EXCEPTION( Error , tx("cannot spawn new process") )
+	G_EXCEPTION( CannotFork , tx("cannot fork") )
+	G_EXCEPTION( WaitError , tx("failed waiting for child process") )
+	G_EXCEPTION( ChildError , tx("child process terminated abnormally") )
+	G_EXCEPTION( Insecure , tx("refusing to exec while the user-id is zero") )
+	G_EXCEPTION( PipeError , tx("pipe error") )
+	G_EXCEPTION( InvalidPath , tx("invalid executable path -- must be absolute") )
+	G_EXCEPTION( InvalidParameter , tx("invalid parameter") )
 	G_EXCEPTION( CreateProcessError , tx("CreateProcess error") ) ; // windows
 	G_EXCEPTION( SystemError , tx("system error") ) ; // windows
 
@@ -93,25 +93,29 @@ public:
 		NewProcess::Fd stdin {Fd::devnull()} ;
 		NewProcess::Fd stdout {Fd::pipe()} ;
 		NewProcess::Fd stderr {Fd::devnull()} ;
-		Path cd ; // cd in child process before exec
+		Path cd ; // change directory in child process before exec
 		bool strict_exe {true} ; // require 'exe' is absolute
-		std::string exec_search_path ; // PATH in child process before execvpe()
-		Identity run_as {Identity::invalid()} ; // see Process::beOrdinaryForExec()
-		bool strict_id {true} ; // dont allow run_as root
-		int exec_error_exit {127} ; // exec failure error code
+		std::string exec_search_path ; // PATH in child process before execvpe() -- not windows
+		Identity run_as {Identity::invalid()} ; // see Process::beOrdinaryForExec() -- not windows
+		bool strict_id {true} ; // dont allow run_as root -- not windows
+		bool close_other_fds {true} ; // close non-standard file descriptors -- not windows
+		int exec_error_exit {127} ; // exec failure error code -- not windows
 		std::string exec_error_format ; // exec failure error message with substitution of strerror and errno
 		FormatFn exec_error_format_fn {nullptr} ; // exec failure error message function passed exec_error_format and errno
+		HANDLE keep_handle_1 {HNULL} ; // extra handle to keep -- windows only
+		HANDLE keep_handle_2 {HNULL} ; // extra handle to keep -- windows only
 
 		Config & set_env( const Environment & ) ;
-		Config & set_stdin( Fd ) ;
-		Config & set_stdout( Fd ) ;
-		Config & set_stderr( Fd ) ;
+		Config & set_stdin( Fd ) noexcept ;
+		Config & set_stdout( Fd ) noexcept ;
+		Config & set_stderr( Fd ) noexcept ;
 		Config & set_cd( const Path & ) ;
-		Config & set_strict_exe( bool = true ) ;
+		Config & set_strict_exe( bool = true ) noexcept ;
 		Config & set_exec_search_path( const std::string & ) ;
 		Config & set_run_as( Identity ) ;
-		Config & set_strict_id( bool = true ) ;
-		Config & set_exec_error_exit( int ) ;
+		Config & set_strict_id( bool = true ) noexcept ;
+		Config & set_close_other_fds( bool = true ) noexcept ;
+		Config & set_exec_error_exit( int ) noexcept ;
 		Config & set_exec_error_format( const std::string & ) ;
 		Config & set_exec_error_format_fn( FormatFn ) ;
 	} ;
@@ -138,19 +142,21 @@ public:
 		///< that identity. If 'strict_id' is also true then the id is not
 		///< allowed to be root. See G::Process::beOrdinaryForExec().
 		///<
-		///< If the exec() fails then the 'exec_error_exit' argument is used as
-		///< the child process exit code.
+		///< If the exec() fails on Unix it is reported asynchronously with
+		///< the 'exec_error_exit' argument used as the child process exit
+		///< value; on Windows a CreateProcess() failure throws an exception.
 		///<
 		///< The internal pipe can be used for error messages in the situation
 		///< where the exec() in the forked child process fails. This requires
-		///< that one of the 'exec_error_format' parameters is given; by default
-		///< nothing is sent over the pipe when the exec() fails.
+		///< 'exec_error_format' or 'exec_error_format_fn' to be given; by
+		///< default nothing is sent over the pipe when the exec() fails.
 		///<
-		///< The exec error message is assembled by the given callback function,
-		///< with the 'exec_error_format' argument passed as its first parameter.
-		///< The second parameter is the exec() errno. The default callback
-		///< function does text substitution for "__errno__" and "__strerror__"
-		///< substrings that appear within the error format string.
+		///< If 'exec_error_format_fn' is given then the error message is
+		///< assembled by passing it 'exec_error_format' as its first parameter
+		///< and the errno as the second parameter. If the 'exec_error_format'
+		///< string is given without 'exec_error_format_fn' then it is used
+		///< as the error message after substitution of any "__errno__" and
+		///< "__strerror__" sub-strings.
 
 	~NewProcess() ;
 		///< Destructor. Kills the spawned process if the Waitable has
@@ -271,15 +277,16 @@ private:
 } ;
 
 inline G::NewProcess::Config & G::NewProcess::Config::set_env( const Environment & e ) { env = e ; return *this ; }
-inline G::NewProcess::Config & G::NewProcess::Config::set_stdin( Fd fd ) { stdin = fd ; return *this ; }
-inline G::NewProcess::Config & G::NewProcess::Config::set_stdout( Fd fd ) { stdout = fd ; return *this ; }
-inline G::NewProcess::Config & G::NewProcess::Config::set_stderr( Fd fd ) { stderr = fd ; return *this ; }
+inline G::NewProcess::Config & G::NewProcess::Config::set_stdin( Fd fd ) noexcept { stdin = fd ; return *this ; }
+inline G::NewProcess::Config & G::NewProcess::Config::set_stdout( Fd fd ) noexcept { stdout = fd ; return *this ; }
+inline G::NewProcess::Config & G::NewProcess::Config::set_stderr( Fd fd ) noexcept { stderr = fd ; return *this ; }
 inline G::NewProcess::Config & G::NewProcess::Config::set_cd( const Path & p ) { cd = p ; return *this ; }
-inline G::NewProcess::Config & G::NewProcess::Config::set_strict_exe( bool b ) { strict_exe = b ; return *this ; }
+inline G::NewProcess::Config & G::NewProcess::Config::set_strict_exe( bool b ) noexcept { strict_exe = b ; return *this ; }
 inline G::NewProcess::Config & G::NewProcess::Config::set_exec_search_path( const std::string & s ) { exec_search_path = s ; return *this ; }
 inline G::NewProcess::Config & G::NewProcess::Config::set_run_as( Identity i ) { run_as = i ; return *this ; }
-inline G::NewProcess::Config & G::NewProcess::Config::set_strict_id( bool b ) { strict_id = b ; return *this ; }
-inline G::NewProcess::Config & G::NewProcess::Config::set_exec_error_exit( int n ) { exec_error_exit = n ; return *this ; }
+inline G::NewProcess::Config & G::NewProcess::Config::set_strict_id( bool b ) noexcept { strict_id = b ; return *this ; }
+inline G::NewProcess::Config & G::NewProcess::Config::set_close_other_fds( bool b ) noexcept { close_other_fds = b ; return *this ; }
+inline G::NewProcess::Config & G::NewProcess::Config::set_exec_error_exit( int n ) noexcept { exec_error_exit = n ; return *this ; }
 inline G::NewProcess::Config & G::NewProcess::Config::set_exec_error_format( const std::string & s ) { exec_error_format = s ; return *this ; }
 inline G::NewProcess::Config & G::NewProcess::Config::set_exec_error_format_fn( FormatFn f ) { exec_error_format_fn = f ; return *this ; }
 

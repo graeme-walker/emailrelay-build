@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -25,11 +25,13 @@
 #include <algorithm>
 
 #ifndef G_LIB_SMALL
-GNet::Interfaces::Interfaces()
-= default;
+GNet::Interfaces::Interfaces( EventState es ) :
+	m_es(es)
+{
+}
 #endif
 
-GNet::Interfaces::Interfaces( ExceptionSink es , InterfacesHandler & handler ) :
+GNet::Interfaces::Interfaces( EventState es , InterfacesHandler & handler ) :
 	m_es(es) ,
 	m_handler(&handler)
 {

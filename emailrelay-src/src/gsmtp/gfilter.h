@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -117,7 +117,7 @@ public:
 		///< Returns a diagnostic string for logging, including the
 		///< filter result.
 
-	static G::string_view strtype( Type type ) noexcept ;
+	static std::string_view strtype( Type type ) noexcept ;
 		///< Returns a type string for logging: "filter",
 		///< "client-filter" or "routing-filter".
 

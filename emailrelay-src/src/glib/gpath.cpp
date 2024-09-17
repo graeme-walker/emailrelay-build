@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -42,7 +42,7 @@ namespace G
 template <>
 struct G::PathImp::PathPlatform<G::PathImp::Platform::Windows>
 {
-	static string_view sep() noexcept
+	static std::string_view sep() noexcept
 	{
 		return { "\\" , 1U } ;
 	}
@@ -60,16 +60,15 @@ struct G::PathImp::PathPlatform<G::PathImp::Platform::Windows>
 	}
 	static bool absolute( const std::string & s ) noexcept
 	{
-		// TODO use rootsize()
 		return
 			( s.length() >= 3U && s[1] == ':' && s[2] == '\\' ) ||
-			( s.length() >= 1U && s[0] == '\\' ) ;
+			( s.length() >= 1U && s[0] == '\\' ) ; // NOLINT
 	}
-	static std::size_t rootsizeImp( const std::string & s , std::size_t chars , std::size_t parts ) noexcept
+	static std::size_t rootsizeImp( const std::string & s , std::size_t offset , std::size_t parts ) noexcept
 	{
-		G_ASSERT( s.length() >= chars ) ;
+		G_ASSERT( s.length() >= offset ) ;
 		G_ASSERT( parts == 1U || parts == 2U ) ;
-		std::size_t pos = s.find( '\\' , chars ) ;
+		std::size_t pos = s.find( '\\' , offset ) ;
 		if( parts == 2U && pos != std::string::npos )
 			pos = s.find( '\\' , pos+1U ) ;
 		return pos == std::string::npos ? s.length() : pos ;
@@ -121,7 +120,7 @@ struct G::PathImp::PathPlatform<G::PathImp::Platform::Windows>
 template <>
 struct G::PathImp::PathPlatform<G::PathImp::Platform::Unix> /// A unix specialisation of G::PathImp::PathPlatform used by G::Path.
 {
-	static string_view sep() noexcept
+	static std::string_view sep() noexcept
 	{
 		return { "/" , 1U } ;
 	}
@@ -163,7 +162,7 @@ namespace G
 		static bool use_posix = !G::is_windows() ; // gdef.h // NOLINT bogus cert-err58-cpp
 		using U = PathPlatform<Platform::Unix> ;
 		using W = PathPlatform<Platform::Windows> ;
-		string_view sep() { return use_posix ? U::sep() : W::sep() ; }
+		std::string_view sep() { return use_posix ? U::sep() : W::sep() ; }
 		void normalise( std::string & s ) { use_posix ? U::normalise(s) : W::normalise(s) ; }
 		bool simple( const std::string & s ) { return use_posix ? U::simple(s) : W::simple(s) ; }
 		bool isdrive( const std::string & s ) { return use_posix ? U::isdrive(s) : W::isdrive(s) ; }
@@ -262,7 +261,7 @@ void G::Path::setWindowsStyle()
 }
 #endif
 
-G::Path::Path()
+G::Path::Path() noexcept(noexcept(std::string()))
 = default;
 
 G::Path::Path( const std::string & path ) :
@@ -277,7 +276,7 @@ G::Path::Path( const char * path ) :
 	PathImp::normalise( m_str ) ;
 }
 
-G::Path::Path( string_view path ) :
+G::Path::Path( std::string_view path ) :
 	m_str(sv_to_string(path))
 {
 	PathImp::normalise( m_str ) ;
@@ -312,17 +311,6 @@ G::Path::Path( const Path & path , const std::string & tail_1 , const std::strin
 }
 #endif
 
-G::Path::Path( std::initializer_list<std::string> args )
-{
-	if( args.size() )
-	{
-		m_str = *args.begin() ;
-		for( const auto * p = args.begin()+1 ; p != args.end() ; ++p )
-			pathAppend( *p ) ;
-		PathImp::normalise( m_str ) ;
-	}
-}
-
 G::Path G::Path::nullDevice()
 {
 	return { PathImp::null() } ;
@@ -331,6 +319,11 @@ G::Path G::Path::nullDevice()
 bool G::Path::simple() const
 {
 	return dirname().empty() ;
+}
+
+bool G::Path::isRoot() const noexcept
+{
+	return !empty() && m_str.size() <= PathImp::rootsize(m_str) ;
 }
 
 bool G::Path::isAbsolute() const noexcept
@@ -410,18 +403,8 @@ G::Path G::Path::withoutRoot() const
 
 G::Path & G::Path::pathAppend( const std::string & tail )
 {
-	if( tail.empty() )
-	{
-	}
-	else if( PathImp::simple(tail) )
-	{
-		m_str.append( sv_to_string(PathImp::sep()) + tail ) ;
-	}
-	else
-	{
-		Path result = join( *this , tail ) ;
-		result.swap( *this ) ;
-	}
+	Path result = join( *this , tail ) ;
+	result.swap( *this ) ;
 	return *this ;
 }
 
@@ -434,6 +417,12 @@ std::string G::Path::extension() const
 			m_str.substr( pos+1U ) ;
 }
 
+bool G::Path::replace( const std::string_view & from , const std::string_view & to , bool ex_root )
+{
+	std::size_t startpos = ex_root ? PathImp::rootsize(m_str) : 0U ;
+	return G::Str::replace( m_str , from , to , &startpos ) ;
+}
+
 G::StringArray G::Path::split() const
 {
 	StringArray a ;
@@ -442,13 +431,13 @@ G::StringArray G::Path::split() const
 	return a ;
 }
 
-G::Path G::Path::join( const G::StringArray & a )
+G::Path G::Path::join( const StringArray & a )
 {
 	if( a.empty() ) return {} ;
 	return { PathImp::join(a) } ;
 }
 
-G::Path G::Path::join( const G::Path & p1 , const G::Path & p2 )
+G::Path G::Path::join( const Path & p1 , const Path & p2 )
 {
 	if( p1.empty() )
 	{
@@ -469,7 +458,7 @@ G::Path G::Path::join( const G::Path & p1 , const G::Path & p2 )
 
 G::Path G::Path::collapsed() const
 {
-	const std::string dots = ".." ;
+	auto two_dots_fn = [](const std::string &s_){ return s_.size()==2U && s_[0] == '.' && s_[1] == '.' ; } ;
 
 	StringArray a = split() ;
 	auto start = a.begin() ;
@@ -479,19 +468,19 @@ G::Path G::Path::collapsed() const
 
 	while( start != end )
 	{
-		// step over leading dots -- cannot collapse
-		while( start != end && *start == dots )
+		// step over leading double-dots -- cannot collapse
+		while( start != end && two_dots_fn(*start) )
 			++start ;
 
-		// find collapsable dots
-		auto p_dots = std::find( start , end , dots ) ;
+		// find collapsible double-dots
+		auto p_dots = std::find_if( start , end , two_dots_fn ) ;
 		if( p_dots == end )
-			break ; // no collapsable dots remaining
+			break ; // no collapsible double-dots remaining
 
 		G_ASSERT( p_dots != a.begin() ) ;
 		G_ASSERT( a.size() >= 2U ) ;
 
-		// remove the preceding element and then the dots
+		// remove the preceding element and then the double-dots
 		bool at_start = std::next(start) == p_dots ;
 		auto p = a.erase( a.erase(--p_dots) ) ;
 
@@ -504,14 +493,14 @@ G::Path G::Path::collapsed() const
 	return join( a ) ;
 }
 
-bool G::Path::operator==( const Path & other ) const
+bool G::Path::operator==( const Path & other ) const noexcept(noexcept(std::string().compare(std::string())))
 {
-	return m_str == other.m_str ; // noexcept only in c++14
+	return 0 == m_str.compare( other.m_str ) ; // noexcept since c++14 // NOLINT readability-string-compare
 }
 
-bool G::Path::operator!=( const Path & other ) const
+bool G::Path::operator!=( const Path & other ) const noexcept(noexcept(std::string().compare(std::string())))
 {
-	return m_str != other.m_str ; // noexcept only in c++14
+	return 0 != m_str.compare( other.m_str ) ; // noexcept since c++14 // NOLINT readability-string-compare
 }
 
 void G::Path::swap( Path & other ) noexcept
@@ -521,7 +510,7 @@ void G::Path::swap( Path & other ) noexcept
 }
 
 #ifndef G_LIB_SMALL
-bool G::Path::less( const G::Path & a , const G::Path & b )
+bool G::Path::less( const Path & a , const Path & b )
 {
 	StringArray a_parts = a.split() ;
 	StringArray b_parts = b.split() ;
@@ -533,7 +522,7 @@ bool G::Path::less( const G::Path & a , const G::Path & b )
 #endif
 
 #ifndef G_LIB_SMALL
-G::Path G::Path::difference( const G::Path & root_in , const G::Path & path_in )
+G::Path G::Path::difference( const Path & root_in , const Path & path_in )
 {
 	StringArray path_parts ;
 	StringArray root_parts ;

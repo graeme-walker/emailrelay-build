@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@
 #include "geventhandler.h"
 #include "genvironment.h"
 #include "gnewprocess.h"
-#include "gexceptionsink.h"
+#include "geventstate.h"
 #include "gexception.h"
 #include "gidentity.h"
 #include "gexecutablecommand.h"
@@ -45,9 +45,9 @@ namespace GNet
 class GNet::Task
 {
 public:
-	G_EXCEPTION( Busy , tx("cannot execute command-line task: still busy from last time") ) ;
+	G_EXCEPTION( Busy , tx("cannot execute command-line task: still busy from last time") )
 
-	Task( TaskCallback & , ExceptionSink es ,
+	Task( TaskCallback & , EventState es ,
 		const std::string & exec_error_format = {} ,
 		const G::Identity & = G::Identity::invalid() ) ;
 			///< Constructor for an object that can be start()ed or run().
@@ -101,7 +101,7 @@ private:
 private:
 	std::unique_ptr<TaskImp> m_imp ;
 	TaskCallback & m_callback ;
-	ExceptionSink m_es ;
+	EventState m_es ;
 	std::string m_exec_error_format ;
 	G::Identity m_id ;
 	bool m_busy {false} ;

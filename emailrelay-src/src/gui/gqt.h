@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -40,44 +40,38 @@
 
 namespace GQt
 {
-	struct Utf8Overload {} ;
-	constexpr Utf8Overload Utf8 ;
-	struct PathOverload {} ;
-	constexpr PathOverload Path ;
-	inline std::string stdstr( QString q )
-	{
-		QByteArray a = q.toLocal8Bit() ;
-		return std::string( a.constData() , a.length() ) ;
-	}
-	inline std::string stdstr( QString q , Utf8Overload )
+	inline std::string u8string_from_qstring( const QString & q )
 	{
 		QByteArray a = q.toUtf8() ;
 		return std::string( a.constData() , a.length() ) ;
 	}
-	inline std::string stdstr( QString q , PathOverload )
-	{
-		QByteArray a = q.toLocal8Bit() ;
-		return std::string( a.constData() , a.length() ) ;
-	}
-	inline QString qstr( const char * p )
-	{
-		return QString::fromLocal8Bit( p , static_cast<int>(std::strlen(p)) ) ;
-	}
-	inline QString qstr( const std::string & s )
-	{
-		return QString::fromLocal8Bit( s.data() , static_cast<int>(s.size()) ) ;
-	}
-	inline QString qstr( const std::string & s , Utf8Overload )
+
+	inline QString qstring_from_u8string( const std::string & s )
 	{
 		return QString::fromUtf8( s.data() , static_cast<int>(s.size()) ) ;
 	}
-	inline QString qstr( const std::string & s , PathOverload )
+
+	inline QString qstring_from_path( const G::Path & p )
 	{
-		return QString::fromLocal8Bit( s.data() , static_cast<int>(s.size()) ) ;
+		#if defined(G_WINDOWS) && defined(G_ANSI)
+			// (G_ANSI is deprecated)
+			return QString::fromLocal8Bit( p.cstr() ) ;
+		#else
+			return QString::fromUtf8( p.cstr() ) ;
+		#endif
 	}
-	inline QString qstr( const G::Path & p )
+
+	inline G::Path path_from_qstring( const QString & q )
 	{
-		return qstr( p.str() , Path ) ;
+		#if defined(G_WINDOWS) && defined(G_ANSI)
+			// (G_ANSI is deprecated)
+			QByteArray a = q.toLocal8Bit() ;
+			const char * p = a.constData() ;
+			std::size_t n = static_cast<std::size_t>(a.length()) ;
+			return {std::string_view{p,n}} ;
+		#else
+			return {u8string_from_qstring(q)} ;
+		#endif
 	}
 }
 

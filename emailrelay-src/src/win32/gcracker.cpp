@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -19,8 +19,10 @@
 ///
 
 #include "gdef.h"
+#include "gnowide.h"
 #include "gcracker.h"
 #include "gstringarray.h"
+#include "gconvert.h"
 #include "glog.h"
 #include "gassert.h"
 #include <windowsx.h>
@@ -32,8 +34,7 @@ GGui::Cracker::Cracker( HWND hwnd ) :
 }
 
 GGui::Cracker::~Cracker()
-{
-}
+= default ;
 
 LRESULT GGui::Cracker::crack( UINT message , WPARAM wparam , LPARAM lparam , bool & call_default )
 {
@@ -59,7 +60,7 @@ LRESULT GGui::Cracker::crack( UINT message , WPARAM wparam , LPARAM lparam , boo
 		{
 			G_DEBUG( "Cracker::onClose" ) ;
 			if( onClose() )
-				PostMessage( handle() , WM_DESTROY , 0 , 0 ) ;
+				G::nowide::postMessage( handle() , WM_DESTROY , 0 , 0 ) ;
 			return 0 ;
 		}
 
@@ -130,6 +131,8 @@ LRESULT GGui::Cracker::crack( UINT message , WPARAM wparam , LPARAM lparam , boo
 				processed = onSysCommand( SysCommand::scSize ) ;
 			else if( cmd == SC_CLOSE )
 				processed = onSysCommand( SysCommand::scClose ) ;
+			else
+				processed = onSysCommandOther( cmd ) ;
 			if( !processed )
 				call_default = true ;
 			return 0 ;
@@ -169,19 +172,10 @@ LRESULT GGui::Cracker::crack( UINT message , WPARAM wparam , LPARAM lparam , boo
 		{
 			G_DEBUG( "Cracker::onDrop" ) ;
 			HDROP hdrop = hdrop_from( wparam ) ;
-			int count = DragQueryFileA( hdrop , 0xFFFFFFFF , nullptr , 0 ) ;
+			unsigned int count = G::nowide::dragQueryFile( hdrop ) ;
 			G::StringArray list ;
-			std::vector<char> buffer( 32768U , '\0' ) ;
-			for( int i = 0 ; i < count ; i++ )
-			{
-				unsigned int size = static_cast<unsigned int>(buffer.size()) ;
-				if( DragQueryFileA( hdrop , i , &buffer[0] , size ) < size )
-				{
-					buffer.at(buffer.size()-1U) = '\0' ;
-					G_DEBUG( "Cracker::onDrop: \"" << &buffer[0] << "\"" ) ;
-					list.push_back( std::string(&buffer[0]) ) ;
-				}
-			}
+			for( unsigned int i = 0U ; i < count ; i++ )
+				list.push_back( G::nowide::dragQueryFile( hdrop , i ) ) ;
 			DragFinish( hdrop ) ;
 			return !onDrop( list ) ;
 		}
@@ -197,7 +191,7 @@ LRESULT GGui::Cracker::crack( UINT message , WPARAM wparam , LPARAM lparam , boo
 				case SIZE_MAXHIDE:
 				case SIZE_MAXSHOW:
 				default:
-					return DefWindowProc( handle() , message , wparam , lparam ) ;
+					return G::nowide::defWindowProc( handle() , message , wparam , lparam ) ;
 			}
 			onSize( type , LOWORD(lparam) , HIWORD(lparam) ) ;
 			return 0 ;
@@ -459,6 +453,11 @@ bool GGui::Cracker::onSysCommand( SysCommand )
 	return false ;
 }
 
+bool GGui::Cracker::onSysCommandOther( WPARAM )
+{
+	return false ;
+}
+
 bool GGui::Cracker::onCreate()
 {
 	return true ;
@@ -588,7 +587,7 @@ bool GGui::Cracker::onDeactivateApp( DWORD )
 bool GGui::Cracker::onEraseBackground( HDC hdc )
 {
 	WPARAM wparam = reinterpret_cast<WPARAM>(hdc) ;
-	return !! DefWindowProc( handle() , WM_ERASEBKGND , wparam , 0L ) ;
+	return !! G::nowide::defWindowProc( handle() , WM_ERASEBKGND , wparam , 0L ) ;
 }
 
 void GGui::Cracker::onMouseMove( int /*x*/ , int /*y*/ ,

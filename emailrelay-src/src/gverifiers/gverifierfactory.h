@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -24,7 +24,8 @@
 #include "gdef.h"
 #include "gverifierfactorybase.h"
 #include "gverifier.h"
-#include "gexceptionsink.h"
+#include "geventstate.h"
+#include "gstringview.h"
 #include "gstringarray.h"
 #include <string>
 #include <utility>
@@ -44,7 +45,7 @@ public:
 	VerifierFactory() ;
 		///< Constructor.
 
-	static Spec parse( const std::string & spec , const G::Path & base_dir = {} ,
+	static Spec parse( std::string_view spec , const G::Path & base_dir = {} ,
 		const G::Path & app_dir = {} , G::StringArray * warnings_p = nullptr ) ;
 			///< Parses a verifier specification string like "/usr/bin/foo" or
 			///< "net:127.0.0.1:99" or "net:/run/spamd.s", returning the
@@ -65,7 +66,7 @@ public:
 			///< as missing files.
 
 protected: // overrides
-	std::unique_ptr<GSmtp::Verifier> newVerifier( GNet::ExceptionSink ,
+	std::unique_ptr<GSmtp::Verifier> newVerifier( GNet::EventState ,
 		const GSmtp::Verifier::Config & config ,
 		const GSmtp::VerifierFactoryBase::Spec & spec ) override ;
 

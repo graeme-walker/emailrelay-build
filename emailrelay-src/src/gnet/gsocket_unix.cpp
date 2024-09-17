@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -84,7 +84,7 @@ void GNet::SocketBase::unlink() noexcept
 		if( !path.empty() && path.at(0U) == '/' )
 		{
 			G_DEBUG( "GNet::SocketBase::unlink: deleting unix-domain socket: fd=" << m_fd.fd() << " path=[" << G::Str::printable(path) << "]" ) ;
-			G::File::remove( path , std::nothrow ) ; // best-effort -- see also G::Root
+			G::File::remove( G::Path(path) , std::nothrow ) ; // best-effort -- see also G::Root
 		}
 	}
 	catch(...)
@@ -130,6 +130,11 @@ bool GNet::SocketBase::eWouldBlock() const
 bool GNet::SocketBase::eInProgress() const
 {
 	return m_reason == EINPROGRESS ;
+}
+
+bool GNet::SocketBase::eInUse() const
+{
+	return m_reason == EADDRINUSE ;
 }
 
 #ifndef G_LIB_SMALL
@@ -250,7 +255,7 @@ std::size_t GNet::DatagramSocket::limit( std::size_t default_in ) const
 #endif
 
 #ifndef G_LIB_SMALL
-GNet::Socket::ssize_type GNet::DatagramSocket::writeto( const std::vector<G::string_view> & data , const Address & dst )
+GNet::Socket::ssize_type GNet::DatagramSocket::writeto( const std::vector<std::string_view> & data , const Address & dst )
 {
 	ssize_type nsent = G::Msg::sendto( fd() , data , MSG_NOSIGNAL , dst.address() , dst.length() ) ;
 	if( nsent < 0 )

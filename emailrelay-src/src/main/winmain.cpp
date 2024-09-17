@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -29,21 +29,17 @@
 #include "resource.h"
 #include <clocale>
 
-int WINAPI WinMain( HINSTANCE hinstance , HINSTANCE previous , LPSTR command_line , int show_style )
+int WINAPI WinMain( HINSTANCE hinstance , HINSTANCE previous , LPSTR /*command_line*/ , int show_style )
 {
 	try
 	{
 		#if 0
-			// set the C locale from the environment -- this has very little effect
-			// on C++ code on windows, particularly as we avoid things like atoi(),
-			// tolower(), strtoul() etc. -- however, it is probably best not to
-			// use it at all because of possible interaction between the MBCS
-			// functions and the locale
+			// set the C locale from the environment -- this has no effect
+			// since we avoid things like atoi(), tolower(), strtoul() etc.
 			::setlocale( LC_ALL , "" ) ;
 		#endif
 
-		G::Arg arg ;
-		arg.parse( hinstance , command_line ) ;
+		G::Arg arg = G::Arg::windows() ; // GetCommandLineW()
 
 		Main::WinApp app( hinstance , previous , "E-MailRelay" ) ;
 		Main::Run run( app , arg , /*has-gui=*/true ) ;
@@ -64,7 +60,15 @@ int WINAPI WinMain( HINSTANCE hinstance , HINSTANCE previous , LPSTR command_lin
 		}
 		catch( GNet::SocketBase::SocketBindError & e )
 		{
-			app.onError( e.what() , 2 ) ;
+			if( e.m_einuse )
+			{
+				std::string_view help = "check whether emailrelay is already running as a service" ;
+				app.onError( std::string(e.what()).append(": ",2U).append(help.data(),help.size()) , 2 ) ;
+			}
+			else
+			{
+				app.onError( e.what() , 2 ) ;
+			}
 		}
 		catch( std::exception & e )
 		{
@@ -75,7 +79,7 @@ int WINAPI WinMain( HINSTANCE hinstance , HINSTANCE previous , LPSTR command_lin
 	}
 	catch(...)
 	{
-		::MessageBeep( MB_ICONHAND ) ;
+		MessageBeep( MB_ICONHAND ) ;
 	}
 	return 1 ;
 }

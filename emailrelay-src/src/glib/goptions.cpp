@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -152,12 +152,10 @@ bool G::Options::visible( const std::string & name , unsigned int level , bool l
 	return p ? p->visible({level_exact?level:1U,level}) : false ;
 }
 
-#ifndef G_LIB_SMALL
 bool G::Options::visible( const std::string & name ) const
 {
 	return visible( name , 99U , false ) ;
 }
-#endif
 
 bool G::Options::valid( const std::string & name ) const
 {
@@ -176,7 +174,7 @@ std::string G::Options::lookup( char c ) const
 
 const G::Option * G::Options::find( const std::string & name ) const
 {
-	for( auto & option : m_list )
+	for( const auto & option : m_list )
 	{
 		if( option.name == name )
 			return &option ;

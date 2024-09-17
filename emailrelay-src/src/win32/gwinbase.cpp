@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -19,6 +19,7 @@
 ///
 
 #include "gdef.h"
+#include "gnowide.h"
 #include "gstr.h"
 #include "gwinbase.h"
 #include "glog.h"
@@ -33,10 +34,9 @@ GGui::WindowBase::WindowBase( HWND hwnd ) :
 }
 
 GGui::WindowBase::~WindowBase()
-{
-}
+= default ;
 
-void GGui::WindowBase::setHandle( HWND hwnd )
+void GGui::WindowBase::setHandle( HWND hwnd ) noexcept
 {
 	m_hwnd = hwnd ;
 }
@@ -73,22 +73,11 @@ GGui::Size GGui::WindowBase::externalSize() const
 
 std::string GGui::WindowBase::windowClass() const
 {
-	std::vector<char> buffer( 257U ) ; // atom size limit
-	buffer[0U] = '\0' ;
-	GetClassNameA( m_hwnd , &buffer[0] , static_cast<int>(buffer.size()-1U) ) ;
-	buffer[buffer.size()-1U] = '\0' ;
-
-	if( (std::strlen(&buffer[0])+1U) == buffer.size() )
-	{
-		G_WARNING( "GGui::WindowBase::windowClass: possible truncation: "
-			<< "\"" << G::Str::printable(std::string(&buffer[0])) << "\"" ) ;
-	}
-
-	return std::string( &buffer[0] ) ;
+	return G::nowide::getClassName( m_hwnd ) ;
 }
 
 HINSTANCE GGui::WindowBase::windowInstanceHandle() const
 {
-	return reinterpret_cast<HINSTANCE>(GetWindowLongPtr(m_hwnd,GWLP_HINSTANCE)) ;
+	return reinterpret_cast<HINSTANCE>(G::nowide::getWindowLongPtr(m_hwnd,GWLP_HINSTANCE)) ;
 }
 

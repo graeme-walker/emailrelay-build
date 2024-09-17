@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -63,7 +63,7 @@ int main( int argc , char * argv [] )
 	bool ok = false ;
 	try
 	{
-		G::Arg arg( argc , argv ) ;
+		G::Arg arg = G::is_windows() ? G::Arg::windows() : G::Arg(argc,argv) ;
 
 		#if GCONFIG_ENABLE_SUBMISSION
 			if( Main::Submission::enabled(arg) )

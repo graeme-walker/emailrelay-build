@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -117,6 +117,7 @@ bool GNet::SocketBase::isFamily( Address::Family family ) const
 
 void GNet::SocketBase::drop() noexcept
 {
+	static_assert( noexcept(dropReadHandler()) , "" ) ;
 	dropReadHandler() ;
 	dropWriteHandler() ;
 	dropOtherHandler() ;
@@ -151,7 +152,7 @@ GNet::SocketBase::ssize_type GNet::SocketBase::writeImp( const char * buffer , s
 	return nsent;
 }
 
-void GNet::SocketBase::addReadHandler( EventHandler & handler , ExceptionSink es )
+void GNet::SocketBase::addReadHandler( EventHandler & handler , EventState es )
 {
 	G_DEBUG( "GNet::SocketBase::addReadHandler: fd " << m_fd ) ;
 	if( !m_read_added )
@@ -159,7 +160,7 @@ void GNet::SocketBase::addReadHandler( EventHandler & handler , ExceptionSink es
 	m_read_added = true ;
 }
 
-void GNet::SocketBase::addWriteHandler( EventHandler & handler , ExceptionSink es )
+void GNet::SocketBase::addWriteHandler( EventHandler & handler , EventState es )
 {
 	G_DEBUG( "GNet::SocketBase::addWriteHandler: fd " << m_fd ) ;
 	if( !m_write_added )
@@ -167,7 +168,7 @@ void GNet::SocketBase::addWriteHandler( EventHandler & handler , ExceptionSink e
 	m_write_added = true ;
 }
 
-void GNet::SocketBase::addOtherHandler( EventHandler & handler , ExceptionSink es )
+void GNet::SocketBase::addOtherHandler( EventHandler & handler , EventState es )
 {
 	G_DEBUG( "GNet::SocketBase::addOtherHandler: fd " << m_fd ) ;
 	if( !m_other_added )
@@ -200,6 +201,13 @@ SOCKET GNet::SocketBase::fd() const noexcept
 {
 	return m_fd.fd() ;
 }
+
+#ifndef G_LIB_SMALL
+GNet::Descriptor GNet::SocketBase::fdd() const noexcept
+{
+	return m_fd ;
+}
+#endif
 
 std::string GNet::SocketBase::reason() const
 {
@@ -250,7 +258,7 @@ void GNet::Socket::bind( const Address & local_address )
 	if( error(rc) )
 	{
 		saveReason() ;
-		throw SocketBindError( local_address.displayString() , reason() ) ;
+		throw SocketBindError( local_address , reason() , eInUse() ) ;
 	}
 	m_bound_scope_id = local_address.scopeId() ;
 }
@@ -520,7 +528,7 @@ GNet::AcceptInfo GNet::StreamSocket::accept()
 {
 	AddressStorage addr ;
 	Descriptor new_fd( ::accept(fd(),addr.p1(),addr.p2()) ) ;
-	if( ! new_fd.valid() )
+	if( !new_fd.validfd() )
 	{
 		saveReason() ;
 		if( eTooMany() )
@@ -627,7 +635,7 @@ GNet::Socket::ssize_type GNet::DatagramSocket::writeto( const char * buffer , si
 	if( nsent < 0 )
 	{
 		saveReason() ;
-		G_DEBUG( "GNet::DatagramSocket::write: write error " << reason() ) ;
+		G_DEBUG( "GNet::DatagramSocket::write: write error: " << reason() ) ;
 		return -1 ;
 	}
 	return nsent ;

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -72,7 +72,7 @@ G::Path Gui::Dir::pid( const G::Path & )
 
 G::Path Gui::Dir::desktop()
 {
-	return home() + "Desktop" ;
+	return home() / "Desktop" ;
 }
 
 G::Path Gui::Dir::menu()
@@ -109,6 +109,6 @@ std::string Gui::DirImp::rebase( const std::string & dir )
 
 G::Path Gui::DirImp::envPath( const std::string & key , const G::Path & default_ )
 {
-	return G::Path( G::Environment::get( key , default_.str() ) ) ;
+	return G::Environment::getPath( key , default_ ) ;
 }
 

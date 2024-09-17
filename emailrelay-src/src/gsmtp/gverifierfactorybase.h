@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -23,7 +23,8 @@
 
 #include "gdef.h"
 #include "gverifier.h"
-#include "gexceptionsink.h"
+#include "geventstate.h"
+#include "gstringview.h"
 #include <string>
 #include <utility>
 #include <memory>
@@ -42,12 +43,12 @@ public:
 	struct Spec /// Verifier specification tuple for GSmtp::VerifierFactoryBase::newVerifier().
 	{
 		Spec() ;
-		Spec( const std::string & , const std::string & ) ;
+		Spec( std::string_view , std::string_view ) ;
 		std::string first ; // "exit", "file", "net", empty on error
 		std::string second ; // reason on error, or eg. "/bin/a" if "file"
 	} ;
 
-	virtual std::unique_ptr<Verifier> newVerifier( GNet::ExceptionSink ,
+	virtual std::unique_ptr<Verifier> newVerifier( GNet::EventState ,
 		const Verifier::Config & config , const Spec & spec ) = 0 ;
 			///< Returns a Verifier on the heap. Throws if an invalid
 			///< or unsupported specification.

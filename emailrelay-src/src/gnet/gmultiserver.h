@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -47,9 +47,8 @@ namespace GNet
 class GNet::MultiServer : private InterfacesHandler
 {
 public:
-	G_EXCEPTION( NoListeningAddresses , tx("no listening addresses") ) ;
-	G_EXCEPTION( InvalidName , tx("invalid address or interface name") ) ;
-	G_EXCEPTION( InvalidFd , tx("invalid listening file descriptor number") ) ;
+	G_EXCEPTION( NoListeningAddresses , tx("no listening addresses") )
+	G_EXCEPTION( InvalidName , tx("invalid address or interface name") )
 	using AddressList = std::vector<Address> ;
 
 	struct ServerInfo /// A structure used in GNet::MultiServer::newPeer().
@@ -58,11 +57,11 @@ public:
 		Address m_address ; ///< The server address that the peer connected to.
 	} ;
 
-	MultiServer( ExceptionSink listener_exception_sink , const G::StringArray & listen_list ,
+	MultiServer( EventState es_listener , const G::StringArray & listen_list ,
 		unsigned int port , const std::string & server_type ,
 		ServerPeer::Config server_peer_config , Server::Config server_config ) ;
 			///< Constructor. The server listens on inherited file descriptors
-			///< formatted like "#3", specific local addresses (eg. "127.0.0.1")
+			///< formatted like "fd#3", specific local addresses (eg. "127.0.0.1")
 			///< and addresses from named interfaces ("eth0").
 			///<
 			///< Listens on "0.0.0.0" and "::" if the listen list is
@@ -79,12 +78,14 @@ public:
 
 	std::vector<std::weak_ptr<ServerPeer>> peers() ;
 		///< Returns the list of ServerPeer-derived objects.
+		///< The returned ServerPeer objects must not outlive
+		///< this MultiServer.
 
-	std::unique_ptr<ServerPeer> doNewPeer( ExceptionSinkUnbound , ServerPeerInfo && , const ServerInfo & ) ;
+	std::unique_ptr<ServerPeer> doNewPeer( EventStateUnbound , ServerPeerInfo && , const ServerInfo & ) ;
 		///< Pseudo-private method used by the pimple class.
 
 protected:
-	virtual std::unique_ptr<ServerPeer> newPeer( ExceptionSinkUnbound , ServerPeerInfo && , ServerInfo ) = 0 ;
+	virtual std::unique_ptr<ServerPeer> newPeer( EventStateUnbound , ServerPeerInfo && , ServerInfo ) = 0 ;
 		///< A factory method which creates a ServerPeer-derived
 		///< object. See GNet::Server for the details.
 
@@ -120,7 +121,7 @@ private:
 	ServerList::iterator removeServer( ServerList::iterator ) ;
 
 private:
-	ExceptionSink m_es ;
+	EventState m_es ;
 	G::StringArray m_listener_list ;
 	unsigned int m_port ;
 	std::string m_server_type ;
@@ -137,16 +138,16 @@ private:
 class GNet::MultiServerImp : public GNet::Server
 {
 public:
-	MultiServerImp( MultiServer & , ExceptionSink , bool fixed , const Address & , ServerPeer::Config , Server::Config ) ;
+	MultiServerImp( MultiServer & , EventState , bool fixed , const Address & , ServerPeer::Config , Server::Config ) ;
 		///< Constructor.
 
-	MultiServerImp( MultiServer & , ExceptionSink , Descriptor , ServerPeer::Config , Server::Config ) ;
+	MultiServerImp( MultiServer & , EventState , Descriptor , ServerPeer::Config , Server::Config ) ;
 		///< Constructor.
 
 	~MultiServerImp() override ;
 		///< Destructor.
 
-	std::unique_ptr<ServerPeer> newPeer( ExceptionSinkUnbound , ServerPeerInfo&& ) final ;
+	std::unique_ptr<ServerPeer> newPeer( EventStateUnbound , ServerPeerInfo&& ) final ;
 		///< Called by the base class to create a new ServerPeer.
 
 	void cleanup() ;

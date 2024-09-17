@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -40,7 +40,6 @@
 namespace GNet
 {
 	class EventLoopImp ;
-	class EventLoopHandles ;
 }
 
 class GNet::EventLoopImp : public EventLoop
@@ -58,9 +57,9 @@ private: // overrides
 	void quit( const std::string & ) override ;
 	void quit( const G::SignalSafe & ) override ;
 	void disarm( ExceptionHandler * ) noexcept override ;
-	void addRead( Descriptor , EventHandler & , ExceptionSink ) override ;
-	void addWrite( Descriptor , EventHandler & , ExceptionSink ) override ;
-	void addOther( Descriptor , EventHandler & , ExceptionSink ) override ;
+	void addRead( Descriptor , EventHandler & , EventState ) override ;
+	void addWrite( Descriptor , EventHandler & , EventState ) override ;
+	void addOther( Descriptor , EventHandler & , EventState ) override ;
 	void dropRead( Descriptor ) noexcept override ;
 	void dropWrite( Descriptor ) noexcept override ;
 	void dropOther( Descriptor ) noexcept override ;
@@ -107,17 +106,12 @@ public:
 			m_handle(fdd.h())
 		{
 		}
-		Descriptor fd() const
-		{
-			return Descriptor( m_socket , m_handle ) ;
-		}
-		ListItemType m_type{ListItemType::socket} ;
+		ListItemType m_type {ListItemType::socket} ;
 		SOCKET m_socket {INVALID_SOCKET} ;
 		HANDLE m_handle {HNULL} ;
 		long m_events {0L} ; // 0 => new or garbage
-		EventEmitter m_read_emitter ;
-		EventEmitter m_write_emitter ;
-		EventEmitter m_other_emitter ;
+		EventState m_es {EventState::Private(),nullptr,nullptr} ;
+		EventHandler * m_handler {nullptr} ;
 	} ;
 	using List = std::vector<ListItem> ;
 
@@ -129,6 +123,7 @@ private:
 	void handleSimpleEvent( ListItem & ) ;
 	void handleSocketEvent( std::size_t ) ;
 	void checkForOverflow( const ListItem & ) ;
+	bool collectGarbage() ;
 	DWORD ms() ;
 	static DWORD ms( s_type , us_type ) noexcept ;
 	static bool isValid( const ListItem & ) ;
@@ -142,6 +137,7 @@ private:
 	bool m_dirty ;
 	bool m_quit ;
 	std::string m_quit_reason ;
+	EventState m_es_current {EventState::Private(),nullptr,nullptr} ;
 } ;
 
 std::unique_ptr<GNet::EventLoop> GNet::EventLoop::create()
@@ -153,7 +149,7 @@ std::unique_ptr<GNet::EventLoop> GNet::EventLoop::create()
 
 GNet::EventLoopImp::EventLoopImp() :
 	m_running(false) ,
-	m_dirty(true) ,
+	m_dirty(false) ,
 	m_quit(false)
 {
 	m_handles = std::make_unique<EventLoopHandles>() ;
@@ -163,13 +159,15 @@ GNet::EventLoopImp::~EventLoopImp()
 {
 }
 
-void GNet::EventLoopImp::disarm( ExceptionHandler * p ) noexcept
+void GNet::EventLoopImp::disarm( ExceptionHandler * eh ) noexcept
 {
+	if( m_es_current.eh() == eh )
+		m_es_current.disarm() ;
+
 	for( auto & item : m_list )
 	{
-		item.m_read_emitter.disarm( p ) ;
-		item.m_write_emitter.disarm( p ) ;
-		item.m_other_emitter.disarm( p ) ;
+		if( item.m_es.eh() == eh )
+			item.m_es.disarm() ;
 	}
 }
 
@@ -180,7 +178,11 @@ bool GNet::EventLoopImp::running() const
 
 std::string GNet::EventLoopImp::run()
 {
-	m_handles->init( m_list ) ;
+	collectGarbage() ; // in case re-run() after an exception
+
+	std::size_t i = 0U ;
+	List * list_p = &m_list ;
+	m_handles->update( m_list.size() , [list_p,&i](){return (*list_p)[i++].m_handle;} ) ;
 
 	G::ScopeExitSetFalse running( m_running = true ) ;
 	m_dirty = false ;
@@ -197,25 +199,26 @@ std::string GNet::EventLoopImp::run()
 
 void GNet::EventLoopImp::runOnce()
 {
+	G_ASSERT( std::find_if(m_list.begin(),m_list.end(),[](const ListItem & i){return i.m_handle==HNULL;}) == m_list.end() ) ;
+	G_ASSERT( std::find_if(m_list.begin(),m_list.end(),[](const ListItem & i){return i.m_events==0L;}) == m_list.end() ) ;
+	G_ASSERT( !m_dirty ) ;
+
 	EventLoopHandles & handles = *m_handles ;
 
-	if( handles.overflow( m_list.size() ) )
-		throw Overflow( handles.help(m_list,false) ) ;
-
 	auto rc = handles.wait( ms() ) ;
-
-	if( rc == RcType::timeout )
+	if( rc == RcType::overflow )
+	{
+		throw Overflow() ;
+	}
+	else if( rc == RcType::timeout )
 	{
 		TimerList::instance().doTimeouts() ;
 	}
 	else if( rc == RcType::event )
 	{
-		// let the handles object shuffle our list
-		std::size_t list_index = handles.shuffle( m_list , rc ) ;
-
-		ListItem & list_item = m_list[list_index] ;
+		ListItem & list_item = m_list[rc.index()] ;
 		if( list_item.m_type == ListItemType::socket )
-			handleSocketEvent( list_index ) ;
+			handleSocketEvent( rc.index() ) ;
 		else
 			handleSimpleEvent( list_item ) ;
 	}
@@ -231,25 +234,31 @@ void GNet::EventLoopImp::runOnce()
 	}
 	else if( rc == RcType::failed )
 	{
-		DWORD e = GetLastError() ;
-		throw Error( "wait-for-multiple-objects failed" ,
-			G::Str::fromUInt(static_cast<unsigned int>(e)) ) ;
+		throw Error( "wait failed (" + std::to_string(rc.m_error) + ")" ) ;
 	}
 	else // rc == RcType::other
 	{
 		; // no-op
 	}
 
-	// garbage collection
-	bool updated = m_dirty ; // m_list updated as a result of event handling
+	// remove from m_list where logically deleted
+	bool was_dirty = collectGarbage() ;
+
+	// let the handles object see the new, garbage-collected list
+	std::size_t i = 0U ;
+	List * list_p = &m_list ;
+	handles.update( m_list.size() , [list_p,&i](){return (*list_p)[i++].m_handle;} , was_dirty ) ;
+}
+
+bool GNet::EventLoopImp::collectGarbage()
+{
+	bool was_dirty = m_dirty ; // ie. m_list updated by adds and/or drops during event handling
 	if( m_dirty )
 	{
 		m_list.erase( std::remove_if(m_list.begin(),m_list.end(),&EventLoopImp::isInvalid) , m_list.end() ) ;
 		m_dirty = false ;
 	}
-
-	// let the handles object see the new, garbage-collected list
-	handles.update( m_list , updated , rc ) ;
+	return was_dirty ;
 }
 
 DWORD GNet::EventLoopImp::ms()
@@ -293,104 +302,121 @@ void GNet::EventLoopImp::quit( const G::SignalSafe & )
 	m_quit = true ;
 }
 
-GNet::EventLoopImp::ListItem * GNet::EventLoopImp::find( Descriptor fd )
+GNet::EventLoopImp::ListItem * GNet::EventLoopImp::find( Descriptor fdd )
 {
-	const HANDLE h = fd.h() ;
+	const HANDLE h = fdd.h() ;
 	auto p = std::find_if( m_list.begin() , m_list.end() , [h](const ListItem & i){return i.m_handle==h;} ) ;
 	return p == m_list.end() ? nullptr : &(*p) ;
 }
 
-GNet::EventLoopImp::ListItem & GNet::EventLoopImp::findOrCreate( Descriptor fd )
+GNet::EventLoopImp::ListItem & GNet::EventLoopImp::findOrCreate( Descriptor fdd )
 {
-	G_ASSERT( fd.h() != HNULL ) ;
-	const HANDLE h = fd.h() ;
+	G_ASSERT( fdd.h() != HNULL ) ;
+	const HANDLE h = fdd.h() ;
 	auto p = std::find_if( m_list.begin() , m_list.end() , [h](const ListItem & i){return i.m_handle==h;} ) ;
 	if( p == m_list.end() )
 	{
-		m_list.emplace_back( fd ) ;
+		m_list.emplace_back( fdd ) ;
 		p = m_list.begin() + m_list.size() - 1U ;
 		(*p).m_events = 0 ; // => newly created
 	}
 	return *p ;
 }
 
-void GNet::EventLoopImp::addRead( Descriptor fd , EventHandler & handler , ExceptionSink es )
+void GNet::EventLoopImp::addRead( Descriptor fdd , EventHandler & handler , EventState es )
 {
-	handler.setDescriptor( fd ) ; // see EventHandler::dtor
-	ListItem & item = findOrCreate( fd ) ;
+	G_ASSERT( fdd.h() != HNULL ) ;
+	handler.setDescriptor( fdd ) ; // see EventHandler::dtor
+	ListItem & item = findOrCreate( fdd ) ;
 	checkForOverflow( item ) ;
 	m_dirty |= ( item.m_events == 0L ) ; // dirty if new Item created
 	item.m_events |= READ_EVENTS ;
-	item.m_read_emitter = EventEmitter( &handler , es ) ;
-	fdupdate( fd , item.m_events ) ;
+	item.m_handler = &handler ;
+	item.m_es = es ;
+	fdupdate( fdd , item.m_events ) ;
 }
 
-void GNet::EventLoopImp::addWrite( Descriptor fd , EventHandler & handler , ExceptionSink es )
+void GNet::EventLoopImp::addWrite( Descriptor fdd , EventHandler & handler , EventState es )
 {
-	handler.setDescriptor( fd ) ; // see EventHandler::dtor
-	ListItem & item = findOrCreate( fd ) ;
+	G_ASSERT( fdd.h() != HNULL ) ;
+	handler.setDescriptor( fdd ) ; // see EventHandler::dtor
+	ListItem & item = findOrCreate( fdd ) ;
 	checkForOverflow( item ) ;
 	m_dirty |= ( item.m_events == 0L ) ;
 	item.m_events |= WRITE_EVENTS ;
-	item.m_write_emitter = EventEmitter( &handler , es ) ;
-	fdupdate( fd , item.m_events ) ;
+	item.m_handler = &handler ;
+	item.m_es = es ;
+	fdupdate( fdd , item.m_events ) ;
 }
 
-void GNet::EventLoopImp::addOther( Descriptor fd , EventHandler & handler , ExceptionSink es )
+void GNet::EventLoopImp::addOther( Descriptor fdd , EventHandler & handler , EventState es )
 {
-	handler.setDescriptor( fd ) ; // see EventHandler::dtor
-	ListItem & item = findOrCreate( fd ) ;
+	G_ASSERT( fdd.h() != HNULL ) ;
+	handler.setDescriptor( fdd ) ; // see EventHandler::dtor
+	ListItem & item = findOrCreate( fdd ) ;
 	checkForOverflow( item ) ;
 	m_dirty |= ( item.m_events == 0L ) ;
 	item.m_events |= EXCEPTION_EVENTS ;
-	item.m_other_emitter = EventEmitter( &handler , es ) ;
-	fdupdate( fd , item.m_events ) ;
+	item.m_handler = &handler ;
+	item.m_es = es ;
+	fdupdate( fdd , item.m_events ) ;
 }
 
-void GNet::EventLoopImp::dropRead( Descriptor fd ) noexcept
+void GNet::EventLoopImp::dropRead( Descriptor fdd ) noexcept
 {
-	ListItem * item = find( fd ) ;
+	ListItem * item = find( fdd ) ;
 	if( item )
 	{
 		item->m_events &= ~READ_EVENTS ;
-		fdupdate( fd , item->m_events , std::nothrow ) ;
-		m_dirty |= ( item->m_events == 0L ) ; // dirty if Item now logically deleted
+		fdupdate( fdd , item->m_events , std::nothrow ) ;
+		if( item->m_events == 0L ) // logically deleted
+		{
+			m_dirty = true ;
+			m_handles->onClose( fdd.h() ) ;
+		}
 	}
 }
 
-void GNet::EventLoopImp::dropWrite( Descriptor fd ) noexcept
+void GNet::EventLoopImp::dropWrite( Descriptor fdd ) noexcept
 {
-	ListItem * item = find( fd ) ;
+	ListItem * item = find( fdd ) ;
 	if( item )
 	{
 		item->m_events &= ~WRITE_EVENTS ;
-		fdupdate( fd , item->m_events , std::nothrow ) ;
-		m_dirty |= ( item->m_events == 0L ) ;
+		fdupdate( fdd , item->m_events , std::nothrow ) ;
+		if( item->m_events == 0L )
+		{
+			m_dirty = true ;
+			m_handles->onClose( fdd.h() ) ;
+		}
 	}
 }
 
-void GNet::EventLoopImp::dropOther( Descriptor fd ) noexcept
+void GNet::EventLoopImp::dropOther( Descriptor fdd ) noexcept
 {
-	ListItem * item = find( fd ) ;
+	ListItem * item = find( fdd ) ;
 	if( item )
 	{
 		item->m_events &= ~EXCEPTION_EVENTS ;
-		fdupdate( fd , item->m_events , std::nothrow ) ;
-		m_dirty |= ( item->m_events == 0L ) ;
+		fdupdate( fdd , item->m_events , std::nothrow ) ;
+		if( item->m_events == 0L )
+		{
+			m_dirty = true ;
+			m_handles->onClose( fdd.h() ) ;
+		}
 	}
 }
 
-void GNet::EventLoopImp::drop( Descriptor fd ) noexcept
+void GNet::EventLoopImp::drop( Descriptor fdd ) noexcept
 {
-	ListItem * item = find( fd ) ;
+	ListItem * item = find( fdd ) ;
 	if( item )
 	{
 		item->m_events = 0U ;
-		fdupdate( fd , item->m_events , std::nothrow ) ;
-		item->m_read_emitter.reset() ;
-		item->m_write_emitter.reset() ;
-		item->m_other_emitter.reset() ;
+		fdupdate( fdd , item->m_events , std::nothrow ) ;
+		item->m_handler = nullptr ;
 		m_dirty = true ;
+		m_handles->onClose( fdd.h() ) ;
 	}
 }
 
@@ -407,7 +433,8 @@ bool GNet::EventLoopImp::isValid( const ListItem & item )
 void GNet::EventLoopImp::handleSimpleEvent( ListItem & item )
 {
 	ResetEvent( item.m_handle ) ; // manual-reset event-object -- see GNet::FutureEvent
-	item.m_read_emitter.raiseReadEvent( Descriptor(INVALID_SOCKET,item.m_handle) ) ;
+	m_es_current = item.m_es ; // see disarm()
+	EventEmitter::raiseReadEvent( item.m_handler , m_es_current ) ;
 }
 
 void GNet::EventLoopImp::handleSocketEvent( std::size_t index )
@@ -432,13 +459,15 @@ void GNet::EventLoopImp::handleSocketEvent( std::size_t index )
 	long events = events_info.lNetworkEvents ;
 	if( events & READ_EVENTS )
 	{
-		item->m_read_emitter.raiseReadEvent( item->fd() ) ;
+		m_es_current = item->m_es ;
+		EventEmitter::raiseReadEvent( item->m_handler , m_es_current ) ;
 		item = nullptr ;
 	}
 	if( events & WRITE_EVENTS )
 	{
 		item = item ? item : &m_list[index] ;
-		item->m_write_emitter.raiseWriteEvent( item->fd() ) ;
+		m_es_current = item->m_es ;
+		EventEmitter::raiseWriteEvent( item->m_handler , m_es_current ) ;
 		item = nullptr ;
 	}
 	if( events & EXCEPTION_EVENTS )
@@ -449,7 +478,10 @@ void GNet::EventLoopImp::handleSocketEvent( std::size_t index )
 		{
 			int e = events_info.iErrorCode[FD_CONNECT_BIT] ;
 			if( e )
-				item->m_other_emitter.raiseOtherEvent( item->fd() , EventHandler::Reason::failed ) ;
+			{
+				m_es_current = item->m_es ;
+				EventEmitter::raiseOtherEvent( item->m_handler , m_es_current , EventHandler::Reason::failed ) ;
+			}
 		}
 		else
 		{
@@ -459,7 +491,8 @@ void GNet::EventLoopImp::handleSocketEvent( std::size_t index )
 			if( e == WSAENETDOWN ) reason = EventHandler::Reason::down ;
 			if( e == WSAECONNRESET ) reason = EventHandler::Reason::reset ;
 			if( e == WSAECONNABORTED ) reason = EventHandler::Reason::abort ;
-			item->m_other_emitter.raiseOtherEvent( item->fd() , reason ) ;
+			m_es_current = item->m_es ;
+			EventEmitter::raiseOtherEvent( item->m_handler , m_es_current , reason ) ;
 		}
 	}
 }
@@ -468,10 +501,22 @@ void GNet::EventLoopImp::checkForOverflow( const ListItem & item )
 {
 	G_ASSERT( m_handles != nullptr ) ;
 	const bool is_new = item.m_events == 0L ;
-	if( is_new && m_handles->overflow( m_list , &EventLoopImp::isValid ) )
+
+	List * list_p = &m_list ;
+	std::function<std::size_t()> count_valid_fn = [list_p](){
+		std::size_t n = 0 ;
+		for( auto p = list_p->cbegin() ; p != list_p->cend() ; ++p )
+		{
+			if( std::next(p) == list_p->cend() || isValid(*p) ) // always count the one we've just added
+				n++ ;
+		}
+		return n ;
+	} ;
+
+	if( is_new && m_handles->overflow( m_list.size() , count_valid_fn ) )
 	{
 		m_list.pop_back() ;
-		throw Overflow( m_handles->help(m_list,true) ) ;
+		throw Overflow() ;
 	}
 }
 

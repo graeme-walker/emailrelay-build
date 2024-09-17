@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -30,13 +30,14 @@
 //           --auth-login            enable mechanism login
 //           --auth-ok               successful authentication
 //           --auth-plain            enable mechanism plain
-//           --drop                  drop the connection when content has DROP or when
+//           --drop                  drop the connection when content has DROP or when --fail-at
 //           --fail-at=<n>           fail from the n'th message
 //           --idle-timeout=<s>      idle timeout
 //           --pause                 slow final ok response
-//           --terminate             terminate when failing
+//           --terminate             quit the event-loop when --fail-at
 //           --tls                   enable tls
 //           --huge                  send huge smtp responses
+//           --loopback              listen on loopback address (127.0.0.1)
 //
 
 #include "gdef.h"
@@ -55,6 +56,7 @@
 #include "glogoutput.h"
 #include "gexception.h"
 #include "gsleep.h"
+#include "glog.h"
 #include <string>
 #include <fstream>
 #include <exception>
@@ -78,12 +80,13 @@ struct TestServerConfig
 	bool m_quiet ;
 	unsigned int m_idle_timeout ;
 	std::size_t m_huge ;
+	bool m_loopback ;
 } ;
 
 class Peer : public GNet::ServerPeer
 {
 public:
-	Peer( GNet::ExceptionSinkUnbound , GNet::ServerPeerInfo && , TestServerConfig ) ;
+	Peer( GNet::EventStateUnbound , GNet::ServerPeerInfo && , TestServerConfig ) ;
 	void onDelete( const std::string & ) override ;
 	void onSendComplete() override ;
 	bool onReceive( const char * , std::size_t , std::size_t , std::size_t , char ) override ;
@@ -94,7 +97,7 @@ private:
 	void onPauseTimeout() ;
 
 private:
-	GNet::ExceptionSink m_es ;
+	GNet::EventState m_es ;
 	TestServerConfig m_config ;
 	GNet::Timer<Peer> m_pause_timer ;
 	bool m_in_data ;
@@ -106,21 +109,22 @@ private:
 class Server : public GNet::Server
 {
 public:
-	Server( GNet::ExceptionSink , TestServerConfig ) ;
+	Server( GNet::EventState , TestServerConfig ) ;
 	~Server() override ;
-	std::unique_ptr<GNet::ServerPeer> newPeer( GNet::ExceptionSinkUnbound , GNet::ServerPeerInfo && ) override ;
+	std::unique_ptr<GNet::ServerPeer> newPeer( GNet::EventStateUnbound , GNet::ServerPeerInfo && ) override ;
 	TestServerConfig m_config ;
-	static GNet::Address address( const TestServerConfig & config )
+	static GNet::Address listenAddress( const TestServerConfig & config )
 	{
 		auto family = config.m_ipv6 ? GNet::Address::Family::ipv6 : GNet::Address::Family::ipv4 ;
-		//return GNet::Address( family , config.m_port ) ;
-		return GNet::Address::loopback( family , config.m_port ) ;
+		return config.m_loopback ?
+			GNet::Address::loopback( family , config.m_port ) :
+			GNet::Address( family , config.m_port ) ;
 	}
 } ;
 
-Server::Server( GNet::ExceptionSink es , TestServerConfig config ) :
+Server::Server( GNet::EventState es , TestServerConfig config ) :
 	GNet::Server(es,
-		GNet::Address(address(config)) ,
+		GNet::Address(listenAddress(config)) ,
 		GNet::ServerPeer::Config()
 			.set_socket_protocol_config( GNet::SocketProtocol::Config() )
 			.set_idle_timeout(config.m_idle_timeout),
@@ -134,7 +138,7 @@ Server::~Server()
 	serverCleanup() ; // base class early cleanup
 }
 
-std::unique_ptr<GNet::ServerPeer> Server::newPeer( GNet::ExceptionSinkUnbound esu , GNet::ServerPeerInfo && peer_info )
+std::unique_ptr<GNet::ServerPeer> Server::newPeer( GNet::EventStateUnbound esu , GNet::ServerPeerInfo && peer_info )
 {
 	try
 	{
@@ -150,9 +154,9 @@ std::unique_ptr<GNet::ServerPeer> Server::newPeer( GNet::ExceptionSinkUnbound es
 
 //
 
-Peer::Peer( GNet::ExceptionSinkUnbound esu , GNet::ServerPeerInfo && peer_info , TestServerConfig config ) :
-	GNet::ServerPeer(esu.bind(this),std::move(peer_info),GNet::LineBuffer::Config::smtp()) ,
-	m_es(esu.bind(this)) ,
+Peer::Peer( GNet::EventStateUnbound esu , GNet::ServerPeerInfo && peer_info , TestServerConfig config ) :
+	GNet::ServerPeer(esbind(esu,this),std::move(peer_info),GNet::LineBuffer::Config::smtp()) ,
+	m_es(esbind(esu,this)) ,
 	m_config(config) ,
 	m_pause_timer(*this,&Peer::onPauseTimeout,m_es) ,
 	m_in_data(false) ,
@@ -160,12 +164,13 @@ Peer::Peer( GNet::ExceptionSinkUnbound esu , GNet::ServerPeerInfo && peer_info ,
 	m_in_auth_2(false) ,
 	m_message(0)
 {
+	G_DEBUG( "Peer::ctor: new peer" ) ;
 	send( "220 test server\r\n"_sv ) ;
 }
 
 void Peer::onDelete( const std::string & )
 {
-	G_LOG_S( "Server::newPeer: connection dropped" ) ;
+	G_LOG_S( "Peer::onDelete: connection dropped" ) ;
 }
 
 void Peer::onSendComplete()
@@ -361,6 +366,7 @@ int main( int argc , char * argv [] )
 		G::Options::add( options , 'f' , "pid-file" , "pid file" , "" , M::one , "path" , 1 , 0 ) ;
 		G::Options::add( options , '6' , "ipv6" , "use ipv6" , "" , M::zero , "" , 1 , 0 ) ;
 		G::Options::add( options , 'H' , "huge" , "send huge ehlo response" , "" , M::zero , "" , 1 , 0 ) ;
+		G::Options::add( options , 'k' , "loopback" , "listen on loopback interface" , "" , M::zero , "" , 1 , 0 ) ;
 		G::GetOpt opt( arg , options ) ;
 		if( opt.hasErrors() )
 		{
@@ -389,6 +395,7 @@ int main( int argc , char * argv [] )
 		test_config.m_huge = opt.contains( "huge" ) ? 100000U : 0U ;
 		test_config.m_port = opt.contains("port") ? G::Str::toUInt(opt.value("port")) : 10025U ;
 		test_config.m_idle_timeout = opt.contains("idle-timeout") ? G::Str::toInt(opt.value("idle-timeout")) : 300U ;
+		test_config.m_loopback = opt.contains("loopback") ;
 		bool debug = opt.contains( "debug" ) ;
 
 		G::Path argv0 = G::Path(arg.v(0)).withoutExtension().basename() ;
@@ -419,7 +426,7 @@ int main( int argc , char * argv [] )
 			}
 
 			auto event_loop = GNet::EventLoop::create() ;
-			GNet::ExceptionSink es ;
+			auto es = GNet::EventState::create() ;
 			GNet::TimerList timer_list ;
 			Server server( es , test_config ) ;
 

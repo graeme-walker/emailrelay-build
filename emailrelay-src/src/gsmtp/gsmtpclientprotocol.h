@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -49,15 +49,15 @@ namespace GSmtp
 class GSmtp::ClientProtocol : private GNet::TimerBase
 {
 public:
-	G_EXCEPTION( NotReady , tx("not ready") ) ;
-	G_EXCEPTION( TlsError , tx("tls/ssl error") ) ;
-	G_EXCEPTION( BadSelector , tx("no client authentication account") ) ;
-	G_EXCEPTION_CLASS( SmtpError , tx("smtp error") ) ;
+	G_EXCEPTION( NotReady , tx("not ready") )
+	G_EXCEPTION( TlsError , tx("tls/ssl error") )
+	G_EXCEPTION( BadSelector , tx("no client authentication account") )
+	G_EXCEPTION_CLASS( SmtpError , tx("smtp error") )
 
 	class Sender /// An interface used by ClientProtocol to send protocol messages.
 	{
 	public:
-		virtual bool protocolSend( G::string_view , std::size_t offset , bool go_secure ) = 0 ;
+		virtual bool protocolSend( std::string_view , std::size_t offset , bool go_secure ) = 0 ;
 			///< Called by the Protocol class to send network data to
 			///< the peer.
 			///<
@@ -76,7 +76,7 @@ public:
 
 	struct Config /// A structure containing GSmtp::ClientProtocol configuration parameters.
 	{
-		std::string thishost_name ; // EHLO parameter
+		std::string ehlo ; // EHLO parameter
 		unsigned int response_timeout {0U} ;
 		unsigned int ready_timeout {0U} ;
 		bool use_starttls_if_possible {false} ;
@@ -93,7 +93,7 @@ public:
 		bool crlf_only {false} ; // CR-LF line endings, not as loose as RFC-2821 2.3.7
 		bool try_reauthentication {false} ; // try a new EHLO and AUTH if the client account changes
 		Config() ;
-		Config & set_thishost_name( const std::string & ) ;
+		Config & set_ehlo( const std::string & ) ;
 		Config & set_response_timeout( unsigned int ) noexcept ;
 		Config & set_ready_timeout( unsigned int ) noexcept ;
 		Config & set_use_starttls_if_possible( bool = true ) noexcept ;
@@ -118,7 +118,7 @@ public:
 		G::StringArray rejects ; // rejected RCPT-TO addresses
 	} ;
 
-	ClientProtocol( GNet::ExceptionSink , Sender & sender ,
+	ClientProtocol( GNet::EventState , Sender & sender ,
 		const GAuth::SaslClientSecrets & secrets , const std::string & sasl_client_config ,
 		const Config & config , bool in_secure_tunnel ) ;
 			///< Constructor. The Sender interface is used to send protocol
@@ -137,10 +137,14 @@ public:
 		///< to do message filtering. The signal callee must call
 		///< filterDone() when the filter has finished.
 
+	void reconfigure( const std::string & ehlo ) ;
+		///< Updates a configuration parameter after construction.
+
 	void start( std::weak_ptr<GStore::StoredMessage> ) ;
 		///< Starts transmission of the given message. The doneSignal()
 		///< is used to indicate that the message has been processed
 		///< and the shared object should remain valid until then.
+		///<
 		///< Precondition: GStore::StoredMessage::toCount() != 0
 
 	void finish() ;
@@ -229,6 +233,7 @@ private:
 		ServerInfo server ;
 		bool secure {false} ;
 		bool authenticated {false} ;
+		std::string client_ehlo ;
 		std::string auth_selector ;
 		std::string auth_mechanism ;
 		bool ok( const std::string & s ) const
@@ -246,18 +251,18 @@ private:
 private:
 	using BodyType = GStore::MessageStore::BodyType ;
 	GStore::StoredMessage & message() ;
-	std::string checkSendable() ;
+	std::string_view checkSendable() ;
 	bool endOfContent() ;
 	bool applyEvent( const ClientReply & event ) ;
 	void raiseDoneSignal( int , const std::string & , const std::string & = {} ) ;
 	void startFiltering() ;
-	static GAuth::SaslClient::Response initialResponse( const GAuth::SaslClient & , G::string_view ) ;
+	static GAuth::SaslClient::Response initialResponse( const GAuth::SaslClient & , std::string_view ) ;
 	//
 	void sendEot() ;
 	void sendCommandLines( const std::string & ) ;
 	void sendRsp( const GAuth::SaslClient::Response & ) ;
-	void send( G::string_view ) ;
-	void send( G::string_view , G::string_view , G::string_view = {} , G::string_view = {} , bool = false ) ;
+	void send( std::string_view ) ;
+	void send( std::string_view , std::string_view , std::string_view = {} , std::string_view = {} , bool = false ) ;
 	std::size_t sendContentLines() ;
 	bool sendNextContentLine( std::string & ) ;
 	void sendEhlo() ;
@@ -268,7 +273,7 @@ private:
 	//
 	bool sendContentLineImp( const std::string & , std::size_t ) ;
 	void sendChunkImp( const char * , std::size_t ) ;
-	bool sendImp( G::string_view , std::size_t sensitive_from = std::string::npos ) ;
+	bool sendImp( std::string_view , std::size_t sensitive_from = std::string::npos ) ;
 
 private:
 	Sender & m_sender ;
@@ -288,7 +293,7 @@ private:
 	SessionState m_session ;
 } ;
 
-inline GSmtp::ClientProtocol::Config & GSmtp::ClientProtocol::Config::set_thishost_name( const std::string & s ) { thishost_name = s ; return *this ; }
+inline GSmtp::ClientProtocol::Config & GSmtp::ClientProtocol::Config::set_ehlo( const std::string & s ) { ehlo = s ; return *this ; }
 inline GSmtp::ClientProtocol::Config & GSmtp::ClientProtocol::Config::set_response_timeout( unsigned int t ) noexcept { response_timeout = t ; return *this ; }
 inline GSmtp::ClientProtocol::Config & GSmtp::ClientProtocol::Config::set_ready_timeout( unsigned int t ) noexcept { ready_timeout = t ; return *this ; }
 inline GSmtp::ClientProtocol::Config & GSmtp::ClientProtocol::Config::set_use_starttls_if_possible( bool b ) noexcept { use_starttls_if_possible = b ; return *this ; }

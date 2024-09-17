@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -20,14 +20,9 @@
 
 #include "gdef.h"
 #include "ggetopt.h"
-#include "goptions.h"
-#include "goptionvalue.h"
 #include "goptionparser.h"
 #include "goptionreader.h"
 #include "gstr.h"
-#include "gstringmap.h"
-#include "gstringtoken.h"
-#include "gfile.h"
 #include "gassert.h"
 #include "glog.h"
 #include <fstream>
@@ -153,34 +148,29 @@ bool G::GetOpt::contains( char c ) const
 }
 #endif
 
-bool G::GetOpt::contains( string_view name ) const
+bool G::GetOpt::contains( std::string_view name ) const
 {
 	return m_map.contains( name ) ;
 }
 
 #ifndef G_LIB_SMALL
-std::size_t G::GetOpt::count( string_view name ) const
+std::size_t G::GetOpt::count( std::string_view name ) const
 {
 	return m_map.count( name ) ;
 }
 #endif
 
 #ifndef G_LIB_SMALL
-std::string G::GetOpt::value( char c , string_view default_ ) const
+std::string G::GetOpt::value( char c , std::string_view default_ ) const
 {
 	G_ASSERT( contains(c) ) ;
 	return value( m_spec.lookup(c) , default_ ) ;
 }
 #endif
 
-std::string G::GetOpt::value( string_view name , string_view default_ ) const
+std::string G::GetOpt::value( std::string_view name , std::string_view default_ ) const
 {
 	return m_map.value( name , default_ ) ;
-}
-
-G::optional<std::string> G::GetOpt::optional( string_view name ) const
-{
-	return { m_map.contains(name) , value(name) } ;
 }
 
 G::Arg G::GetOpt::args() const

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@
 #include "gfilter.h"
 #include "gsimplefilterbase.h"
 #include "gfilestore.h"
-#include "gexceptionsink.h"
+#include "geventstate.h"
 
 namespace GFilters
 {
@@ -34,16 +34,13 @@ namespace GFilters
 
 //| \class GFilters::DeliveryFilter
 /// A concrete GSmtp::Filter class that copies the message to multiple
-/// spool sub-directories according to the envelope recipient list. A
-/// recipient has to match an entry in the password database, otherwise
-/// it is copied into to the catch-all "postmaster" sub-directory.
-/// Sub-directories are created on-the-fly and content files are
-/// hard linked where possible.
+/// spool sub-directories according to the envelope recipient list.
+/// The implementation delegates to GStore::FileDelivery.
 ///
 class GFilters::DeliveryFilter : public SimpleFilterBase
 {
 public:
-	DeliveryFilter( GNet::ExceptionSink es , GStore::FileStore & ,
+	DeliveryFilter( GNet::EventState es , GStore::FileStore & ,
 		Filter::Type , const Filter::Config & , const std::string & spec ) ;
 			///< Constructor.
 

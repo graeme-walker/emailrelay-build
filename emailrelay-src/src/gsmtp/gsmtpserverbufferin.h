@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
 
 #include "gdef.h"
 #include "gsmtpserverprotocol.h"
-#include "gexceptionsink.h"
+#include "geventstate.h"
 #include "glinebuffer.h"
 #include "gtimer.h"
 #include "gexception.h"
@@ -73,7 +73,7 @@ namespace GSmtp
 class GSmtp::ServerBufferIn
 {
 public:
-	G_EXCEPTION( Overflow , tx("server protocol overflow") ) ;
+	G_EXCEPTION( Overflow , tx("server protocol overflow") )
 
 	struct Config /// A configuration structure for GSmtp::ServerBufferIn.
 	{
@@ -83,7 +83,7 @@ public:
 		Config & set_input_buffer_hard_limit( std::size_t ) noexcept ;
 	} ;
 
-	ServerBufferIn( GNet::ExceptionSink , ServerProtocol & , const Config & ) ;
+	ServerBufferIn( GNet::EventState , ServerProtocol & , const Config & ) ;
 		///< Constructor.
 
 	~ServerBufferIn() ;

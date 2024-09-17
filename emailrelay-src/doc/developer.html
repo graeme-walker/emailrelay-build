@@ -22,8 +22,8 @@
     </ul>
    <h2><a class="a-header" name="SH_1_2">Portability</a></h2> <!-- index:2:SH:1:2:Portability -->
     <p>
-     The E-MailRelay code is written in C++11. Earlier versions of E-MailRelay used
-     C++03.
+     The E-MailRelay code is written in Modern C++, superficially using C++17 but
+     remaining compatible with C++11.
     </p>
 
     <p>
@@ -73,7 +73,7 @@
      between objects (not to be confused with operating system signals). The
      slot/signal implementation has been simplified compared to Qt or boost by not
      supporting signal multicasting, so each signal connects to no more than one
-     slot. The implementation now uses std::function.
+     slot. The implementation is now a thin wrapper over std::function.
     </p>
 
     <p>
@@ -83,7 +83,7 @@
      most cases signals are emitted at the end of a function and the stack unwinds
      back to the event loop immediately afterwards, but in other situations,
      particularly when emitting more than one signal, defensive measures are
-     required.
+     required (see <em>glib/gcall.h</em>).
     </p>
    <h2><a class="a-header" name="SH_1_4">Module structure</a></h2> <!-- index:2:SH:1:4:Module structure -->
     <p>
@@ -177,7 +177,7 @@
     <p>
      The protocol, processor and message-store interfaces are brought together by
      the high-level <em>GSmtp::Server</em> and <em>GSmtp::Client</em> classes. Dependency
-     injection is used to create the concrete instances of the <em>MessageStore</em>,
+     injection is used to provide them with concrete instances of the <em>MessageStore</em>,
      <em>Filter</em> and <em>Verifier</em> interfaces.
     </p>
    <h2><a class="a-header" name="SH_1_6">Event handling and exceptions</a></h2> <!-- index:2:SH:1:6:Event handling and exceptions -->
@@ -196,19 +196,25 @@
      the <em>FutureEventCallback</em> interface. If any of the these event handlers throws
      an exception then the event loop catches it and delivers it back to an
      exception handler through the <em>onException()</em> method of an associated
-     <em>ExceptionHandler</em> interface. If an exception is thrown out of _this_ callback
-     then the event loop code lets it propagate back to <em>main()</em>, typically
-     terminating the program.
+     <em>ExceptionHandler</em> interface.
+    </p>
+
+    <p>
+     ExceptionHandler interface pointers are passed around in <em>EventState</em>
+     structures. All event-handling classes generally accept an EventState in their
+     constructor and they pass a copy to all base classes and contained sub-objects.
+     The default ExceptionHandler just rethrows the current exception, which
+     typically propagates back to <em>main()</em> and terminates the program.
     </p>
 
     <p>
      However, sometimes there are objects that need to be more resilient to
      exceptions. In particular, a network server should not terminate just because
-     one of its connections fails unexpectedly. In these cases the owning parent
-     object receives the exception notification together with an <em>ExceptionSource</em>
-     pointer that identifies the child object that threw the exception. This allows
-     the parent object to absorb the exception and delete the child, without the
-     exception killing the whole server.
+     one of its connections fails unexpectedly and a network client should not
+     terminate just because the peer disconnects. In these cases the ExceptionHandler
+     can be set up to be the owning parent object, which can can choose to simply
+     delete the child object without rethrowing and killing the whole program. The
+     GNet::Server and GNet::ClientPtr classes do this.
     </p>
 
     <p>
@@ -217,15 +223,29 @@
      implementations typically watch a set of Descriptors for events and call the
      relevant EventHandler/ExceptionHandler code via the <em>EventEmitter</em> class.
     </p>
+
+    <p>
+     EventState objects also contain a pointer to an EventLogging interface. This
+     interface provides a string that describes some key attribute of the event
+     handling object. EventLogging objects are arranged in a linked list that runs
+     through the assemblage of event handling objects. Before delivering an event the
+     EventEmitter combines the strings returned by this linked list and applies the
+     result to the G::LogOutput singleton so that everything logged by the event
+     handling code will have that prefix.
+    </p>
    <h2><a class="a-header" name="SH_1_7">Multi-threading</a></h2> <!-- index:2:SH:1:7:Multi-threading -->
     <p>
-     Multi-threading is used to make DNS lookup and external program asynchronous so
-     unless disabled at build-time std::thread is used in a future/promise pattern to
-     wrap up <em>getaddrinfo()</em> and <em>waitpid()</em> system calls. The shared state comprises
-     only the parameters and return results from these system calls, and
+     Multi-threading is used only to make DNS lookup and external program execution
+     asynchronous. A std::thread worker thread is used in a future/promise pattern to
+     wrap up the <em>getaddrinfo()</em> and <em>waitpid()</em> system calls. The shared state
+     comprises only the parameters and return results from these system calls, and
      synchronisation back to the main thread uses the main event loop (see
-     <em>GNet::FutureEvent</em>). Threading is not used elsewhere so the C/C++ run-time
-     library does not need to be thread-safe.
+     <em>GNet::FutureEvent</em>).
+    </p>
+
+    <p>
+     Multi-threading is also used in the Windows event loop once the number of
+     handles goes above the WaitForMultipleObjects() limit.
     </p>
    <h2><a class="a-header" name="SH_1_8">E-MailRelay GUI</a></h2> <!-- index:2:SH:1:8:E-MailRelay GUI -->
     <p>
@@ -253,7 +273,7 @@
     </p>
 
     <p>
-     When run in configure mode the GUI normally ends up simply editing the
+     When run in configure mode the GUI normally ends up just editing the
      <em>emailrelay.conf</em> file (or <em>emailrelay-start.bat</em> on Windows) and/or the
      <em>emailrelay.auth</em> secrets file.
     </p>
@@ -269,12 +289,52 @@
     <p>
      When building the GUI program the library code shared with the main server
      executable is compiled separately so that different GUI-specific compiler
-     options can be used. This is done as a 'unity build', concatenating the shared
-     code into one source file and compiling that for the GUI. (This technique
-     requires that private 'detail' namespaces are named rather than anonymous so
-     that there cannot be any name clashes within the combined anonymous namespace.)
+     options can be used. This is done as a 'unity build', using the pre-processor
+     to concatenate the shared code into one source file and compiling that for the
+     GUI. (This technique requires that private 'detail' namespaces are explicitly
+     named rather than anonymous so that there cannot be any name clashes within the
+     combined anonymous namespace.)
     </p>
-   <h2><a class="a-header" name="SH_1_9">Windows build</a></h2> <!-- index:2:SH:1:9:Windows build -->
+   <h2><a class="a-header" name="SH_1_9">Character encoding on Windows</a></h2> <!-- index:2:SH:1:9:Character encoding on Windows -->
+    <p>
+     E-MailRelay on Windows generally holds all its internal strings in UTF-8,
+     independent of the current active code page or locale. This is relevant mostly
+     to file system paths, but also to event viewer output, configuration file
+     contents, command-lines assembled to run external programs, system account
+     information, registry paths and environment variables.
+    </p>
+
+    <p>
+     The header file <em>gnowide.h</em> has inline functions that convert to and from UTF-8
+     before calling the <em>wide</em> Windows API functions. The actual convertion between
+     UTF-8 and UTF-16 wide characters is done by the G::Convert class. As a temporary
+     measure the G_ANSI pre-processor switch can be defined to go back to using
+     <em>ansi</em> functions.
+    </p>
+
+    <p>
+     The G::Path class holds filesystem paths using UTF-8. Windows-specific source
+     code, such as in <em>gfile_win32.cpp</em>, passes the UTF-8 strings to the <em>nowide</em>
+     inline functions which in turn call wide runtime library functions like
+     _wopen(). The exception is that the G::Path::iopath() method can be used to
+     initialise std::fstreams directly, without using the <em>nowide</em> functions.
+    </p>
+
+    <p>
+     The G::Arg class can be used to capture the Windows command-line in its wide
+     form and then convert to UTF-8. The main() and WinMain() functions use the
+     G::Arg::windows() factory function to do this.
+    </p>
+
+    <p>
+     Configuration files are expected to use UTF-8 character encoding. The secrets
+     file also notionally uses UTF-8, but Base64 or xtext encoding is used for the
+     account details, so the encoding is less relevant there. The startup batch file
+     (<em>emailrelay-start.bat</em>) necessarily uses the OEM code page and the E-MailRelay
+     GUI now tries to ensure that the user's choice of install directory is
+     compatible with this.
+    </p>
+   <h2><a class="a-header" name="SH_1_10">Windows build</a></h2> <!-- index:2:SH:1:10:Windows build -->
     <p>
      E-MailRelay can be built for Windows using the native Visual Studio MSVC
      compiler or using MinGW (mingw-w64) on Linux.
@@ -288,22 +348,22 @@
     <p>
      The <em>winbuild.bat</em> script expects to find mbedtls source code in a child or
      sibling directory and Qt libraries under <em>c:\qt</em>, but refer to <em>winbuild.pm</em> for
-     the details. The build proceeds using <em>cmake</em> and <em>msbuild</em> resulting in
+     the details. The build proceeds using <em>cmake</em> and <em>cmake --build</em>, resulting in
      statically-linked executables but with the GUI typically dynamically-linked.
     </p>
 
     <p>
      The mbedtls code is built if necessary by running <em>cmake</em> and <em>cmake --build</em> in
      a <em>mbedtls-x64</em> build sub-directory. The mbedtls headers are copied into the
-     build tree. The mbedtls configuration header (mbedtls_config.h) is optionally
-     edited to enable TLS v1.3. If necessary delete the <em>mbedtls-x64</em> build directory
-     to trigger a rebuild.
+     mbedtls build tree. The mbedtls configuration header (mbedtls_config.h) is
+     optionally edited to enable TLS v1.3. If necessary delete the <em>mbedtls-x64</em>
+     build directory to trigger a rebuild.
     </p>
 
     <p>
      A release assembly can be created by running <em>winbuild-install.bat</em> or
      <em>perl winbuild.pl install</em>. This makes use of the Qt <em>windeployqt</em> utility to
-     assemble DLLs and it also generates the Qt translation files (<em>*.qm</em>).
+     assemble DLLs and it also generates the Qt <em>.qm</em> translation files.
     </p>
 
     <p>
@@ -329,7 +389,7 @@
      (<em>./configure.sh -m -w32 --disable-gui</em>). Then <em>winbuild.pl install_winxp</em> can
      be used to make a simplified distribution assembly, without a GUI.
     </p>
-   <h2><a class="a-header" name="SH_1_10">Windows packaging</a></h2> <!-- index:2:SH:1:10:Windows packaging -->
+   <h2><a class="a-header" name="SH_1_11">Windows packaging</a></h2> <!-- index:2:SH:1:11:Windows packaging -->
     <p>
      On Windows E-MailRelay is packaged as a zip file containing the files assembled
      by <em>winbuild.pl install</em> with a statically-built GUI copied in manually (see
@@ -338,9 +398,10 @@
 
     <p>
      The setup program is the emailrelay GUI running in setup mode, with a <em>payload</em>
-     directory containing the files to be installed.
+     directory containing the files to be installed. Refer to the comments in
+     <em>src/gui/guimain.cpp</em> for more details.
     </p>
-   <h2><a class="a-header" name="SH_1_11">Unix build</a></h2> <!-- index:2:SH:1:11:Unix build -->
+   <h2><a class="a-header" name="SH_1_12">Unix build</a></h2> <!-- index:2:SH:1:12:Unix build -->
     <p>
      E-MailRelay uses autoconf and automake, but the <em>libexec/make2cmake</em> script can
      be used to generate cmake files. The generated cmake files incorporate some of
@@ -348,24 +409,30 @@
      before <em>make2cmake</em>. The <em>configure</em> script is normally part of the release but
      it can itself be generated by running the <em>bootstrap</em> script.
     </p>
-   <h2><a class="a-header" name="SH_1_12">Unix packaging</a></h2> <!-- index:2:SH:1:12:Unix packaging -->
+
     <p>
-     On Unix-like operating systems it is more natural to use some sort of package
-     derived from the <em>make install</em> process rather than an installer program, so
-     the emailrelay GUI is not normally used.
+     For a 'unity build' run <em>configure</em> (typically with compiler options passed via
+     <em>CXXFLAGS</em>) and then <em>make unity</em>. Code-size optimisations such as <em>-Os</em> and
+     <em>-fwhole-program</em> are particularly effective for a unity build. Refer to the
+     comments in <em>unity/Makefile.am</em> for more information.
+    </p>
+   <h2><a class="a-header" name="SH_1_13">Unix packaging</a></h2> <!-- index:2:SH:1:13:Unix packaging -->
+    <p>
+     On Unix-like operating systems the native packaging system is normally used
+     rather than the E-MailRelay GUI installer, so the configure script should be
+     given the <em>--disable-gui</em> command-line option.
     </p>
 
     <p>
      Top-level makefile targets <em>dist</em>, <em>deb</em> and <em>rpm</em> can be used to create a
      binary tarball, debian package, and RPM package respectively.
     </p>
-   <h2><a class="a-header" name="SH_1_13">Internationalisation</a></h2> <!-- index:2:SH:1:13:Internationalisation -->
+   <h2><a class="a-header" name="SH_1_14">Internationalisation</a></h2> <!-- index:2:SH:1:14:Internationalisation -->
     <p>
      The GUI code has i18n support using the Qt framework, with the tr() function
      used throughout the GUI source code. The GUI main() function loads translations
      from the <em>translations</em> sub-directory (relative to the executable), although
-     that can be overridden with the <em>--qm</em> command-line option. Qt's <em>-reverse</em>
-     option can also be used to reverse the widgets when using RTL languages.
+     that can be overridden with the <em>--qm</em> command-line option.
     </p>
 
     <p>
@@ -376,10 +443,10 @@
     </p>
 
     <p>
-     On Windows the main server executable has a tabbed dialog-box as its user
-     interface, but that does not have any support for i18n.
+     On Windows the main server executable <em>emailrelay.exe</em> has a tabbed dialog-box
+     as its user interface, but that does not have any support for i18n.
     </p>
-   <h2><a class="a-header" name="SH_1_14">Source control</a></h2> <!-- index:2:SH:1:14:Source control -->
+   <h2><a class="a-header" name="SH_1_15">Source control</a></h2> <!-- index:2:SH:1:15:Source control -->
     <p>
      The source code is stored in the SourceForge <em>svn</em> and/or <em>git</em> repository.
     </p>
@@ -390,7 +457,7 @@
 
       <div class="div-pre">
        <pre>$ svn co https://svn.code.sf.net/p/emailrelay/code emailrelay
-$ cd emailrelay/tags/V_2_5_2
+$ cd emailrelay/tags/V_2_6
 </pre>
       </div><!-- div-pre -->
     <p>
@@ -400,15 +467,15 @@ $ cd emailrelay/tags/V_2_5_2
       <div class="div-pre">
        <pre>$ git clone https://git.code.sf.net/p/emailrelay/git emailrelay
 $ cd emailrelay
-$ git checkout V_2_5_2
+$ git checkout V_2_6
 </pre>
       </div><!-- div-pre -->
     <p>
-     Code that has been formally released will be tagged with a tag like <em>V_2_5_2</em>
+     Code that has been formally released will be tagged with a tag like <em>V_2_6</em>
      and any post-release or back-ported fixes will be on a <em>fixes</em> branch like
-     <em>V_2_5_2_fixes</em>.
+     <em>V_2_6_fixes</em>.
     </p>
-   <h2><a class="a-header" name="SH_1_15">Compile-time features</a></h2> <!-- index:2:SH:1:15:Compile-time features -->
+   <h2><a class="a-header" name="SH_1_16">Compile-time features</a></h2> <!-- index:2:SH:1:16:Compile-time features -->
     <p>
      Compile-time features can be selected with options passed to the <em>configure</em>
      script. These include the following:
@@ -431,10 +498,10 @@ $ git checkout V_2_5_2
 
     <div class="div-footer">
      <p>
-      Copyright (C) 2001-2023 Graeme Walker
+      Copyright (C) 2001-2024 Graeme Walker
      </p>
     </div><!-- div-footer -->
  </div> <!-- div-main -->
  </body>
 </html>
-<!-- Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>. All rights reserved. -->
+<!-- Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>. All rights reserved. -->

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -176,7 +176,7 @@ std::time_t G::BrokenDownTime::epochTimeFromUtc() const
 {
 	std::time_t t0 = DateTimeImp::mktimelocal( m_tm ) ;
 
-	static optional<std::time_t> memo ;
+	static std::optional<std::time_t> memo ;
 	if( memo.has_value() )
 	{
 		std::tm tm {} ;

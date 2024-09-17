@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -27,9 +27,10 @@
 #include "gstringlist.h"
 #include "gssl.h"
 #include "gbase64.h"
-#include "glocal.h"
 #include "gexception.h"
+#include "gdatetime.h"
 #include "gtest.h"
+#include "gassert.h"
 #include "glog.h"
 #include <algorithm>
 
@@ -45,13 +46,13 @@ namespace GAuth
 		}
 		struct DigesterAdaptor /// Used by GAuth::Cram to use GSsl::Digester.
 		{
-			explicit DigesterAdaptor( G::string_view name ) :
+			explicit DigesterAdaptor( std::string_view name ) :
 				m_name(G::sv_to_string(name))
 			{
 				GSsl::Digester d( CramImp::lib().digester(m_name) ) ;
 				m_blocksize = d.blocksize() ;
 			}
-			std::string operator()( G::string_view data_1 , G::string_view data_2 ) const
+			std::string operator()( std::string_view data_1 , std::string_view data_2 ) const
 			{
 				GSsl::Digester d( CramImp::lib().digester(m_name) ) ;
 				d.add( data_1 ) ;
@@ -67,7 +68,7 @@ namespace GAuth
 		} ;
 		struct PostDigesterAdaptor /// Used by GAuth::Cram to use GSsl::Digester.
 		{
-			explicit PostDigesterAdaptor( G::string_view name ) :
+			explicit PostDigesterAdaptor( std::string_view name ) :
 				m_name(G::sv_to_string(name))
 			{
 				GSsl::Digester d( CramImp::lib().digester(m_name,std::string(),true) ) ;
@@ -94,8 +95,8 @@ namespace GAuth
 	}
 }
 
-std::string GAuth::Cram::response( G::string_view hash_type , bool as_hmac ,
-	const Secret & secret , G::string_view challenge , G::string_view id_prefix )
+std::string GAuth::Cram::response( std::string_view hash_type , bool as_hmac ,
+	const Secret & secret , std::string_view challenge , std::string_view id_prefix )
 {
 	try
 	{
@@ -115,9 +116,9 @@ std::string GAuth::Cram::response( G::string_view hash_type , bool as_hmac ,
 	}
 }
 
-bool GAuth::Cram::validate( G::string_view hash_type , bool as_hmac ,
-	const Secret & secret , G::string_view challenge ,
-	G::string_view response_in )
+bool GAuth::Cram::validate( std::string_view hash_type , bool as_hmac ,
+	const Secret & secret , std::string_view challenge ,
+	std::string_view response_in )
 {
 	try
 	{
@@ -139,15 +140,15 @@ bool GAuth::Cram::validate( G::string_view hash_type , bool as_hmac ,
 	}
 }
 
-std::string GAuth::Cram::id( G::string_view response )
+std::string GAuth::Cram::id( std::string_view response )
 {
 	// the response is "<id> <hexchars>" but also allow for ids with spaces
 	std::size_t pos = response.rfind( ' ' ) ;
 	return G::Str::head( response , pos ) ;
 }
 
-std::string GAuth::Cram::responseImp( G::string_view mechanism_hash_type , bool as_hmac ,
-	const Secret & secret , G::string_view challenge )
+std::string GAuth::Cram::responseImp( std::string_view mechanism_hash_type , bool as_hmac ,
+	const Secret & secret , std::string_view challenge )
 {
 	G_DEBUG( "GAuth::Cram::responseImp: mechanism-hash=[" << mechanism_hash_type << "] "
 		<< "secret-hash=[" << secret.maskHashFunction() << "] "
@@ -197,7 +198,7 @@ std::string GAuth::Cram::responseImp( G::string_view mechanism_hash_type , bool 
 	}
 }
 
-G::StringArray GAuth::Cram::hashTypes( G::string_view prefix , bool require_state )
+G::StringArray GAuth::Cram::hashTypes( std::string_view prefix , bool require_state )
 {
 	// we can do CRAM-X for all hash functions (X) provided by the TLS library
 	// but if we only have masked passwords (ie. require_state) then we only
@@ -225,10 +226,10 @@ G::StringArray GAuth::Cram::hashTypes( G::string_view prefix , bool require_stat
 
 std::string GAuth::Cram::challenge( unsigned int random , const std::string & challenge_domain_in )
 {
-	std::string challenge_domain = challenge_domain_in.empty() ? GNet::Local::canonicalName() : challenge_domain_in ;
+	G_ASSERT( !challenge_domain_in.empty() ) ;
 	return std::string(1U,'<')
 		.append(std::to_string(random)).append(1U,'.')
 		.append(std::to_string(G::SystemTime::now().s())).append(1U,'@')
-		.append(challenge_domain).append(1U,'>') ;
+		.append(challenge_domain_in).append(1U,'>') ;
 }
 

@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -27,14 +27,14 @@
 #include "glog.h"
 #include <sstream>
 
-GVerifiers::UserVerifier::UserVerifier( GNet::ExceptionSink es ,
+GVerifiers::UserVerifier::UserVerifier( GNet::EventState es ,
 	const GSmtp::Verifier::Config & config , const std::string & spec ) :
 		m_config(config) ,
 		m_timer(*this,&UserVerifier::onTimeout,es) ,
 		m_result(GSmtp::VerifierStatus::invalid({})) ,
 		m_range(G::Range::range(1000,32767))
 {
-	G::string_view spec_view( spec ) ;
+	std::string_view spec_view( spec ) ;
 	for( G::StringTokenView t( spec_view , ";" , 1U ) ; t ; ++t )
 	{
 		if( !t().empty() && G::Str::isNumeric(t().substr(0U,1U)) )
@@ -49,33 +49,34 @@ GVerifiers::UserVerifier::UserVerifier( GNet::ExceptionSink es ,
 	G_DEBUG( "GVerifiers::UserVerifier: uid range " << G::Range::str(m_range) ) ;
 }
 
-void GVerifiers::UserVerifier::verify( Command command , const std::string & rcpt_to_parameter ,
-	const GSmtp::Verifier::Info & )
+void GVerifiers::UserVerifier::verify( const GSmtp::Verifier::Request & request )
 {
-	using namespace G::Range ; // within()
-	m_command = command ;
+	m_command = request.command ;
 
-	std::string user = dequote( G::Str::head( dequote(rcpt_to_parameter) , "@" , false ) ) ;
-	std::string domain = G::Str::tail( dequote(rcpt_to_parameter) , "@" ) ;
+	std::string_view request_address = dequote( request.address ) ;
+
+	std::size_t at_pos = request_address.rfind( '@' ) ;
+	std::string_view user = dequote( G::Str::headView( request_address , at_pos , request_address ) ) ;
+	std::string_view domain = G::Str::tailView( request_address , at_pos ) ;
+
 	std::string reason ;
 	std::string mailbox ;
-
 	if( user == "postmaster" && domain.empty() )
-		m_result = GSmtp::VerifierStatus::local( rcpt_to_parameter , {} , "postmaster" ) ;
+		m_result = GSmtp::VerifierStatus::local( request.address , {} , "postmaster" ) ;
 	else if( lookup(user,domain,&reason,&mailbox) )
 		m_result =
 			m_config_remote ?
-				GSmtp::VerifierStatus::remote( rcpt_to_parameter ) :
-				GSmtp::VerifierStatus::local( rcpt_to_parameter , {} , m_config_lc?G::Str::lower(mailbox):mailbox ) ;
+				GSmtp::VerifierStatus::remote( request.address ) :
+				GSmtp::VerifierStatus::local( request.address , {} , m_config_lc?G::Str::lower(mailbox):mailbox ) ;
 	else if( m_config_check )
-		m_result = GSmtp::VerifierStatus::remote( rcpt_to_parameter ) ;
+		m_result = GSmtp::VerifierStatus::remote( request.address ) ;
 	else
-		m_result = GSmtp::VerifierStatus::invalid( rcpt_to_parameter , false , "rejected" , reason ) ;
+		m_result = GSmtp::VerifierStatus::invalid( request.address , false , "rejected" , reason ) ;
 
 	m_timer.startTimer( 0U ) ;
 }
 
-bool GVerifiers::UserVerifier::lookup( const std::string & user , const std::string & domain ,
+bool GVerifiers::UserVerifier::lookup( std::string_view user , std::string_view domain ,
 	std::string * reason_p , std::string * mailbox_p ) const
 {
 	bool result = false ;
@@ -125,7 +126,7 @@ void GVerifiers::UserVerifier::onTimeout()
 	m_done_signal.emit( m_command , m_result ) ;
 }
 
-std::string GVerifiers::UserVerifier::dequote( const std::string & s )
+std::string_view GVerifiers::UserVerifier::dequote( std::string_view s )
 {
 	if( s.size() >= 2U && s.at(0) == '"' && s.at(s.size()-1U) == '"' )
 		return s.substr( 1U , s.size()-2U ) ;

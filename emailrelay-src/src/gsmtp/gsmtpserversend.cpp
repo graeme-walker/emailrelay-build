@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 #include "gstringview.h"
 #include "gbase64.h"
 #include "gstr.h"
+#include "glog.h"
 
 GSmtp::ServerSend::ServerSend( ServerSender * sender ) :
 	m_sender(sender)
@@ -225,7 +226,7 @@ void GSmtp::ServerSend::sendBadTo( const std::string & to , const std::string & 
 
 void GSmtp::ServerSend::sendEhloReply( const Advertise & advertise )
 {
-	static constexpr G::string_view crlf( "\015\012" , 2U ) ;
+	static constexpr std::string_view crlf( "\015\012" , 2U ) ;
 
 	std::ostringstream ss ;
 		ss << "250-" << G::Str::printable(advertise.hello) << crlf ;

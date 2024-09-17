@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -25,42 +25,67 @@
 
 GNet::EventLoggingContext * GNet::EventLoggingContext::m_inner = nullptr ;
 
-GNet::EventLoggingContext::EventLoggingContext( ExceptionSource * esrc ) :
-	m_outer(m_inner) ,
-	m_esrc(esrc)
+// use a static string here for run-time efficiency -- however, it does
+// make the effects of an inner nested object persist beyond its scope --
+// in practice that is not a problem because the event-loop's outer object
+// and any inner object are both destroyed in quick succession
+std::string GNet::EventLoggingContext::m_s ;
+
+#ifndef G_LIB_SMALL
+GNet::EventLoggingContext::EventLoggingContext( std::string_view s ) :
+	m_outer(m_inner)
 {
+	m_s.assign( s.data() , s.size() ) ;
+
+	G::LogOutput::Instance::context( EventLoggingContext::fn , this ) ;
 	m_inner = this ;
-	G::LogOutput::context( EventLoggingContext::fn , this ) ;
+}
+#endif
+
+GNet::EventLoggingContext::EventLoggingContext( EventState es , const std::string & s ) :
+	m_outer(m_inner)
+{
+	set( m_s , es ) ;
+	m_s.append( s ) ;
+
+	G::LogOutput::Instance::context( EventLoggingContext::fn , this ) ;
+	m_inner = this ;
 }
 
-GNet::EventLoggingContext::EventLoggingContext( const std::string & s ) :
-	m_outer(m_inner) ,
-	m_esrc(nullptr) ,
-	m_s(s)
+GNet::EventLoggingContext::EventLoggingContext( EventState es ) :
+	m_outer(m_inner)
 {
+	set( m_s , es ) ;
+
+	G::LogOutput::Instance::context( EventLoggingContext::fn , this ) ;
 	m_inner = this ;
-	G::LogOutput::context( EventLoggingContext::fn , this ) ;
 }
 
-GNet::EventLoggingContext::~EventLoggingContext() noexcept
+void GNet::EventLoggingContext::set( std::string & s , EventState es )
+{
+	s.clear() ; // (static instance for run-time efficiency)
+	for( const EventLogging * p = es.logging() ; p ; p = p->next() )
+	{
+		if( !p->eventLoggingString().empty() )
+		{
+			std::string_view sv = p->eventLoggingString() ;
+			s.insert( 0U , sv.data() , sv.size() ) ;
+		}
+	}
+}
+
+GNet::EventLoggingContext::~EventLoggingContext()
 {
 	if( m_outer )
-		G::LogOutput::context( EventLoggingContext::fn , m_outer ) ;
+		G::LogOutput::Instance::context( EventLoggingContext::fn , m_outer ) ;
 	else
-		G::LogOutput::context() ;
+		G::LogOutput::Instance::context() ;
 	m_inner = m_outer ;
 }
 
-std::string GNet::EventLoggingContext::fn( void * vp )
+std::string_view GNet::EventLoggingContext::fn( void * )
 {
-	std::string s = static_cast<EventLoggingContext*>(vp)->str() ;
-	if( !s.empty() )
-		s.append( "; " , 2U ) ; // semi-colon for simpler fail2ban regexpes
-	return s ;
-}
-
-std::string GNet::EventLoggingContext::str()
-{
-	return m_esrc ? m_esrc->exceptionSourceId() : m_s ;
+	if( m_inner == nullptr ) return {} ;
+	return m_s ; // m_inner->m_s if non-static
 }
 

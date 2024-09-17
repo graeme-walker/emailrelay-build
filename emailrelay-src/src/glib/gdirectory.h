@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 #include "gdef.h"
 #include "gpath.h"
 #include "gexception.h"
+#include "gstringview.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -111,7 +112,8 @@ public:
 		///< Returns true if more and advances by one.
 
 	bool isDir() const ;
-		///< Returns true if the current item is a directory.
+		///< Returns true if the current item is a directory or
+		///< a symlink to a directory.
 
 	bool isLink() const ;
 		///< Returns true if the current item is a symlink.
@@ -149,8 +151,8 @@ class G::DirectoryList
 public:
 	struct Item /// A directory-entry item for G::DirectoryList.
 	{
-		bool m_is_dir{false} ;
-		bool m_is_link{false} ;
+		bool m_is_dir {false} ;
+		bool m_is_link {false} ;
 		Path m_path ;
 		std::string m_name ;
 		bool operator<( const Item & ) const noexcept ;
@@ -164,13 +166,16 @@ public:
 		///< An initialiser that is to be used after default construction.
 		///< Reads all files in the directory.
 
-	std::size_t readType( const Path & dir , string_view suffix , unsigned int limit = 0U ) ;
+	std::size_t readType( const Path & dir , std::string_view suffix , unsigned int limit = 0U ) ;
 		///< An initialiser that is to be used after default
 		///< construction. Reads all files that have the given
 		///< suffix (unsorted).
 
 	std::size_t readDirectories( const Path & dir , unsigned int limit = 0U ) ;
 		///< An initialiser that reads all sub-directories.
+
+	bool empty() const noexcept ;
+		///< Returns true if empty.
 
 	bool more() ;
 		///< Returns true if more and advances by one.
@@ -185,20 +190,18 @@ public:
 		///< Returns the current path.
 
 	std::string fileName() const ;
-		///< Returns the current filename. On Windows any characters
-		///< that cannot be represented in the active code page are
-		///< replaced by '?'.
+		///< Returns the current filename.
 
 	static void readAll( const Path & dir , std::vector<Item> & out ) ;
 		///< A static overload returning by reference a collection
 		///< of Items, sorted by name.
 
 private:
-	void readImp( const Path & , bool , string_view , unsigned int ) ;
+	void readImp( const Path & , bool , std::string_view , unsigned int ) ;
 
 private:
-	bool m_first{true} ;
-	unsigned int m_index{0U} ;
+	bool m_first {true} ;
+	unsigned int m_index {0U} ;
 	std::vector<Item> m_list ;
 } ;
 

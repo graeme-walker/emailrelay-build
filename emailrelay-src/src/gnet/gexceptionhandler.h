@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -36,7 +36,7 @@ namespace GNet
 /// event-loop callbacks (socket/future events and timer events).
 /// If the handler just rethrows then the event loop will terminate.
 ///
-/// The ExceptionHandler destructor calls disarm() on the EventHandlerList
+/// The ExceptionHandler destructor calls disarm() on the EventLoop
 /// and TimerList so that an onException() callback is not delivered
 /// if the target object has been destroyed.
 ///
@@ -44,7 +44,7 @@ class GNet::ExceptionHandler
 {
 public:
 	virtual ~ExceptionHandler() ;
-		///< Destructor. Matching entries in the EventHandlerList and
+		///< Destructor. Matching entries in the EventLoop and
 		///< TimerList are disarm()ed.
 
 	virtual void onException( ExceptionSource * source , std::exception & e , bool done ) = 0 ;
@@ -58,7 +58,7 @@ public:
 		///< requires the appropriate exception source pointer is
 		///< defined when the event source is first registered with
 		///< the event loop, otherwise it defaults to a null pointer.
-		///< (The ExceptionSinkUnbound class is used where necessary
+		///< (The EventStateUnbound class is used where necessary
 		///< to encourage the definition of a valid exception source
 		///< pointer.)
 		///<

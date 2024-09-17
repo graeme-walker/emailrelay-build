@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -50,15 +50,15 @@ GNet::DnsMessageRequest::DnsMessageRequest( const std::string & type , const std
 
 void GNet::DnsMessageRequest::addDomainName( const std::string & domain , char sep )
 {
-	G::string_view domain_sv( domain ) ;
+	std::string_view domain_sv( domain ) ;
 	for( G::StringFieldView part( domain_sv , sep ) ; part ; ++part )
 	{
 		addLabel( part() ) ;
 	}
-	addLabel( G::string_view() ) ; // zero-length root
+	addLabel( std::string_view() ) ; // zero-length root
 }
 
-void GNet::DnsMessageRequest::addLabel( G::string_view data )
+void GNet::DnsMessageRequest::addLabel( std::string_view data )
 {
 	if( data.size() > 63U ) throw DnsMessage::Error("overflow") ;
 	addByte( static_cast<unsigned int>(data.size()) ) ;
@@ -431,7 +431,7 @@ unsigned int GNet::DnsMessageRR::class_() const
 }
 #endif
 
-bool GNet::DnsMessageRR::isa( G::string_view type_name ) const noexcept
+bool GNet::DnsMessageRR::isa( std::string_view type_name ) const noexcept
 {
 	return m_type == DnsMessageRecordType::value( type_name , std::nothrow ) ;
 }
@@ -568,7 +568,7 @@ namespace GNet
 	}
 }
 
-unsigned int GNet::DnsMessageRecordType::value( G::string_view type_name , std::nothrow_t ) noexcept
+unsigned int GNet::DnsMessageRecordType::value( std::string_view type_name , std::nothrow_t ) noexcept
 {
 	namespace imp = DnsMessageRecordTypeImp ;
 	for( const auto & item : imp::map )
@@ -579,7 +579,7 @@ unsigned int GNet::DnsMessageRecordType::value( G::string_view type_name , std::
 	return 0U ;
 }
 
-unsigned int GNet::DnsMessageRecordType::value( G::string_view type_name )
+unsigned int GNet::DnsMessageRecordType::value( std::string_view type_name )
 {
 	unsigned int v = value( type_name , std::nothrow ) ;
 	if( v == 0U )

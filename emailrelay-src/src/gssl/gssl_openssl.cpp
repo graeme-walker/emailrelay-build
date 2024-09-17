@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -239,7 +239,7 @@ std::string GSsl::OpenSSL::DigesterImp::state()
 	return {} ; // not available
 }
 
-void GSsl::OpenSSL::DigesterImp::add( G::string_view data )
+void GSsl::OpenSSL::DigesterImp::add( std::string_view data )
 {
 	#if GCONFIG_HAVE_OPENSSL_HASH_FUNCTIONS
 	if( m_hash_type == Type::Md5 )
@@ -869,7 +869,7 @@ GSsl::OpenSSL::Config::Config( G::StringArray & cfg ) :
 	#endif
 }
 
-bool GSsl::OpenSSL::Config::consume( G::StringArray & list , G::string_view item )
+bool GSsl::OpenSSL::Config::consume( G::StringArray & list , std::string_view item )
 {
 	return LibraryImp::consume( list , item ) ;
 }

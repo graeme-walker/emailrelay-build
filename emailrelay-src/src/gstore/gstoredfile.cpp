@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -30,7 +30,6 @@
 #include <fstream>
 #include <type_traits>
 #include <limits>
-#include <cstdio> // BUFSIZ
 #include <utility>
 
 GStore::StoredFile::StoredFile( FileStore & store , const MessageId & id , State state ) :
@@ -359,7 +358,7 @@ GStore::StoredFile::Stream::Stream( const G::Path & path ) :
 void GStore::StoredFile::Stream::open( const G::Path & path )
 {
 	// (because on windows we want _O_NOINHERIT and _SH_DENYNO)
-	int fd = FileOp::fdopen( path.cstr() ) ;
+	int fd = FileOp::fdopen( path ) ;
 	if( fd >= 0 )
 	{
 		StreamBuf::open( fd ) ;

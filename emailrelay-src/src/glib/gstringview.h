@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -22,21 +22,42 @@
 #define G_STRING_VIEW_H
 
 #include "gdef.h"
-#include <algorithm>
-#include <stdexcept>
-#include <ostream>
 #include <string>
 #include <cstring>
 #include <new>
 
 #if GCONFIG_HAVE_CXX_STRING_VIEW
+
 #include <string_view>
-// etc
-#endif
+
+namespace G
+{
+	std::string_view sv_substr_noexcept( std::string_view sv , std::size_t pos , std::size_t count = std::string::npos ) noexcept ;
+	bool sv_imatch( std::string_view , std::string_view ) noexcept ;
+	inline std::string sv_to_string( std::string_view sv ) { return std::string(sv) ; }
+}
+
+constexpr std::string_view operator "" _sv( const char * p , std::size_t n ) noexcept
+{
+	return {p,n} ;
+}
+
+#else
+
+#include <stdexcept>
+#include <ostream>
+#include <algorithm> // std::min()
 
 namespace G
 {
 	class string_view ;
+	G::string_view sv_substr_noexcept( G::string_view sv , std::size_t pos , std::size_t count = std::string::npos ) noexcept ;
+	bool sv_imatch( G::string_view , G::string_view ) noexcept ;
+}
+
+namespace std /// NOLINT
+{
+	using string_view = G::string_view ;
 }
 
 //| \class G::string_view
@@ -44,8 +65,6 @@ namespace G
 ///
 /// There is an implicit conversion constructor from std::string
 /// since std::string has its convertion operator "operator sv()".
-/// Some sv_*() free functions and an operator""_sv are also
-/// provided.
 ///
 class G::string_view
 {
@@ -59,7 +78,9 @@ public:
 	static constexpr std::size_t npos = std::size_t(-1) ;
 	string_view() noexcept = default ;
 	string_view( std::nullptr_t ) = delete ;
+	static constexpr /*consteval*/ std::size_t strlen_imp( const char * p , std::size_t n = 0U ) noexcept { return *p ? strlen_imp(p+1,n+1U) : n ; }
 	constexpr string_view( const char * p , std::size_t n ) noexcept : m_p(p) , m_n(n) {}
+	constexpr /*consteval*/ string_view( const char * p , std::nothrow_t ) noexcept : m_p(p) , m_n(p?strlen_imp(p):0U) {}
 	string_view( const char * p ) noexcept /*implicit*/ : m_p(p) , m_n(p?std::strlen(p):0U) {}
 	string_view( const std::string & s ) noexcept /* implicit */ : m_p(s.data()) , m_n(s.size()) {}
 	constexpr std::size_t size() const noexcept { return m_n ; }
@@ -67,12 +88,17 @@ public:
 	constexpr const char * data() const noexcept { return m_p ; }
 	constexpr bool empty() const noexcept { return m_n == 0U ; }
 	void swap( string_view & other ) noexcept { std::swap(m_p,other.m_p) ; std::swap(m_n,other.m_n) ; }
-	constexpr const char & operator[]( std::size_t i ) const { return m_p[i] ; }
+	constexpr const char & operator[]( std::size_t i ) const noexcept { return m_p[i] ; }
 	const char & at( std::size_t i ) const { if( i >= m_n ) throw std::out_of_range("string_view::at") ; return m_p[i] ; }
 	const char * begin() const noexcept { return empty() ? nullptr : m_p ; }
 	const char * cbegin() const noexcept { return empty() ? nullptr : m_p ; }
 	const char * end() const noexcept { return empty() ? nullptr : (m_p+m_n) ; }
 	const char * cend() const noexcept { return empty() ? nullptr : (m_p+m_n) ; }
+	int compare( const string_view & other ) const noexcept {
+    	int rc = ( empty() || other.empty() ) ? 0 : std::char_traits<char>::compare( m_p , other.m_p , std::min(m_n,other.m_n) ) ;
+    	return rc == 0 ? ( m_n < other.m_n ? -1 : (m_n==other.m_n?0:1) ) : rc ;
+	}
+	int compare( std::size_t pos , std::size_t count , string_view other ) const noexcept { return substr(pos,count).compare(other) ; }
 	bool operator==( const string_view & other ) const noexcept { return compare(other) == 0 ; }
 	bool operator!=( const string_view & other ) const noexcept { return compare(other) != 0 ; }
 	bool operator<( const string_view & other ) const noexcept { return compare(other) < 0 ; }
@@ -80,7 +106,6 @@ public:
 	bool operator>( const string_view & other ) const noexcept { return compare(other) > 0 ; }
 	bool operator>=( const string_view & other ) const noexcept { return compare(other) >= 0 ; }
 
-	int compare( const string_view & other ) const noexcept ;
 	string_view substr( std::size_t pos , std::size_t count = npos ) const ;
 	std::size_t find( char c , std::size_t pos = 0U ) const noexcept ;
 	std::size_t find( const char * substr_p , std::size_t pos , std::size_t substr_n ) const ;
@@ -103,8 +128,6 @@ private:
 
 namespace G
 {
-	string_view sv_substr( string_view sv , std::size_t pos , std::size_t count = std::string::npos ) noexcept ;
-	bool sv_imatch( string_view , string_view ) noexcept ;
 	inline std::ostream & operator<<( std::ostream & stream , const string_view & sv )
 	{
 		if( !sv.empty() )
@@ -119,17 +142,13 @@ namespace G
 	{
 		return sv.empty() ? s.empty() : ( 0 == s.compare( 0 , s.size() , sv.data() , sv.size() ) ) ;
 	}
-	inline bool operator==( string_view sv , const std::string & s )
-	{
-		return sv.empty() ? s.empty() : ( 0 == s.compare( 0 , s.size() , sv.data() , sv.size() ) ) ;
-	}
 	inline bool operator!=( const std::string & s , string_view sv )
 	{
 		return !(s == sv) ;
 	}
-	inline bool operator!=( string_view sv , const std::string & s )
+	inline std::string sv_to_string( string_view sv )
 	{
-		return !(sv == s) ;
+		return sv.empty() ? std::string() : std::string( sv.data() , sv.size() ) ;
 	}
 }
 
@@ -146,12 +165,6 @@ constexpr G::string_view operator "" _sv( const char * p , std::size_t n ) noexc
 	return {p,n} ;
 }
 
-namespace G
-{
-	inline std::string sv_to_string( string_view sv )
-	{
-		return sv.empty() ? std::string() : std::string( sv.data() , sv.size() ) ;
-	}
-}
+#endif
 
 #endif

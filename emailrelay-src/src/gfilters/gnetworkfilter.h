@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -43,7 +43,7 @@ namespace GFilters
 class GFilters::NetworkFilter : public GSmtp::Filter , private GNet::ExceptionHandler
 {
 public:
-	NetworkFilter( GNet::ExceptionSink , GStore::FileStore & , Filter::Type ,
+	NetworkFilter( GNet::EventState , GStore::FileStore & , Filter::Type ,
 		const Filter::Config & , const std::string & server_location ) ;
 			///< Constructor.
 
@@ -76,7 +76,7 @@ private:
 	std::pair<std::string,int> responsePair() const ;
 
 private:
-	GNet::ExceptionSink m_es ;
+	GNet::EventState m_es ;
 	GStore::FileStore & m_file_store ;
 	GNet::ClientPtr<GSmtp::RequestClient> m_client_ptr ;
 	GNet::Timer<NetworkFilter> m_timer ;
@@ -84,7 +84,7 @@ private:
 	GNet::Location m_location ;
 	unsigned int m_connection_timeout ;
 	unsigned int m_response_timeout ;
-	G::optional<std::string> m_text ;
+	std::optional<std::string> m_text ;
 	Result m_result {Result::fail} ;
 } ;
 

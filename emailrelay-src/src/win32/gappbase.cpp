@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -19,6 +19,7 @@
 ///
 
 #include "gdef.h"
+#include "gnowide.h"
 #include "gappbase.h"
 #include "gappinst.h"
 #include "gwindow.h"
@@ -35,12 +36,11 @@ GGui::ApplicationBase::ApplicationBase( HINSTANCE current , HINSTANCE previous ,
 }
 
 GGui::ApplicationBase::~ApplicationBase()
-{
-}
+= default ;
 
-std::string GGui::ApplicationBase::createWindow( int show_style , bool do_show , int dx , int dy , bool no_throw )
+void GGui::ApplicationBase::createWindow( int show_style , bool do_show , int dx , int dy )
 {
-	G_DEBUG( "GGui::ApplicationBase::createWindow" ) ;
+	G_DEBUG( "GGui::ApplicationBase::createWindow: name=" << m_name << " first=" << (m_previous==0) ) ;
 
 	// first => register a window class
 	if( m_previous == 0 )
@@ -58,10 +58,7 @@ std::string GGui::ApplicationBase::createWindow( int show_style , bool do_show ,
 			HNULL , // menu handle: HNULL => use class's menu
 			hinstance() ) )
 	{
-		if( no_throw )
-			return wndProcExceptionString() ;
-		else
-			throw CreateError( wndProcExceptionString() ) ;
+		throw CreateError( reason() ) ; // GGui::Window::reason()
 	}
 
 	if( do_show )
@@ -69,7 +66,6 @@ std::string GGui::ApplicationBase::createWindow( int show_style , bool do_show ,
 		show( show_style ) ; // GGui::Window::show(), ShowWindow()
 		update() ; // GGui::Window::update(), UpdateWindow()
 	}
-	return std::string() ;
 }
 
 bool GGui::ApplicationBase::firstInstance() const
@@ -82,7 +78,7 @@ void GGui::ApplicationBase::initFirst()
 	G_DEBUG( "GGui::ApplicationBase::initFirst" ) ;
 
 	UINT icon_id = resource() ;
-	HICON icon = icon_id ? LoadIcon(hinstance(),MAKEINTRESOURCE(icon_id)) : 0 ;
+	HICON icon = icon_id ? G::nowide::loadIcon(hinstance(),icon_id) : 0 ;
 	if( icon == 0 )
 		icon = classIcon() ;
 
@@ -103,7 +99,7 @@ void GGui::ApplicationBase::initFirst()
 void GGui::ApplicationBase::close() const
 {
 	G_DEBUG( "GGui::ApplicationBase::close: sending wm-close" ) ;
-	SendMessage( handle() , WM_CLOSE , 0 , 0 ) ;
+	G::nowide::sendMessage( handle() , WM_CLOSE , 0 , 0 ) ;
 }
 
 void GGui::ApplicationBase::run()
@@ -156,32 +152,21 @@ bool GGui::ApplicationBase::messageBoxQuery( const std::string & message )
 {
 	HWND hwnd = messageBoxHandle() ;
 	unsigned int type = messageBoxType( hwnd , MB_YESNO | MB_ICONQUESTION ) ;
-	return messageBoxCore( hwnd , type , title() , message ) ;
+	return G::nowide::messageBox( hwnd , message , title() , type ) ;
 }
 
 void GGui::ApplicationBase::messageBox( const std::string & message )
 {
 	HWND hwnd = messageBoxHandle() ;
 	unsigned int type = messageBoxType( hwnd , MB_OK | MB_ICONEXCLAMATION ) ;
-	messageBoxCore( hwnd , type , title() , message ) ;
+	G::nowide::messageBox( hwnd , message , title() , type ) ;
 }
 
 void GGui::ApplicationBase::messageBox( const std::string & title , const std::string & message )
 {
 	HWND hwnd = HNULL ;
 	unsigned int type = messageBoxType( hwnd , MB_OK | MB_ICONEXCLAMATION ) ;
-	messageBoxCore( hwnd , type , title , message ) ;
-}
-
-bool GGui::ApplicationBase::messageBoxCore( HWND parent , unsigned int type ,
-	const std::string & title , const std::string & message )
-{
-	std::wstring wtitle ;
-	std::wstring wmessage ;
-	G::Convert::convert( wtitle , title ) ;
-	G::Convert::convert( wmessage , message ) ;
-	int rc = MessageBoxW( parent , wmessage.c_str() , wtitle.c_str() , type ) ;
-	return rc == IDOK || rc == IDYES ;
+	G::nowide::messageBox( hwnd , message , title , type ) ;
 }
 
 HWND GGui::ApplicationBase::messageBoxHandle() const

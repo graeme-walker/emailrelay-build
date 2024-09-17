@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -38,12 +38,13 @@ namespace G
 {
 	namespace ProcessImp
 	{
-		G_EXCEPTION_CLASS( DevNullError , tx("cannot open /dev/null") ) ;
-		G_EXCEPTION_CLASS( IdentityError , tx("cannot change process identity") ) ;
+		G_EXCEPTION_CLASS( DevNullError , tx("cannot open /dev/null") )
+		G_EXCEPTION_CLASS( IdentityError , tx("cannot change process identity") )
 		void noCloseOnExec( int fd ) noexcept ;
-		void reopen( int fd , int mode ) ;
+		enum class Mode { read_only , write_only } ;
+		void reopen( int fd , Mode mode ) ;
 		mode_t umaskValue( G::Process::Umask::Mode mode ) ;
-		bool readlink_( string_view path , std::string & value ) ;
+		bool readlink_( std::string_view path , std::string & value ) ;
 		bool setRealUser( Identity id , std::nothrow_t ) noexcept ;
 		bool setRealGroup( Identity id , std::nothrow_t ) noexcept ;
 		void setEffectiveUser( Identity id ) ;
@@ -83,7 +84,7 @@ bool G::Process::cd( const Path & dir , std::nothrow_t )
 
 void G::Process::closeStderr()
 {
-	ProcessImp::reopen( STDERR_FILENO , O_WRONLY ) ;
+	ProcessImp::reopen( STDERR_FILENO , ProcessImp::Mode::write_only ) ;
 }
 
 void G::Process::closeFiles( bool keep_stderr )
@@ -91,12 +92,13 @@ void G::Process::closeFiles( bool keep_stderr )
 	std::cout << std::flush ;
 	std::cerr << std::flush ;
 
-	ProcessImp::reopen( STDIN_FILENO , O_RDONLY ) ;
-	ProcessImp::reopen( STDOUT_FILENO , O_WRONLY ) ;
+	ProcessImp::reopen( STDIN_FILENO , ProcessImp::Mode::read_only ) ;
+	ProcessImp::reopen( STDOUT_FILENO , ProcessImp::Mode::write_only ) ;
 	if( !keep_stderr )
-		ProcessImp::reopen( STDERR_FILENO , O_WRONLY ) ;
+		ProcessImp::reopen( STDERR_FILENO , ProcessImp::Mode::write_only ) ;
 
 	closeOtherFiles() ;
+	inheritStandardFiles() ;
 }
 
 void G::Process::closeOtherFiles( int fd_keep )
@@ -111,6 +113,10 @@ void G::Process::closeOtherFiles( int fd_keep )
 		if( fd != STDIN_FILENO && fd != STDOUT_FILENO && fd != STDERR_FILENO && fd != fd_keep )
 			::close( fd ) ;
 	}
+}
+
+void G::Process::inheritStandardFiles()
+{
 	ProcessImp::noCloseOnExec( STDIN_FILENO ) ;
 	ProcessImp::noCloseOnExec( STDOUT_FILENO ) ;
 	ProcessImp::noCloseOnExec( STDERR_FILENO ) ;
@@ -140,6 +146,13 @@ std::string G::Process::strerror( int errno_ )
 	if( s.empty() ) s = "unknown error" ;
 	return Str::isPrintableAscii(s) ? Str::lower(s) : s ;
 }
+
+#ifndef G_LIB_SMALL
+std::string G::Process::errorMessage( DWORD e )
+{
+	return std::string("error ").append( std::to_string(e) ) ;
+}
+#endif
 
 void G::Process::beSpecial( Identity special_identity , bool change_group )
 {
@@ -194,7 +207,17 @@ void G::Process::setEffectiveGroup( Identity id )
 }
 #endif
 
-std::string G::Process::cwd( bool no_throw )
+G::Path G::Process::cwd()
+{
+	return cwdImp( false ) ;
+}
+
+G::Path G::Process::cwd( std::nothrow_t )
+{
+	return cwdImp( true ) ;
+}
+
+G::Path G::Process::cwdImp( bool no_throw )
 {
 	std::string result ;
 	std::array<std::size_t,2U> sizes = {{ G::Limits<>::path_buffer , PATH_MAX+1U }} ;
@@ -216,12 +239,12 @@ std::string G::Process::cwd( bool no_throw )
 	}
 	if( result.empty() && !no_throw )
 		throw GetCwdError() ;
-	return result ;
+	return {result} ;
 }
 
 #ifdef G_UNIX_MAC
 #include <libproc.h>
-std::string G::Process::exe()
+G::Path G::Process::exe()
 {
 	// (see also _NSGetExecutablePath())
 	std::vector<char> buffer( std::max(100,PROC_PIDPATHINFO_MAXSIZE) ) ;
@@ -231,22 +254,22 @@ std::string G::Process::exe()
 	{
 		std::size_t n = static_cast<std::size_t>(rc) ;
 		if( n > buffer.size() ) n = buffer.size() ;
-		return std::string( buffer.data() , n ) ;
+		return Path( std::string_view(buffer.data(),n) ) ;
 	}
 	else
 	{
-		return std::string() ;
+		return {} ;
 	}
 }
 #else
-std::string G::Process::exe()
+G::Path G::Process::exe()
 {
 	// best effort, not guaranteed
 	std::string result ;
 	ProcessImp::readlink_( "/proc/self/exe" , result ) ||
 	ProcessImp::readlink_( "/proc/curproc/file" , result ) ||
 	ProcessImp::readlink_( "/proc/curproc/exe" , result ) ;
-	return result ;
+	return {result} ;
 }
 #endif
 
@@ -342,9 +365,10 @@ void G::ProcessImp::noCloseOnExec( int fd ) noexcept
 	::fcntl( fd , F_SETFD , 0 ) ;
 }
 
-void G::ProcessImp::reopen( int fd , int mode )
+void G::ProcessImp::reopen( int fd , Mode mode_in )
 {
-	int fd_null = ::open( Path::nullDevice().cstr() , mode ) ; // NOLINT
+	auto mode = mode_in == Mode::read_only ? File::InOutAppend::In : File::InOutAppend::OutNoCreate ;
+	int fd_null = File::open( Path::nullDevice() , mode ) ;
 	if( fd_null < 0 ) throw DevNullError() ;
 	::dup2( fd_null , fd ) ;
 	::close( fd_null ) ;
@@ -362,7 +386,7 @@ mode_t G::ProcessImp::umaskValue( Process::Umask::Mode mode )
 }
 #endif
 
-bool G::ProcessImp::readlink_( string_view path , std::string & value )
+bool G::ProcessImp::readlink_( std::string_view path , std::string & value )
 {
 	Path target = File::readlink( Path(path) , std::nothrow ) ;
 	if( !target.empty() ) value = target.str() ;

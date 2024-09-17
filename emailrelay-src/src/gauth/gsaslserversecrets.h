@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -45,7 +45,7 @@ public:
 	virtual bool valid() const = 0 ;
 		///< Returns true if the secrets are valid.
 
-	virtual Secret serverSecret( G::string_view type , G::string_view id ) const = 0 ;
+	virtual Secret serverSecret( std::string_view type , std::string_view id ) const = 0 ;
 		///< Returns the server secret for the given client id.
 		///< The type is "plain" or the CRAM hash algorithm.
 		///< Returns an invalid secret if not found.
@@ -58,7 +58,7 @@ public:
 	virtual std::string source() const = 0 ;
 		///< Returns the source identifier (eg. file name).
 
-	virtual bool contains( G::string_view type , G::string_view id ) const = 0 ;
+	virtual bool contains( std::string_view type , std::string_view id ) const = 0 ;
 		///< Returns true if there is a secret of the given type
 		///< either for one user in particular or for any user if
 		///< the id is empty.

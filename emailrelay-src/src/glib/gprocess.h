@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -49,17 +49,17 @@ namespace G
 class G::Process
 {
 public:
-	G_EXCEPTION( CannotChangeDirectory , tx("cannot change directory") ) ;
-	G_EXCEPTION( InvalidId , tx("invalid process-id string") ) ;
-	G_EXCEPTION( UidError , tx("cannot set uid") ) ;
-	G_EXCEPTION( GidError , tx("cannot set gid") ) ;
-	G_EXCEPTION( GetCwdError , tx("cannot get current working directory") ) ;
+	G_EXCEPTION( CannotChangeDirectory , tx("cannot change directory") )
+	G_EXCEPTION( InvalidId , tx("invalid process-id string") )
+	G_EXCEPTION( UidError , tx("cannot set uid") )
+	G_EXCEPTION( GidError , tx("cannot set gid") )
+	G_EXCEPTION( GetCwdError , tx("cannot get current working directory") )
 	class Id ;
 	class Umask ;
 	class UmaskImp ;
 
 	static void closeFiles( bool keep_stderr = false ) ;
-		///< Closes all open file descriptors and reopen stdin,
+		///< Closes all open file descriptors and reopens stdin,
 		///< stdout and possibly stderr to the null device.
 
 	static void closeStderr() ;
@@ -67,7 +67,11 @@ public:
 
 	static void closeOtherFiles( int fd_keep = -1 ) ;
 		///< Closes all open file descriptors except the three
-		///< standard ones and possibly one other.
+		///< standard ones and optionally one other.
+
+	static void inheritStandardFiles() ;
+		///< Makes sure that the standard file descriptors
+		///< are inherited.
 
 	static void cd( const Path & dir ) ;
 		///< Changes directory.
@@ -90,6 +94,10 @@ public:
 	static std::string strerror( int errno_ ) ;
 		///< Translates an 'errno' value into a meaningful diagnostic string.
 		///< The returned string is non-empty, even for a zero errno.
+
+	static std::string errorMessage( DWORD error ) ;
+		///< Translates a GetLastError() value into a meaningful diagnostic string.
+		///< The returned string is non-empty, even for a zero error number.
 
 	static std::pair<Identity,Identity> beOrdinaryAtStartup( const std::string & nobody , bool change_group ) ;
 		///< Revokes special privileges (root or suid) at startup, possibly
@@ -115,9 +123,10 @@ public:
 		///< Logs an error message and throws on failure, resulting in a call
 		///< to std::terminate() when called from a destructor (see G::Root).
 		///<
-		///< This affects all threads in the calling processes, with signal hacks
-		///< used in some implementations to do the synchronisation. This can
-		///< lead to surprising interruptions of sleep(), select() etc.
+		///< (Note that the identity switch applies to all threads in the
+		///< calling processes, so some run-time libraries engage in signal
+		///< shenanigans to synchronise the change across threads, which can
+		///< lead to surprising interruptions of sleep(), select() etc.)
 		///<
 		///< See also class G::Root.
 
@@ -142,14 +151,17 @@ public:
 	static void setEffectiveGroup( Identity ) ;
 		///< Sets the effective group-id. Throws on error.
 
-	static std::string cwd( bool no_throw = false ) ;
-		///< Returns the current working directory. Throws on error
-		///< by default or returns the empty string.
+	static Path cwd() ;
+		///< Returns the current working directory. Throws on error.
 
-	static std::string exe() ;
+	static Path cwd( std::nothrow_t ) ;
+		///< Returns the current working directory. Returns the
+		///< empty path on error.
+
+	static Path exe() ;
 		///< Returns the absolute path of the current executable,
 		///< independent of the argv array passed to main(). Returns
-		///< the empty string if unknown.
+		///< the empty path if unknown.
 
 	class Id /// Process-id class.
 	{
@@ -211,6 +223,9 @@ public:
 
 public:
 	Process() = delete ;
+
+private:
+	static Path cwdImp( bool ) ;
 } ;
 
 inline G::Process::Id::Id( int n ) noexcept :

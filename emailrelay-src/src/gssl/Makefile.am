@@ -1,5 +1,5 @@
 #
-## Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+## Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 ## 
 ## This program is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
@@ -51,7 +51,8 @@ SSL_EXTRA_DIST = \
 	gssl_use_openssl.cpp \
 	gssl_use_mbedtls.cpp
 
-SSL_KEYGEN_SOURCES =
+SSL_KEYGEN_SOURCES = \
+	empty.cpp
 
 endif
 
@@ -114,7 +115,8 @@ SSL_EXTRA_DIST = \
 	gssl_use_mbedtls.cpp \
 	gssl_use_both.cpp
 
-SSL_KEYGEN_SOURCES =
+SSL_KEYGEN_SOURCES = \
+	empty.cpp
 
 endif
 
@@ -165,4 +167,9 @@ libgsslextra_a_SOURCES = \
 	$(SSL_EXTRA_SOURCES)
 
 extra-local: libgsslextra.a
+
+empty.cpp:
+	-touch empty.cpp
+
+CLEANFILES = empty.cpp
 

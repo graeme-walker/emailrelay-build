@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -43,12 +43,11 @@ namespace G
 ///
 /// Usage:
 /// \code
-/// G::PidFile pid_file ;
-/// if( !path.empty() )
-/// { pid_file.init(path) ; pid_file.check() ; }
 /// G::Root::init("nobody") ;
-/// if( daemon ) G::Daemon::detach( pid_file ) ;
-/// { G::Root claim_root ; pid_file.commit() ; }
+/// G::PidFile pid_file( path ) ;
+/// { G::Root _ ; pid_file.mkdir() ; }
+/// if( daemon ) G::Daemon::detach( pid_file.path() ) ;
+/// { G::Root _ ; pid_file.commit() ; }
 /// \endcode
 ///
 /// \see G::Daemon
@@ -56,18 +55,7 @@ namespace G
 class G::PidFile
 {
 public:
-	G_EXCEPTION( Error , tx("invalid pid file") ) ;
-
-	static bool cleanup( SignalSafe , const char * path ) noexcept ;
-		///< Deletes the specified pid file if it contains this
-		///< process's id. Claims root privilege to read and
-		///< delete the pid file (see G::Root::atExit()).
-		///<
-		///< This is not normally needed by client code since it
-		///< is installed as a signal handler (see G::Cleanup)
-		///< and called from the destructor.
-		///<
-		///< Signal-safe, reentrant implementation.
+	G_EXCEPTION( Error , tx("invalid pid file") )
 
 	explicit PidFile( const Path & pid_file_path ) ;
 		///< Constructor. A relative path is converted to
@@ -79,7 +67,7 @@ public:
 		///< object.
 
 	~PidFile() ;
-		///< Destructor. Calls cleanup() to delete the file.
+		///< Destructor. Deletes the file.
 
 	void mkdir() ;
 		///< Creates the directory if it does not already exist.
@@ -89,9 +77,8 @@ public:
 
 	void commit() ;
 		///< Creates the pid file if a path has been defined.
-		///< Also installs signal handlers to cleanup() the
-		///< file on abnormal process termination. Throws
-		///< on error.
+		///< Also installs signal handlers to cleanup the file on
+		///< abnormal process termination. Throws on error.
 		///<
 		///< The caller should switch effective user-id and
 		///< umask as necessary.
@@ -111,12 +98,11 @@ public:
 
 private:
 	static void create( const Path & pid_file ) ;
-	static Process::Id read( SignalSafe , const char * path ) noexcept ;
 	bool valid() const ;
 
 private:
 	Path m_path ;
-	bool m_committed{false} ;
+	bool m_committed {false} ;
 } ;
 
 #endif

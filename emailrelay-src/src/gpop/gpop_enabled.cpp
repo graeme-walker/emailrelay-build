@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -27,10 +27,9 @@ bool GPop::enabled() noexcept
 	return true ;
 }
 
-std::unique_ptr<GPop::Store> GPop::newStore( const G::Path & spool_dir ,
-		bool pop_by_name , bool allow_delete )
+std::unique_ptr<GPop::Store> GPop::newStore( const G::Path & spool_dir , const Store::Config & config )
 {
-	return std::make_unique<Store>( spool_dir , pop_by_name , allow_delete ) ;
+	return std::make_unique<Store>( spool_dir , config ) ;
 }
 
 std::unique_ptr<GAuth::SaslServerSecrets> GPop::newSecrets( const std::string & path )
@@ -38,7 +37,7 @@ std::unique_ptr<GAuth::SaslServerSecrets> GPop::newSecrets( const std::string & 
 	return GAuth::Secrets::newServerSecrets( path , "pop-server" ) ;
 }
 
-std::unique_ptr<GPop::Server> GPop::newServer( GNet::ExceptionSink es , Store & store ,
+std::unique_ptr<GPop::Server> GPop::newServer( GNet::EventState es , Store & store ,
 	const GAuth::SaslServerSecrets & secrets , const Server::Config & config )
 {
 	return std::make_unique<Server>( es , store , secrets , config ) ;

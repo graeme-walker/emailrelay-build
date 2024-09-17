@@ -1,5 +1,5 @@
 #
-## Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+## Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 ## 
 ## This program is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
@@ -40,12 +40,11 @@ UNIX_SOURCES = \
 WINDOWS_SOURCES = \
 	gbatchfile.cpp \
 	gbatchfile.h \
+	gcodepage.cpp \
+	gcodepage.h \
 	gmapfile.cpp \
 	gmapfile.h \
 	gcleanup_win32.cpp \
-	gconvert.h \
-	gconvert.cpp \
-	gconvert_win32.cpp \
 	gdaemon_win32.cpp \
 	gdirectory_win32.cpp \
 	genvironment_win32.cpp \
@@ -66,6 +65,8 @@ COMMON_SOURCES = \
 	gbuffer.h \
 	gcall.h \
 	gcleanup.h \
+	gconvert.cpp \
+	gconvert.h \
 	gdaemon.h \
 	gdate.h \
 	gdate.cpp \
@@ -92,6 +93,8 @@ COMMON_SOURCES = \
 	ghashstate.h \
 	ghostname.h \
 	gidentity.h \
+	gidn.h \
+	gidn.cpp \
 	gimembuf.h \
 	glimits.h \
 	glog.h \
@@ -105,6 +108,7 @@ COMMON_SOURCES = \
 	gmd5.cpp \
 	gmsg.h \
 	gnewprocess.h \
+	gnowide.h \
 	gomembuf.h \
 	goptional.h \
 	goption.h \

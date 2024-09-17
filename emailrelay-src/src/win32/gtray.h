@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 #define G_GUI_TRAY_H
 
 #include "gdef.h"
+#include "gnowide.h"
 #include "gwinbase.h"
 #include "gcracker.h"
 #include "gexception.h"
@@ -37,8 +38,8 @@ namespace GGui
 class GGui::Tray
 {
 public:
-	G_EXCEPTION( IconError , tx("no icon resource built-in") ) ;
-	G_EXCEPTION( Error , tx("system-tray error") ) ;
+	G_EXCEPTION( IconError , tx("no icon resource built-in") )
+	G_EXCEPTION( Error , tx("system-tray error") )
 
 	Tray( unsigned int icon_resource_id , const WindowBase & window ,
 		const std::string & tip , unsigned int message = Cracker::wm_tray() ) ;
@@ -59,7 +60,7 @@ public:
 	Tray( Tray && ) = delete ;
 
 private:
-	NOTIFYICONDATAA m_info ;
+	G::nowide::NOTIFYICONDATA_type m_info ;
 } ;
 
 #endif

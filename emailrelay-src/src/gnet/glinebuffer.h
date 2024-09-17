@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -28,6 +28,7 @@
 #include "gcall.h"
 #include <functional>
 #include <string>
+#include <tuple>
 
 namespace GNet
 {
@@ -82,7 +83,7 @@ namespace GNet
 class GNet::LineBuffer
 {
 public:
-	G_EXCEPTION( ErrorOverflow , tx("line buffer overflow") ) ;
+	G_EXCEPTION( ErrorOverflow , tx("line buffer overflow") )
 	using SinkArgs = std::tuple<const char*,std::size_t,std::size_t,std::size_t,char,bool> ;
 	using SinkFn = std::function<bool(const SinkArgs&)> ;
 	using FragmentsFn = std::function<bool()> ;
@@ -91,7 +92,7 @@ public:
 	{
 		static constexpr std::size_t inf = ~(std::size_t(0)) ;
 		static_assert( (inf+1U) == 0U , "" ) ;
-		std::string m_eol {'\n'} ; // eol or autodetect if empty
+		std::string m_eol {"\n",1U} ; // eol or autodetect if empty
 		std::size_t m_warn {0U} ; // line-length warning level
 		std::size_t m_fmin {0U} ; // minimum fragment size
 		std::size_t m_expect {0U} ; // expected size of binary chunk
@@ -197,7 +198,7 @@ public:
 			///< function on the sink object, allowing the flag to change
 			///< dynamically as each line is delivered.
 
-	bool apply( SinkFn sink_fn , G::string_view data , FragmentsFn fragments_fn ) ;
+	bool apply( SinkFn sink_fn , std::string_view data , FragmentsFn fragments_fn ) ;
 		///< Overload for std::function.
 		///<
 		///< This overload provides extra parameter 'more' to the
@@ -473,7 +474,7 @@ void GNet::LineBuffer::apply( Tsink sink_p , Tmemfun memfun , const char * data_
 }
 
 inline
-bool GNet::LineBuffer::apply( SinkFn sink_fn , G::string_view data_in , FragmentsFn fragments_fn ) // NOLINT performance-unnecessary-value-param
+bool GNet::LineBuffer::apply( SinkFn sink_fn , std::string_view data_in , FragmentsFn fragments_fn ) // NOLINT performance-unnecessary-value-param
 {
 	Extension e( this , data_in.data() , data_in.size() ) ;
 	while( e.valid() && more( fragments_fn() ) )

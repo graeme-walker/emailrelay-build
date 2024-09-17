@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -58,13 +58,13 @@ class GNet::SocketProtocol
 {
 public:
 	using Sink = SocketProtocolSink ;
-	G_EXCEPTION_CLASS( ReadError , tx("peer disconnected") ) ;
-	G_EXCEPTION( SendError , tx("peer disconnected") ) ;
-	G_EXCEPTION( ShutdownError , tx("shutdown error") ) ;
-	G_EXCEPTION( SecureConnectionTimeout , tx("secure connection timeout") ) ;
-	G_EXCEPTION( Shutdown , tx("peer shutdown") ) ;
-	G_EXCEPTION( OtherEventError , tx("network event") ) ;
-	G_EXCEPTION( ProtocolError , tx("socket protocol error") ) ;
+	G_EXCEPTION_CLASS( ReadError , tx("peer disconnected") )
+	G_EXCEPTION( SendError , tx("peer disconnected") )
+	G_EXCEPTION( ShutdownError , tx("shutdown error") )
+	G_EXCEPTION( SecureConnectionTimeout , tx("secure connection timeout") )
+	G_EXCEPTION( Shutdown , tx("peer shutdown") )
+	G_EXCEPTION( OtherEventError , tx("network event") )
+	G_EXCEPTION( ProtocolError , tx("socket protocol error") )
 
 	struct Config /// A configuration structure for GNet::SocketProtocol.
 	{
@@ -78,7 +78,7 @@ public:
 		Config & set_client_tls_profile( const std::string & s ) ;
 	} ;
 
-	SocketProtocol( EventHandler & , ExceptionSink , Sink & ,
+	SocketProtocol( EventHandler & , EventState , Sink & ,
 		StreamSocket & , const Config & ) ;
 			///< Constructor.
 
@@ -87,10 +87,10 @@ public:
 
 	bool readEvent( bool no_throw_on_peer_disconnect = false ) ;
 		///< Called on receipt of a read event. Delivers data via the
-		///< sink interface onData() and optionally onPeerDisconnect()
-		///< if the parameter is true. Throws ReadError on error.
-		///< Returns true iff an incomplete send() over TLS has now
-		///< completed.
+		///< sink interface onData(). By default throws ReadError on
+		///< disconnection, or uses the onPeerDisconnect() callback
+		///< otherwise. Returns true iff an incomplete send()
+		///< over TLS has now completed.
 
 	bool writeEvent() ;
 		///< Called on receipt of a write event. Sends more pending data
@@ -118,10 +118,10 @@ public:
 		///< call writeEvent(). There should be no new calls to send()
 		///< until writeEvent() or readEvent() returns true.
 
-	bool send( G::string_view data ) ;
+	bool send( std::string_view data ) ;
 		///< Overload for string_view.
 
-	bool send( const std::vector<G::string_view> & data , std::size_t offset = 0U ) ;
+	bool send( const std::vector<std::string_view> & data , std::size_t offset = 0U ) ;
 		///< Overload to send data using scatter-gather segments.
 		///< In this overload any unsent residue is not copied
 		///< and the segment pointers must stay valid until

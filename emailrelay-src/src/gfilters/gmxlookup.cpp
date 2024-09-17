@@ -1,5 +1,5 @@
 //
-// Copyright (C) 2001-2023 Graeme Walker <graeme_walker@users.sourceforge.net>
+// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -24,7 +24,6 @@
 #include "gnameservers.h"
 #include "gstr.h"
 #include "gstringtoken.h"
-#include "goptional.h"
 #include "gassert.h"
 #include "glog.h"
 #include <fstream>
@@ -46,13 +45,13 @@ bool GFilters::MxLookup::enabled()
 }
 
 #ifndef G_LIB_SMALL
-GFilters::MxLookup::MxLookup( GNet::ExceptionSink es , Config config ) :
+GFilters::MxLookup::MxLookup( GNet::EventState es , Config config ) :
 	MxLookup(es,config,GNet::nameservers(53U))
 {
 }
 #endif
 
-GFilters::MxLookup::MxLookup( GNet::ExceptionSink es , Config config ,
+GFilters::MxLookup::MxLookup( GNet::EventState es , Config config ,
 	const std::vector<GNet::Address> & nameservers ) :
 		m_es(es) ,
 		m_config(config) ,
@@ -81,7 +80,7 @@ GFilters::MxLookup::MxLookup( GNet::ExceptionSink es , Config config ,
 		[](const GNet::Address &a_){return a_.is6();} ) != m_nameservers.end() ;
 	if( ipv6 )
 	{
-		m_socket6 = std::make_unique<GNet::DatagramSocket>( GNet::Address::Family::ipv4 , 0 , GNet::DatagramSocket::Config() ) ;
+		m_socket6 = std::make_unique<GNet::DatagramSocket>( GNet::Address::Family::ipv6 , 0 , GNet::DatagramSocket::Config() ) ;
 		m_socket6->addReadHandler( *this , m_es ) ;
 		G_DEBUG( "GFilters::MxLookup::ctor: ipv6 udp socket: " << (*m_socket6).getLocalAddress().displayString() ) ;
 	}
@@ -175,7 +174,6 @@ std::pair<GFilters::MxLookupImp::Result,std::string> GFilters::MxLookupImp::pars
 		std::string cname_result ;
 		std::string mx_result ;
 		unsigned int mx_pr = 0U ;
-		G::optional<unsigned int> mx_prmin ;
 
 		unsigned int offset = response.QDCOUNT() ;
 		for( unsigned int i = 0 ; i < response.ANCOUNT() ; i++ )
