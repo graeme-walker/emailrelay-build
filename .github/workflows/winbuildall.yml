@@ -11,6 +11,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: build_step
-        shell: cmd
-        run: "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" && winbuildall.bat
+      - name: cmake
+        run: cmake .
+      - name: cmake_build
+        run: cmake --build .
