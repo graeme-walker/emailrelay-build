@@ -14,4 +14,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: build
-      run: ./winbuildall.bat
+      run: |
+        %ComSpec% /D /E:ON /V:OFF /S /C "CALL winbuildall.bat"
+  
