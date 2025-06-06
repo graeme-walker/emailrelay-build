@@ -12,4 +12,4 @@ jobs:
     steps:
       - name: build_step
         uses: actions/checkout@v4
-        run: %ComSpec% /D /E:ON /V:OFF /S /C "CALL winbuildall.bat"
+        run: cmd.exe /D /E:ON /V:OFF /S /C "CALL winbuildall.bat"
