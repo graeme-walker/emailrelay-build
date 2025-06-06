@@ -89,6 +89,13 @@ if not exist %qtsrc%\qtbase\src\corelib (
 if not "%Platform%" == "x64" (
 	if not "%Platform%" == "x86" (
 		echo winbuildall: please run from a visual studio 64-bit developer command prompt
+		echo %PATH%
+		where cl
+		where vcvars64
+		where vcvarsall
+		where vsdevcmd
+		where nmake
+		where cmake
 		goto error
 	)
 )
