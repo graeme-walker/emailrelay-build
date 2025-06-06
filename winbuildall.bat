@@ -90,12 +90,12 @@ if not "%Platform%" == "x64" (
 	if not "%Platform%" == "x86" (
 		echo winbuildall: please run from a visual studio 64-bit developer command prompt
 		where cl
-		where vcvars64
-		where vcvarsall
-		where vsdevcmd
+		where link
+		where lib
 		where nmake
 		where cmake
-		goto error
+		set Platform=x64
+		rem goto error
 	)
 )
 

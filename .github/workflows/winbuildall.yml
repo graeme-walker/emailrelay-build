@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ "master" ]
 
+env:
+  Platform: x64
+
 jobs:
   build_job:
     runs-on: windows-latest
