@@ -7,13 +7,9 @@ on:
     branches: [ "master" ]
 
 jobs:
-  build:
-
+  build_job:
     runs-on: windows-latest
-
     steps:
-    - uses: actions/checkout@v4
-    - name: build
-      run: |
-        %ComSpec% /D /E:ON /V:OFF /S /C "CALL winbuildall.bat"
-  
+      - name: build_step
+        uses: actions/checkout@v4
+		    run: %ComSpec% /D /E:ON /V:OFF /S /C "CALL winbuildall.bat"
