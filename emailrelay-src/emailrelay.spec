@@ -82,9 +82,7 @@ test "$RPM_BUILD_ROOT" = "/" || rm -rf "$RPM_BUILD_ROOT"
 %docdir /usr/share/doc/emailrelay
 %dir /usr/share/doc/emailrelay
 %doc /usr/share/doc/emailrelay/AUTHORS
-%doc /usr/share/doc/emailrelay/COPYING
 %doc /usr/share/doc/emailrelay/ChangeLog
-%doc /usr/share/doc/emailrelay/INSTALL
 %doc /usr/share/doc/emailrelay/NEWS
 %doc /usr/share/doc/emailrelay/README
 %doc /usr/share/doc/emailrelay/authentication.png

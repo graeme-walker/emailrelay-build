@@ -408,7 +408,6 @@ EXTRA_DIST = \
 	LICENSE \
 	VERSION \
 	README.md \
-	README.rst \
 	bootstrap \
 	autogen.sh \
 	winbuild.bat \
@@ -419,7 +418,7 @@ SUBDIRS = libexec bin src etc doc debian test m4 bsd po unity
 
 # work-round PKG_CHECK_MODULES if no pkg-config
 ACLOCAL_AMFLAGS = -I m4
-e_doc_DATA = COPYING AUTHORS INSTALL NEWS README ChangeLog
+e_doc_DATA = AUTHORS NEWS README ChangeLog
 RPM = $(RPM_ROOT)/RPMS/$(ARCH)/emailrelay-$(VERSION)-1.$(ARCH).rpm
 TAR = emailrelay-$(VERSION).tar.gz
 ZIP = emailrelay-$(VERSION)-src.zip
