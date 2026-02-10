@@ -1,6 +1,9 @@
 #!/usr/bin/perl
 #
-# Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
+# SPDX-FileCopyrightText: 2026 Graeme Walker <graeme_walker@users.sourceforge.net>
+# SPDX-License-Identifier: GPL-3.0-or-later
+# 
+# Copyright (c) 2026 Graeme Walker <graeme_walker@users.sourceforge.net>
 # 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -35,7 +38,7 @@
 #
 
 use strict ;
-use FileHandle ;
+use IO::File ;
 
 package ConfigStatus ;
 
@@ -127,7 +130,7 @@ sub parse
 	$filename ||= "config.status" ;
 	$this->{m_vars} = {} ;
 	$this->{m_switches} = {} ;
-	my $fh = new FileHandle( $filename , "r" ) or die "error: cannot open [$filename]: " . lc($!) . "\n" ;
+	my $fh = new IO::File( $filename , "r" ) or die "error: cannot open [$filename]: " . lc($!) . "\n" ;
 	while(<$fh>)
 	{
 		chomp( my $line = $_ ) ;

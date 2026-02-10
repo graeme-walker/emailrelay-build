@@ -1,3 +1,5 @@
+# GitHub workflow for emailrelay-build
+
 name: winbuildall
 
 on:
@@ -6,23 +8,38 @@ on:
   pull_request:
     branches: [ "master" ]
 
-env:
-  Platform: x64
-
 jobs:
-  build_job:
+  winbuild_x64:
     runs-on: windows-latest
+	env:
+		Platform: x64
     steps:
       - name: checkout
         uses: actions/checkout@v4
-      - name: cmake
-        run: cmake .
-      - name: build
-        run: cmake --build .
-      - name: archive
+      - name: cmake-x64-release
+        run: cmake --fresh -A x64 -B x64 -S .
+      - name: winbuild-x64-release
+        run: cmake --build x64 --config release
+      - name: archive-windows-x64-release
         uses: actions/upload-artifact@v4
         with:
-          name: executables
-          path: |
-            emailrelay-bin-x64/src/main/release/*.exe
-            emailrelay-bin-x64/src/gui/release/*.exe
+          name: emailrelay-windows-x64-release
+          path: emailrelay-windows-x64-release
+  winbuild_x86:
+    runs-on: windows-latest
+	if: false
+	env:
+		Platform: x86
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: cmake-x86-release
+        run: cmake --fresh -A Win32 -B x86 -S .
+      - name: winbuild-x86-release
+        run: cmake --build x86 --config release
+      - name: archive-windows-x86-release
+        uses: actions/upload-artifact@v4
+        with:
+          name: emailrelay-windows-x86-release
+          path: emailrelay-windows-x86-release
+
