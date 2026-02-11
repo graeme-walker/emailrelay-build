@@ -92,9 +92,9 @@ if "%1"=="download" (
 	rem download mbedtls
 	if not exist mbedtls-src (
 		echo winbuildall: downloading mbedtls source
-		curl -L -O https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/mbedtls-3.6.5.tar.gz
+		curl -L -O https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.5/mbedtls-3.6.5.tar.bz2
 		mkdir mbedtls-src
-		tar -m -C mbedtls-src --strip-components=1 -xf mbedtls-3.6.5.tar.gz
+		tar -m -C mbedtls-src --strip-components=1 -xf mbedtls-3.6.5.tar.bz2
 	)
 
 	rem download qt
