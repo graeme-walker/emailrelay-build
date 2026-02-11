@@ -429,7 +429,7 @@ sub _version_from_file
 
 sub _old
 {
-	return $_[0] eq "2.6" ;
+	return ( $_[0] =~ m/^2\.6/ ) ;
 }
 
 sub _glob
