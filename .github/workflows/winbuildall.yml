@@ -11,8 +11,8 @@ on:
 jobs:
   winbuild_x64:
     runs-on: windows-latest
-	env:
-		Platform: x64
+    env:
+      Platform: x64
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -27,9 +27,9 @@ jobs:
           path: emailrelay-windows-x64-release
   winbuild_x86:
     runs-on: windows-latest
-	if: false
-	env:
-		Platform: x86
+    if: false
+    env:
+      Platform: x86
     steps:
       - name: checkout
         uses: actions/checkout@v4
