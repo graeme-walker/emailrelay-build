@@ -1,4 +1,4 @@
-/* $OpenBSD: bn_exp.c,v 1.47 2023/07/08 12:21:58 beck Exp $ */
+/* $OpenBSD: bn_exp.c,v 1.59 2025/05/10 05:54:38 tb Exp $ */
 /* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
@@ -112,10 +112,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <openssl/err.h>
-
 #include "bn_local.h"
 #include "constant_time.h"
+#include "err_local.h"
 
 /* maximum precomputation table size for *variable* sliding windows */
 #define TABLE_SIZE	32
@@ -180,16 +179,22 @@ int
 BN_mod_exp_simple(BIGNUM *r, const BIGNUM *a, const BIGNUM *p, const BIGNUM *m,
     BN_CTX *ctx)
 {
-	int i, j, bits, ret = 0, wstart, wend, window, wvalue;
+	int i, j, bits, wstart, wend, window, wvalue;
 	int start = 1;
-	BIGNUM *d;
+	BIGNUM *d, *q;
 	/* Table of variables obtained from 'ctx' */
 	BIGNUM *val[TABLE_SIZE];
+	int ret = 0;
 
 	if (BN_get_flags(p, BN_FLG_CONSTTIME) != 0) {
 		/* BN_FLG_CONSTTIME only supported by BN_mod_exp_mont() */
 		BNerror(ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
 		return -1;
+	}
+
+	if (r == m) {
+		BNerror(BN_R_INVALID_ARGUMENT);
+		return 0;
 	}
 
 	bits = BN_num_bits(p);
@@ -206,21 +211,24 @@ BN_mod_exp_simple(BIGNUM *r, const BIGNUM *a, const BIGNUM *p, const BIGNUM *m,
 	BN_CTX_start(ctx);
 	if ((d = BN_CTX_get(ctx)) == NULL)
 		goto err;
+	if ((q = BN_CTX_get(ctx)) == NULL)
+		goto err;
 	if ((val[0] = BN_CTX_get(ctx)) == NULL)
 		goto err;
 
-	if (!BN_nnmod(val[0],a,m,ctx))
-		goto err;		/* 1 */
+	if (!BN_nnmod(val[0], a, m, ctx))
+		goto err;
 	if (BN_is_zero(val[0])) {
 		BN_zero(r);
-		ret = 1;
-		goto err;
+		goto done;
 	}
+	if (!bn_copy(q, p))
+		goto err;
 
 	window = BN_window_bits_for_exponent_size(bits);
 	if (window > 1) {
 		if (!BN_mod_mul(d, val[0], val[0], m, ctx))
-			goto err;				/* 2 */
+			goto err;
 		j = 1 << (window - 1);
 		for (i = 1; i < j; i++) {
 			if (((val[i] = BN_CTX_get(ctx)) == NULL) ||
@@ -240,7 +248,7 @@ BN_mod_exp_simple(BIGNUM *r, const BIGNUM *a, const BIGNUM *p, const BIGNUM *m,
 		goto err;
 
 	for (;;) {
-		if (BN_is_bit_set(p, wstart) == 0) {
+		if (BN_is_bit_set(q, wstart) == 0) {
 			if (!start)
 				if (!BN_mod_mul(r, r, r, m, ctx))
 					goto err;
@@ -259,7 +267,7 @@ BN_mod_exp_simple(BIGNUM *r, const BIGNUM *a, const BIGNUM *p, const BIGNUM *m,
 		for (i = 1; i < window; i++) {
 			if (wstart - i < 0)
 				break;
-			if (BN_is_bit_set(p, wstart - i)) {
+			if (BN_is_bit_set(q, wstart - i)) {
 				wvalue <<= (i - wend);
 				wvalue |= 1;
 				wend = i;
@@ -286,13 +294,15 @@ BN_mod_exp_simple(BIGNUM *r, const BIGNUM *a, const BIGNUM *p, const BIGNUM *m,
 		if (wstart < 0)
 			break;
 	}
+
+ done:
 	ret = 1;
 
-err:
+ err:
 	BN_CTX_end(ctx);
-	return (ret);
+
+	return ret;
 }
-LCRYPTO_ALIAS(BN_mod_exp_simple);
 
 /* BN_mod_exp_mont_consttime() stores the precomputed powers in a specific layout
  * so that accessing any of these table values shows the same access pattern as far
@@ -414,18 +424,10 @@ BN_mod_exp_mont_consttime(BIGNUM *rr, const BIGNUM *a, const BIGNUM *p,
 
 	BN_CTX_start(ctx);
 
-	/*
-	 * Allocate a Montgomery context if it was not supplied by the caller.
-	 * If this is not done, things will break in the montgomery part.
-	 */
-	if (in_mont != NULL)
-		mont = in_mont;
-	else {
-		if ((mont = BN_MONT_CTX_new()) == NULL)
-			goto err;
-		if (!BN_MONT_CTX_set(mont, m, ctx))
-			goto err;
-	}
+	if ((mont = in_mont) == NULL)
+		mont = BN_MONT_CTX_create(m, ctx);
+	if (mont == NULL)
+		goto err;
 
 	/* Get the window size to use with size of p. */
 	window = BN_window_bits_for_ctime_exponent_size(bits);
@@ -625,14 +627,16 @@ BN_mod_exp_mont_consttime(BIGNUM *rr, const BIGNUM *a, const BIGNUM *p,
 	/* Convert the final result from montgomery to standard format */
 	if (!BN_from_montgomery(rr, &tmp, mont, ctx))
 		goto err;
+
 	ret = 1;
 
-err:
-	if ((in_mont == NULL) && (mont != NULL))
+ err:
+	if (mont != in_mont)
 		BN_MONT_CTX_free(mont);
-	freezero(powerbufFree, powerbufLen + MOD_EXP_CTIME_MIN_CACHE_LINE_WIDTH);
 	BN_CTX_end(ctx);
-	return (ret);
+	freezero(powerbufFree, powerbufLen + MOD_EXP_CTIME_MIN_CACHE_LINE_WIDTH);
+
+	return ret;
 }
 LCRYPTO_ALIAS(BN_mod_exp_mont_consttime);
 
@@ -677,17 +681,10 @@ BN_mod_exp_mont_internal(BIGNUM *rr, const BIGNUM *a, const BIGNUM *p, const BIG
 	if ((val[0] = BN_CTX_get(ctx)) == NULL)
 		goto err;
 
-	/* If this is not done, things will break in the montgomery
-	 * part */
-
-	if (in_mont != NULL)
-		mont = in_mont;
-	else {
-		if ((mont = BN_MONT_CTX_new()) == NULL)
-			goto err;
-		if (!BN_MONT_CTX_set(mont, m, ctx))
-			goto err;
-	}
+	if ((mont = in_mont) == NULL)
+		mont = BN_MONT_CTX_create(m, ctx);
+	if (mont == NULL)
+		goto err;
 
 	if (!BN_nnmod(val[0], a,m, ctx))
 		goto err;
@@ -698,12 +695,12 @@ BN_mod_exp_mont_internal(BIGNUM *rr, const BIGNUM *a, const BIGNUM *p, const BIG
 		goto err;
 	}
 	if (!BN_to_montgomery(val[0], aa, mont, ctx))
-		goto err; /* 1 */
+		goto err;
 
 	window = BN_window_bits_for_exponent_size(bits);
 	if (window > 1) {
 		if (!BN_mod_mul_montgomery(d, val[0], val[0], mont, ctx))
-			goto err; /* 2 */
+			goto err;
 		j = 1 << (window - 1);
 		for (i = 1; i < j; i++) {
 			if (((val[i] = BN_CTX_get(ctx)) == NULL) ||
@@ -772,13 +769,15 @@ BN_mod_exp_mont_internal(BIGNUM *rr, const BIGNUM *a, const BIGNUM *p, const BIG
 	}
 	if (!BN_from_montgomery(rr, r,mont, ctx))
 		goto err;
+
 	ret = 1;
 
-err:
-	if ((in_mont == NULL) && (mont != NULL))
+ err:
+	if (mont != in_mont)
 		BN_MONT_CTX_free(mont);
 	BN_CTX_end(ctx);
-	return (ret);
+
+	return ret;
 }
 
 int
@@ -788,6 +787,7 @@ BN_mod_exp_mont(BIGNUM *rr, const BIGNUM *a, const BIGNUM *p, const BIGNUM *m,
 	return BN_mod_exp_mont_internal(rr, a, p, m, ctx, in_mont,
 	    (BN_get_flags(p, BN_FLG_CONSTTIME) != 0));
 }
+LCRYPTO_ALIAS(BN_mod_exp_mont);
 
 int
 BN_mod_exp_mont_ct(BIGNUM *rr, const BIGNUM *a, const BIGNUM *p, const BIGNUM *m,
@@ -867,14 +867,10 @@ BN_mod_exp_mont_word(BIGNUM *rr, BN_ULONG a, const BIGNUM *p, const BIGNUM *m,
 	if ((t = BN_CTX_get(ctx)) == NULL)
 		goto err;
 
-	if (in_mont != NULL)
-		mont = in_mont;
-	else {
-		if ((mont = BN_MONT_CTX_new()) == NULL)
-			goto err;
-		if (!BN_MONT_CTX_set(mont, m, ctx))
-			goto err;
-	}
+	if ((mont = in_mont) == NULL)
+		mont = BN_MONT_CTX_create(m, ctx);
+	if (mont == NULL)
+		goto err;
 
 	r_is_one = 1; /* except for Montgomery factor */
 
@@ -942,26 +938,28 @@ BN_mod_exp_mont_word(BIGNUM *rr, BN_ULONG a, const BIGNUM *p, const BIGNUM *m,
 		if (!BN_from_montgomery(rr, r, mont, ctx))
 			goto err;
 	}
+
 	ret = 1;
 
-err:
-	if ((in_mont == NULL) && (mont != NULL))
+ err:
+	if (mont != in_mont)
 		BN_MONT_CTX_free(mont);
 	BN_CTX_end(ctx);
-	return (ret);
+
+	return ret;
 }
-LCRYPTO_ALIAS(BN_mod_exp_mont_word);
 
 int
-BN_mod_exp_recp(BIGNUM *r, const BIGNUM *a, const BIGNUM *p, const BIGNUM *m,
+BN_mod_exp_reciprocal(BIGNUM *r, const BIGNUM *a, const BIGNUM *p, const BIGNUM *m,
     BN_CTX *ctx)
 {
-	int i, j, bits, ret = 0, wstart, wend, window, wvalue;
+	int i, j, bits, wstart, wend, window, wvalue;
 	int start = 1;
-	BIGNUM *aa;
+	BIGNUM *aa, *q;
 	/* Table of variables obtained from 'ctx' */
 	BIGNUM *val[TABLE_SIZE];
-	BN_RECP_CTX recp;
+	BN_RECP_CTX *recp = NULL;
+	int ret = 0;
 
 	if (BN_get_flags(p, BN_FLG_CONSTTIME) != 0) {
 		/* BN_FLG_CONSTTIME only supported by BN_mod_exp_mont() */
@@ -980,43 +978,35 @@ BN_mod_exp_recp(BIGNUM *r, const BIGNUM *a, const BIGNUM *p, const BIGNUM *m,
 		return ret;
 	}
 
-	BN_RECP_CTX_init(&recp);
-
 	BN_CTX_start(ctx);
 	if ((aa = BN_CTX_get(ctx)) == NULL)
+		goto err;
+	if ((q = BN_CTX_get(ctx)) == NULL)
 		goto err;
 	if ((val[0] = BN_CTX_get(ctx)) == NULL)
 		goto err;
 
-	if (m->neg) {
-		/* ignore sign of 'm' */
-		if (!bn_copy(aa, m))
-			goto err;
-		aa->neg = 0;
-		if (BN_RECP_CTX_set(&recp, aa, ctx) <= 0)
-			goto err;
-	} else {
-		if (BN_RECP_CTX_set(&recp, m, ctx) <= 0)
-			goto err;
-	}
+	if ((recp = BN_RECP_CTX_create(m)) == NULL)
+		goto err;
 
 	if (!BN_nnmod(val[0], a, m, ctx))
-		goto err;		/* 1 */
+		goto err;
 	if (BN_is_zero(val[0])) {
 		BN_zero(r);
-		ret = 1;
-		goto err;
+		goto done;
 	}
+	if (!bn_copy(q, p))
+		goto err;
 
 	window = BN_window_bits_for_exponent_size(bits);
 	if (window > 1) {
-		if (!BN_mod_mul_reciprocal(aa, val[0], val[0], &recp, ctx))
-			goto err;				/* 2 */
+		if (!BN_mod_sqr_reciprocal(aa, val[0], recp, ctx))
+			goto err;
 		j = 1 << (window - 1);
 		for (i = 1; i < j; i++) {
 			if (((val[i] = BN_CTX_get(ctx)) == NULL) ||
 			    !BN_mod_mul_reciprocal(val[i], val[i - 1],
-			    aa, &recp, ctx))
+			    aa, recp, ctx))
 				goto err;
 		}
 	}
@@ -1032,9 +1022,9 @@ BN_mod_exp_recp(BIGNUM *r, const BIGNUM *a, const BIGNUM *p, const BIGNUM *m,
 		goto err;
 
 	for (;;) {
-		if (BN_is_bit_set(p, wstart) == 0) {
+		if (BN_is_bit_set(q, wstart) == 0) {
 			if (!start)
-				if (!BN_mod_mul_reciprocal(r, r,r, &recp, ctx))
+				if (!BN_mod_sqr_reciprocal(r, r, recp, ctx))
 					goto err;
 			if (wstart == 0)
 				break;
@@ -1051,7 +1041,7 @@ BN_mod_exp_recp(BIGNUM *r, const BIGNUM *a, const BIGNUM *p, const BIGNUM *m,
 		for (i = 1; i < window; i++) {
 			if (wstart - i < 0)
 				break;
-			if (BN_is_bit_set(p, wstart - i)) {
+			if (BN_is_bit_set(q, wstart - i)) {
 				wvalue <<= (i - wend);
 				wvalue |= 1;
 				wend = i;
@@ -1063,12 +1053,12 @@ BN_mod_exp_recp(BIGNUM *r, const BIGNUM *a, const BIGNUM *p, const BIGNUM *m,
 		/* add the 'bytes above' */
 		if (!start)
 			for (i = 0; i < j; i++) {
-				if (!BN_mod_mul_reciprocal(r, r,r, &recp, ctx))
+				if (!BN_mod_sqr_reciprocal(r, r, recp, ctx))
 					goto err;
 			}
 
 		/* wvalue will be an odd number < 2^window */
-		if (!BN_mod_mul_reciprocal(r, r,val[wvalue >> 1], &recp, ctx))
+		if (!BN_mod_mul_reciprocal(r, r, val[wvalue >> 1], recp, ctx))
 			goto err;
 
 		/* move the 'window' down further */
@@ -1078,12 +1068,15 @@ BN_mod_exp_recp(BIGNUM *r, const BIGNUM *a, const BIGNUM *p, const BIGNUM *m,
 		if (wstart < 0)
 			break;
 	}
+
+ done:
 	ret = 1;
 
-err:
+ err:
 	BN_CTX_end(ctx);
-	BN_RECP_CTX_free(&recp);
-	return (ret);
+	BN_RECP_CTX_free(recp);
+
+	return ret;
 }
 
 static int
@@ -1130,7 +1123,7 @@ BN_mod_exp_internal(BIGNUM *r, const BIGNUM *a, const BIGNUM *p, const BIGNUM *m
 		} else
 			ret = BN_mod_exp_mont_ct(r, a,p, m,ctx, NULL);
 	} else	{
-		ret = BN_mod_exp_recp(r, a,p, m, ctx);
+		ret = BN_mod_exp_reciprocal(r, a,p, m, ctx);
 	}
 
 	return (ret);
@@ -1143,6 +1136,7 @@ BN_mod_exp(BIGNUM *r, const BIGNUM *a, const BIGNUM *p, const BIGNUM *m,
 	return BN_mod_exp_internal(r, a, p, m, ctx,
 	    (BN_get_flags(p, BN_FLG_CONSTTIME) != 0));
 }
+LCRYPTO_ALIAS(BN_mod_exp);
 
 int
 BN_mod_exp_ct(BIGNUM *r, const BIGNUM *a, const BIGNUM *p, const BIGNUM *m,
@@ -1195,14 +1189,10 @@ BN_mod_exp2_mont(BIGNUM *rr, const BIGNUM *a1, const BIGNUM *p1,
 	if ((val2[0] = BN_CTX_get(ctx)) == NULL)
 		goto err;
 
-	if (in_mont != NULL)
-		mont = in_mont;
-	else {
-		if ((mont = BN_MONT_CTX_new()) == NULL)
-			goto err;
-		if (!BN_MONT_CTX_set(mont, m, ctx))
-			goto err;
-	}
+	if ((mont = in_mont) == NULL)
+		mont = BN_MONT_CTX_create(m, ctx);
+	if (mont == NULL)
+		goto err;
 
 	window1 = BN_window_bits_for_exponent_size(bits1);
 	window2 = BN_window_bits_for_exponent_size(bits2);
@@ -1327,12 +1317,13 @@ BN_mod_exp2_mont(BIGNUM *rr, const BIGNUM *a1, const BIGNUM *p1,
 	}
 	if (!BN_from_montgomery(rr, r,mont, ctx))
 		goto err;
+
 	ret = 1;
 
-err:
-	if ((in_mont == NULL) && (mont != NULL))
+ err:
+	if (mont != in_mont)
 		BN_MONT_CTX_free(mont);
 	BN_CTX_end(ctx);
-	return (ret);
+
+	return ret;
 }
-LCRYPTO_ALIAS(BN_mod_exp2_mont);

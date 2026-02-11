@@ -1,4 +1,4 @@
-/* $OpenBSD: dh_local.h,v 1.3 2022/01/14 08:25:44 tb Exp $ */
+/* $OpenBSD: dh_local.h,v 1.7 2024/11/29 15:59:57 tb Exp $ */
 /* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
@@ -78,11 +78,9 @@ struct dh_method {
 };
 
 struct dh_st {
-	/* This first argument is used to pick up errors when
-	 * a DH is passed instead of a EVP_PKEY */
-	int pad;
 	int version;
 	BIGNUM *p;
+	BIGNUM *q;
 	BIGNUM *g;
 	long length; /* optional */
 	BIGNUM *pub_key;	/* g^x */
@@ -90,27 +88,11 @@ struct dh_st {
 
 	int flags;
 	BN_MONT_CTX *method_mont_p;
-	/* Place holders if we want to do X9.42 DH */
-	BIGNUM *q;
-	BIGNUM *j;
-	unsigned char *seed;
-	int seedlen;
-	BIGNUM *counter;
 
 	int references;
 	CRYPTO_EX_DATA ex_data;
 	const DH_METHOD *meth;
-	ENGINE *engine;
 };
-
-/*
- * Public API in OpenSSL that we only want to use internally.
- */
-
-int DH_check_params_ex(const DH *dh);
-int DH_check_params(const DH *dh, int *flags);
-int DH_check_ex(const DH *dh);
-int DH_check_pub_key_ex(const DH *dh, const BIGNUM *pub_key);
 
 __END_HIDDEN_DECLS
 

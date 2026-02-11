@@ -1,4 +1,4 @@
-/*	$OpenBSD: crypto_namespace.h,v 1.2 2023/02/16 08:38:17 tb Exp $	*/
+/*	$OpenBSD: crypto_namespace.h,v 1.5 2025/08/18 16:00:05 tb Exp $	*/
 /*
  * Copyright (c) 2016 Philip Guenther <guenther@openbsd.org>
  *
@@ -24,28 +24,32 @@
  * external calls use the latter name.
  */
 
-#ifdef _MSC_VER
-# define LCRYPTO_UNUSED(x)
-# define LCRYPTO_USED(x)
-# define LCRYPTO_ALIAS1(pre, x)
-# define LCRYPTO_ALIAS(x)
-#else
 #ifdef LIBRESSL_NAMESPACE
-# define LCRYPTO_UNUSED(x)		typeof(x) x __attribute__((deprecated))
 #ifdef LIBRESSL_CRYPTO_NAMESPACE
-#  define LCRYPTO_USED(x)		__attribute__((visibility("hidden")))	\
+#  define LCRYPTO_UNUSED(x)	__attribute__((deprecated))		\
+				__attribute__((visibility("hidden")))	\
 				typeof(x) x asm("_lcry_"#x)
+#  define LCRYPTO_USED(x)	__attribute__((visibility("hidden")))	\
+				typeof(x) x asm("_lcry_"#x)
+#  if defined(__hppa__)
+#  define LCRYPTO_ALIAS1(pre,x)	asm("! .global "#pre#x" ! .set "#pre#x", _lcry_"#x)
+#else
 #  define LCRYPTO_ALIAS1(pre,x)	asm(".global "#pre#x"; "#pre#x" = _lcry_"#x)
+#endif
 #  define LCRYPTO_ALIAS(x)	LCRYPTO_ALIAS1(,x); LCRYPTO_ALIAS1(_libre_,x)
 #else
-#  define LCRYPTO_USED(x)          typeof(x) x asm("_libre_"#x)
+#  define LCRYPTO_UNUSED(x)	typeof(x) x __attribute__((deprecated))
+#  define LCRYPTO_USED(x)	typeof(x) x asm("_libre_"#x)
 #endif
 #else
 # define LCRYPTO_UNUSED(x)
 # define LCRYPTO_USED(x)
 # define LCRYPTO_ALIAS1(pre,x)
+#ifdef _MSC_VER
+# define LCRYPTO_ALIAS(x)
+#else
 # define LCRYPTO_ALIAS(x)	asm("")
-#endif
 #endif /* _MSC_VER */
+#endif
 
 #endif	/* _LIBCRYPTO_CRYPTO_NAMESPACE_H_ */

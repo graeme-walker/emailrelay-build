@@ -1,4 +1,4 @@
-/* $OpenBSD: x509_bcons.c,v 1.3 2023/02/16 08:38:17 tb Exp $ */
+/* $OpenBSD: x509_bcons.c,v 1.7 2025/05/10 05:54:39 tb Exp $ */
 /* Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL
  * project 1999.
  */
@@ -62,15 +62,17 @@
 #include <openssl/asn1.h>
 #include <openssl/asn1t.h>
 #include <openssl/conf.h>
-#include <openssl/err.h>
 #include <openssl/x509v3.h>
+
+#include "err_local.h"
+#include "x509_local.h"
 
 static STACK_OF(CONF_VALUE) *i2v_BASIC_CONSTRAINTS(X509V3_EXT_METHOD *method,
     BASIC_CONSTRAINTS *bcons, STACK_OF(CONF_VALUE) *extlist);
 static BASIC_CONSTRAINTS *v2i_BASIC_CONSTRAINTS(X509V3_EXT_METHOD *method,
     X509V3_CTX *ctx, STACK_OF(CONF_VALUE) *values);
 
-const X509V3_EXT_METHOD v3_bcons = {
+static const X509V3_EXT_METHOD x509v3_ext_basic_constraints = {
 	.ext_nid = NID_basic_constraints,
 	.ext_flags = 0,
 	.it = &BASIC_CONSTRAINTS_it,
@@ -86,6 +88,12 @@ const X509V3_EXT_METHOD v3_bcons = {
 	.r2i = NULL,
 	.usr_data = NULL,
 };
+
+const X509V3_EXT_METHOD *
+x509v3_ext_method_basic_constraints(void)
+{
+	return &x509v3_ext_basic_constraints;
+}
 
 static const ASN1_TEMPLATE BASIC_CONSTRAINTS_seq_tt[] = {
 	{
@@ -113,6 +121,7 @@ const ASN1_ITEM BASIC_CONSTRAINTS_it = {
 	.size = sizeof(BASIC_CONSTRAINTS),
 	.sname = "BASIC_CONSTRAINTS",
 };
+LCRYPTO_ALIAS(BASIC_CONSTRAINTS_it);
 
 
 BASIC_CONSTRAINTS *

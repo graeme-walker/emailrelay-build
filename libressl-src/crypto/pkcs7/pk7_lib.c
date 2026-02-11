@@ -1,4 +1,4 @@
-/* $OpenBSD: pk7_lib.c,v 1.26 2023/02/16 08:38:17 tb Exp $ */
+/* $OpenBSD: pk7_lib.c,v 1.31 2025/05/10 05:54:38 tb Exp $ */
 /* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
@@ -58,11 +58,11 @@
 
 #include <stdio.h>
 
-#include <openssl/err.h>
 #include <openssl/objects.h>
 #include <openssl/x509.h>
 
 #include "asn1_local.h"
+#include "err_local.h"
 #include "evp_local.h"
 #include "x509_local.h"
 
@@ -70,13 +70,17 @@ long
 PKCS7_ctrl(PKCS7 *p7, int cmd, long larg, char *parg)
 {
 	int nid;
-	long ret;
+	long ret = 0;
 
 	nid = OBJ_obj2nid(p7->type);
 
 	switch (cmd) {
 	case PKCS7_OP_SET_DETACHED_SIGNATURE:
 		if (nid == NID_pkcs7_signed) {
+			if (p7->d.sign == NULL) {
+				PKCS7error(PKCS7_R_NO_CONTENT);
+				break;
+			}
 			ret = p7->detached = (int)larg;
 			if (ret && PKCS7_type_is_data(p7->d.sign->contents)) {
 				ASN1_OCTET_STRING *os;
@@ -91,7 +95,8 @@ PKCS7_ctrl(PKCS7 *p7, int cmd, long larg, char *parg)
 		break;
 	case PKCS7_OP_GET_DETACHED_SIGNATURE:
 		if (nid == NID_pkcs7_signed) {
-			if (!p7->d.sign  || !p7->d.sign->contents->d.ptr)
+			if (p7->d.sign == NULL ||
+			    p7->d.sign->contents->d.ptr == NULL)
 				ret = 1;
 			else
 				ret = 0;
@@ -370,6 +375,7 @@ int
 PKCS7_SIGNER_INFO_set(PKCS7_SIGNER_INFO *p7i, X509 *x509, EVP_PKEY *pkey,
     const EVP_MD *dgst)
 {
+	int nid;
 	int ret;
 
 	/* We now need to add another PKCS7_SIGNER_INFO entry */
@@ -390,10 +396,15 @@ PKCS7_SIGNER_INFO_set(PKCS7_SIGNER_INFO *p7i, X509 *x509, EVP_PKEY *pkey,
 	CRYPTO_add(&pkey->references, 1, CRYPTO_LOCK_EVP_PKEY);
 	p7i->pkey = pkey;
 
-	/* Set the algorithms */
-
-	X509_ALGOR_set0(p7i->digest_alg, OBJ_nid2obj(EVP_MD_type(dgst)),
-	    V_ASN1_NULL, NULL);
+	/*
+	 * Do not use X509_ALGOR_set_evp_md() to match historical behavior.
+	 * A mistranslation of the ASN.1 from 1988 to 1997 syntax lost the
+	 * OPTIONAL field, cf. the NOTE above RFC 5754, 2.1.
+	 * Using X509_ALGOR_set_evp_md() would change encoding of the SHAs.
+	 */
+	nid = EVP_MD_type(dgst);
+	if (!X509_ALGOR_set0_by_nid(p7i->digest_alg, nid, V_ASN1_NULL, NULL))
+		return 0;
 
 	if (pkey->ameth && pkey->ameth->pkey_ctrl) {
 		ret = pkey->ameth->pkey_ctrl(pkey, ASN1_PKEY_CTRL_PKCS7_SIGN,

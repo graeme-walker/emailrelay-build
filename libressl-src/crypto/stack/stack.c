@@ -1,4 +1,4 @@
-/* $OpenBSD: stack.c,v 1.23 2023/04/24 15:35:22 beck Exp $ */
+/* $OpenBSD: stack.c,v 1.33 2025/01/03 08:04:16 tb Exp $ */
 /* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
@@ -56,16 +56,17 @@
  * [including the GNU Public Licence.]
  */
 
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 
 #include <openssl/objects.h>
 #include <openssl/stack.h>
 
+#include "stack_local.h"
+
 #undef MIN_NODES
 #define MIN_NODES	4
-
-#include <errno.h>
 
 int
 (*sk_set_cmp_func(_STACK *sk, int (*c)(const void *, const void *)))(
@@ -196,8 +197,34 @@ sk_delete(_STACK *st, int loc)
 }
 LCRYPTO_ALIAS(sk_delete);
 
-static int
-internal_find(_STACK *st, void *data, int ret_val_options)
+static const void *
+obj_bsearch_ex(const void *key, const void *base_, int num, int size,
+    int (*cmp)(const void *, const void *))
+{
+	const char *base = base_;
+	int l, h, i, c;
+
+	l = 0;
+	h = num;
+	while (l < h) {
+		i = (l + h) / 2;
+		if ((c = cmp(key,  &base[i * size])) == 0) {
+			/* Return first match. */
+			while (i > 0 && cmp(key, &base[(i - 1) * size]) == 0)
+				i--;
+			return &base[i * size];
+		}
+		if (c < 0)
+			h = i;
+		else
+			l = i + 1;
+	}
+
+	return NULL;
+}
+
+int
+sk_find(_STACK *st, void *data)
 {
 	const void * const *r;
 	int i;
@@ -214,26 +241,12 @@ internal_find(_STACK *st, void *data, int ret_val_options)
 	sk_sort(st);
 	if (data == NULL)
 		return (-1);
-	r = OBJ_bsearch_ex_(&data, st->data, st->num, sizeof(void *), st->comp,
-	    ret_val_options);
+	r = obj_bsearch_ex(&data, st->data, st->num, sizeof(void *), st->comp);
 	if (r == NULL)
 		return (-1);
 	return (int)((char **)r - st->data);
 }
-
-int
-sk_find(_STACK *st, void *data)
-{
-	return internal_find(st, data, OBJ_BSEARCH_FIRST_VALUE_ON_MATCH);
-}
 LCRYPTO_ALIAS(sk_find);
-
-int
-sk_find_ex(_STACK *st, void *data)
-{
-	return internal_find(st, data, OBJ_BSEARCH_VALUE_ON_NOMATCH);
-}
-LCRYPTO_ALIAS(sk_find_ex);
 
 int
 sk_push(_STACK *st, void *data)

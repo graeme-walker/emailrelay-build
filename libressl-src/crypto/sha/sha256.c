@@ -1,4 +1,4 @@
-/* $OpenBSD: sha256.c,v 1.30 2023/08/11 15:27:28 jsing Exp $ */
+/* $OpenBSD: sha256.c,v 1.33 2025/02/14 12:01:58 jsing Exp $ */
 /* ====================================================================
  * Copyright (c) 1998-2011 The OpenSSL Project.  All rights reserved.
  *
@@ -68,11 +68,10 @@
 /* Ensure that SHA_LONG and uint32_t are equivalent. */
 CTASSERT(sizeof(SHA_LONG) == sizeof(uint32_t));
 
-#ifdef SHA256_ASM
 void sha256_block_data_order(SHA256_CTX *ctx, const void *_in, size_t num);
-#endif
+void sha256_block_generic(SHA256_CTX *ctx, const void *_in, size_t num);
 
-#ifndef SHA256_ASM
+#ifndef HAVE_SHA256_BLOCK_GENERIC
 static const SHA_LONG K256[64] = {
 	0x428a2f98UL, 0x71374491UL, 0xb5c0fbcfUL, 0xe9b5dba5UL,
 	0x3956c25bUL, 0x59f111f1UL, 0x923f82a4UL, 0xab1c5ed5UL,
@@ -131,16 +130,14 @@ Maj(SHA_LONG x, SHA_LONG y, SHA_LONG z)
 }
 
 static inline void
-sha256_msg_schedule_update(SHA_LONG *W0, SHA_LONG W1,
-    SHA_LONG W9, SHA_LONG W14)
+sha256_msg_schedule_update(SHA_LONG *W0, SHA_LONG W1, SHA_LONG W9, SHA_LONG W14)
 {
 	*W0 = sigma1(W14) + W9 + sigma0(W1) + *W0;
 }
 
 static inline void
-sha256_round(SHA_LONG *a, SHA_LONG *b, SHA_LONG *c, SHA_LONG *d,
-    SHA_LONG *e, SHA_LONG *f, SHA_LONG *g, SHA_LONG *h,
-    SHA_LONG Kt, SHA_LONG Wt)
+sha256_round(SHA_LONG *a, SHA_LONG *b, SHA_LONG *c, SHA_LONG *d, SHA_LONG *e,
+    SHA_LONG *f, SHA_LONG *g, SHA_LONG *h, SHA_LONG Kt, SHA_LONG Wt)
 {
 	SHA_LONG T1, T2;
 
@@ -157,8 +154,8 @@ sha256_round(SHA_LONG *a, SHA_LONG *b, SHA_LONG *c, SHA_LONG *d,
 	*a = T1 + T2;
 }
 
-static void
-sha256_block_data_order(SHA256_CTX *ctx, const void *_in, size_t num)
+void
+sha256_block_generic(SHA256_CTX *ctx, const void *_in, size_t num)
 {
 	const uint8_t *in = _in;
 	const SHA_LONG *in32;
@@ -279,7 +276,15 @@ sha256_block_data_order(SHA256_CTX *ctx, const void *_in, size_t num)
 		ctx->h[7] += h;
 	}
 }
-#endif /* SHA256_ASM */
+#endif
+
+#ifndef HAVE_SHA256_BLOCK_DATA_ORDER
+void
+sha256_block_data_order(SHA256_CTX *ctx, const void *_in, size_t num)
+{
+	sha256_block_generic(ctx, _in, num);
+}
+#endif
 
 int
 SHA224_Init(SHA256_CTX *c)
@@ -319,10 +324,6 @@ unsigned char *
 SHA224(const unsigned char *d, size_t n, unsigned char *md)
 {
 	SHA256_CTX c;
-	static unsigned char m[SHA224_DIGEST_LENGTH];
-
-	if (md == NULL)
-		md = m;
 
 	SHA224_Init(&c);
 	SHA256_Update(&c, d, n);
@@ -481,10 +482,6 @@ unsigned char *
 SHA256(const unsigned char *d, size_t n, unsigned char *md)
 {
 	SHA256_CTX c;
-	static unsigned char m[SHA256_DIGEST_LENGTH];
-
-	if (md == NULL)
-		md = m;
 
 	SHA256_Init(&c);
 	SHA256_Update(&c, d, n);

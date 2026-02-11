@@ -1,4 +1,4 @@
-/* $OpenBSD: cms_asn1.c,v 1.23 2023/07/08 08:26:26 beck Exp $ */
+/* $OpenBSD: cms_asn1.c,v 1.25 2024/11/01 18:53:35 tb Exp $ */
 /*
  * Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL
  * project.
@@ -52,12 +52,17 @@
  * ====================================================================
  */
 
-#include <openssl/asn1t.h>
-#include <openssl/pem.h>
-#include <openssl/x509v3.h>
-#include <openssl/cms.h>
-#include "cms_local.h"
+#include <stddef.h>
+#include <stdlib.h>
 
+#include <openssl/asn1.h>
+#include <openssl/asn1t.h>
+#include <openssl/cms.h>
+#include <openssl/evp.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
+
+#include "cms_local.h"
 
 static const ASN1_TEMPLATE CMS_IssuerAndSerialNumber_seq_tt[] = {
 	{
@@ -1390,6 +1395,7 @@ const ASN1_ITEM CMS_ContentInfo_it = {
 	.size = sizeof(CMS_ContentInfo),
 	.sname = "CMS_ContentInfo",
 };
+LCRYPTO_ALIAS(CMS_ContentInfo_it);
 
 /* Specials for signed attributes */
 
@@ -1501,6 +1507,7 @@ const ASN1_ITEM CMS_ReceiptRequest_it = {
 	.size = sizeof(CMS_ReceiptRequest),
 	.sname = "CMS_ReceiptRequest",
 };
+LCRYPTO_ALIAS(CMS_ReceiptRequest_it);
 
 static const ASN1_TEMPLATE CMS_Receipt_seq_tt[] = {
 	{

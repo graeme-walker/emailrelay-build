@@ -2,7 +2,14 @@
 set -e
 set -x
 
-unset CC
+if [ "$ARCH" = "" ]; then
+	ARCH=`uname -m`
+fi
+
+if [ "$ARCH" = "mingw32" -o "$ARCH" = "mingw64" -o "$ARCH" = "arm32" ]; then
+	unset CC
+fi
+
 ENABLE_ASM="${ENABLE_ASM:=ON}"
 
 if type apt-get >/dev/null 2>&1; then
@@ -13,9 +20,7 @@ fi
 # generate source tree
 ./autogen.sh
 
-if [ "$ARCH" = "" ]; then
-	ARCH=`uname -m`
-fi
+VERSION=`cat VERSION`
 
 # test macOS
 if [ `uname` = "Darwin" ]; then
@@ -26,15 +31,17 @@ if [ `uname` = "Darwin" ]; then
 	make -j 4 distcheck
 
 	# test cmake
-	tar zxvf libressl-*.tar.gz
-	cd libressl-*
+	tar zxvf libressl-$VERSION.tar.gz
+	cd libressl-$VERSION
 
 	(
 		mkdir build-static
 		cd build-static
 		cmake -DCMAKE_OSX_ARCHITECTURES=$ARCH ..
 		make -j 4
-		if [ "$ARCH" = "x86_64" ]; then
+		if [ "$ARCH" = "arm64" ] && [ "$OS" = "macos-12" ] || [ "$OS" = "macos-13" ]; then
+			echo "##### skip tests"
+		else
 			make test
 		fi
 	)
@@ -44,7 +51,9 @@ if [ `uname` = "Darwin" ]; then
 		cd build-shared
 		cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_OSX_ARCHITECTURES=$ARCH ..
 		make -j 4
-		if [ "$ARCH" = "x86_64" ]; then
+		if [ "$ARCH" = "arm64" ] && [ "$OS" = "macos-12" ] || [ "$OS" = "macos-13" ]; then
+			echo "##### skip tests"
+		else
 			make test
 		fi
 	)
@@ -57,8 +66,8 @@ elif [ "$ARCH" = "native" ]; then
 	# make distribution
 	make -j 4 distcheck
 
-	tar zxvf libressl-*.tar.gz
-	cd libressl-*
+	tar zxvf libressl-$VERSION.tar.gz
+	cd libressl-$VERSION
 
 
 	# test cmake and ninja
@@ -123,6 +132,21 @@ elif [ "$ARCH" = "arm32" -o "$ARCH" = "arm64" ]; then
 
 	file apps/openssl/.libs/openssl
 
+elif [ "$ARCH" = "loong64" ]; then
+	sudo apt install -y qemu-user-static binfmt-support g++-14-loongarch64-linux-gnu
+	sudo ln -sf /usr/loongarch64-linux-gnu/lib64/ld-linux-loongarch-lp64d.so.1 /lib64
+
+	CC=loongarch64-linux-gnu-gcc-14
+	CXX=loongarch64-linux-gnu++-14
+	AR=loongarch64-linux-gnu-ar
+	STRIP=loongarch64-linux-gnu-strip-14
+	RANLIB=loongarch64-linux-gnu-ranlib
+
+	./configure --host=loongarch64-linux-gnu
+	LD_LIBRARY_PATH=/usr/loongarch64-linux-gnu/lib make -j 4 check
+
+	file apps/openssl/openssl
+
 elif [ "$ARCH" = "mips32" -o "$ARCH" = "mips64" ]; then
 	sudo apt-get install -y qemu-user-static binfmt-support
 
@@ -167,7 +191,7 @@ elif [ "$ARCH" = "android" ]; then
 
 		(
 		 build_dir=build-$NAL_$ABI
-		 rm -fr $build_dir include/openssl/opensslconf.h
+		 rm -fr $build_dir
 		 mkdir $build_dir
 		 cd $build_dir
 		 echo "##### cmake -GNinja -DCMAKE_MAKE_PROGRAM=ninja -DANDROID_NDK=$ANDROID_NDK_HOME -DCMAKE_TOOLCHAIN_FILE=$TC_FILE -DANDROID_ABI=$ABI -DANDROID_NATIVE_API_LEVEL=$NAL .."

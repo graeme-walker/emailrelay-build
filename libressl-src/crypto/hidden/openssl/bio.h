@@ -1,4 +1,4 @@
-/* $OpenBSD: bio.h,v 1.4 2023/07/28 10:13:50 tb Exp $ */
+/* $OpenBSD: bio.h,v 1.9 2025/07/16 15:59:26 tb Exp $ */
 /*
  * Copyright (c) 2023 Bob Beck <beck@openbsd.org>
  *
@@ -68,7 +68,6 @@ LCRYPTO_USED(BIO_s_file);
 LCRYPTO_USED(BIO_new_file);
 LCRYPTO_USED(BIO_new_fp);
 LCRYPTO_USED(BIO_new);
-LCRYPTO_USED(BIO_set);
 LCRYPTO_USED(BIO_free);
 LCRYPTO_USED(BIO_up_ref);
 LCRYPTO_USED(BIO_get_data);
@@ -104,7 +103,6 @@ LCRYPTO_USED(BIO_s_socket);
 LCRYPTO_USED(BIO_s_connect);
 LCRYPTO_USED(BIO_s_accept);
 LCRYPTO_USED(BIO_s_fd);
-LCRYPTO_USED(BIO_s_log);
 LCRYPTO_USED(BIO_s_bio);
 LCRYPTO_USED(BIO_s_null);
 LCRYPTO_USED(BIO_f_null);
@@ -118,8 +116,6 @@ LCRYPTO_USED(BIO_fd_should_retry);
 LCRYPTO_USED(BIO_fd_non_fatal_error);
 LCRYPTO_USED(BIO_dump);
 LCRYPTO_USED(BIO_dump_indent);
-LCRYPTO_USED(BIO_dump_fp);
-LCRYPTO_USED(BIO_dump_indent_fp);
 LCRYPTO_USED(BIO_gethostbyname);
 LCRYPTO_USED(BIO_sock_error);
 LCRYPTO_USED(BIO_socket_ioctl);
@@ -138,9 +134,8 @@ LCRYPTO_USED(BIO_new_connect);
 LCRYPTO_USED(BIO_new_accept);
 LCRYPTO_USED(BIO_copy_next_retry);
 LCRYPTO_USED(BIO_printf);
-LCRYPTO_USED(BIO_vprintf);
-LCRYPTO_USED(BIO_snprintf);
-LCRYPTO_USED(BIO_vsnprintf);
 LCRYPTO_USED(ERR_load_BIO_strings);
+LCRYPTO_USED(BIO_get_ex_new_index);
+LCRYPTO_USED(BIO_new_bio_pair);
 
 #endif /* _LIBCRYPTO_BIO_H */

@@ -1,4 +1,4 @@
-/* $OpenBSD: rsa_pmeth.c,v 1.39 2023/07/08 12:26:45 beck Exp $ */
+/* $OpenBSD: rsa_pmeth.c,v 1.44 2025/05/10 05:54:38 tb Exp $ */
 /* Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL
  * project 2006.
  */
@@ -58,19 +58,20 @@
 
 #include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <openssl/opensslconf.h>
 
 #include <openssl/asn1t.h>
 #include <openssl/bn.h>
-#include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
 #include "bn_local.h"
+#include "err_local.h"
 #include "evp_local.h"
 #include "rsa_local.h"
 
@@ -630,23 +631,23 @@ pkey_rsa_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2)
 static int
 pkey_rsa_ctrl_str(EVP_PKEY_CTX *ctx, const char *type, const char *value)
 {
+	const char *errstr;
+
 	if (!value) {
 		RSAerror(RSA_R_VALUE_MISSING);
 		return 0;
 	}
-	if (!strcmp(type, "rsa_padding_mode")) {
+	if (strcmp(type, "rsa_padding_mode") == 0) {
 		int pm;
-		if (!strcmp(value, "pkcs1"))
+		if (strcmp(value, "pkcs1") == 0)
 			pm = RSA_PKCS1_PADDING;
-		else if (!strcmp(value, "none"))
+		else if (strcmp(value, "none") == 0)
 			pm = RSA_NO_PADDING;
-		else if (!strcmp(value, "oeap"))
+		else if (strcmp(value, "oaep") == 0 || strcmp(value, "oeap") == 0)
 			pm = RSA_PKCS1_OAEP_PADDING;
-		else if (!strcmp(value, "oaep"))
-			pm = RSA_PKCS1_OAEP_PADDING;
-		else if (!strcmp(value, "x931"))
+		else if (strcmp(value, "x931") == 0)
 			pm = RSA_X931_PADDING;
-		else if (!strcmp(value, "pss"))
+		else if (strcmp(value, "pss") == 0)
 			pm = RSA_PKCS1_PSS_PADDING;
 		else {
 			RSAerror(RSA_R_UNKNOWN_PADDING_TYPE);
@@ -658,19 +659,35 @@ pkey_rsa_ctrl_str(EVP_PKEY_CTX *ctx, const char *type, const char *value)
 	if (strcmp(type, "rsa_pss_saltlen") == 0) {
 		int saltlen;
 
-		if (!strcmp(value, "digest"))
+		if (strcmp(value, "digest") == 0)
 			saltlen = RSA_PSS_SALTLEN_DIGEST;
-		else if (!strcmp(value, "max"))
+		else if (strcmp(value, "max") == 0)
 			saltlen = RSA_PSS_SALTLEN_MAX;
-		else if (!strcmp(value, "auto"))
+		else if (strcmp(value, "auto") == 0)
 			saltlen = RSA_PSS_SALTLEN_AUTO;
-		else
-			saltlen = atoi(value);
+		else {
+			/*
+			 * Accept the special values -1, -2, -3 since that's
+			 * what atoi() historically did. Lower values are later
+			 * rejected in EVP_PKEY_CTRL_RSA_PSS_SALTLEN anyway.
+			 */
+			saltlen = strtonum(value, -3, INT_MAX, &errstr);
+			if (errstr != NULL) {
+				RSAerror(RSA_R_INVALID_PSS_SALTLEN);
+				return -2;
+			}
+		}
 		return EVP_PKEY_CTX_set_rsa_pss_saltlen(ctx, saltlen);
 	}
 
 	if (strcmp(type, "rsa_keygen_bits") == 0) {
-		int nbits = atoi(value);
+		int nbits;
+
+		nbits = strtonum(value, 0, INT_MAX, &errstr);
+		if (errstr != NULL) {
+			RSAerror(RSA_R_INVALID_KEYBITS);
+			return -2;
+		}
 
 		return EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, nbits);
 	}
@@ -702,7 +719,18 @@ pkey_rsa_ctrl_str(EVP_PKEY_CTX *ctx, const char *type, const char *value)
 			    EVP_PKEY_CTRL_MD, value);
 
 		if (strcmp(type, "rsa_pss_keygen_saltlen") == 0) {
-			int saltlen = atoi(value);
+			int saltlen;
+
+			/*
+			 * Accept the special values -1, -2, -3 since that's
+			 * what atoi() historically did. Lower values are later
+			 * rejected in EVP_PKEY_CTRL_RSA_PSS_SALTLEN anyway.
+			 */
+			saltlen = strtonum(value, -3, INT_MAX, &errstr);
+			if (errstr != NULL) {
+				RSAerror(RSA_R_INVALID_PSS_SALTLEN);
+				return -2;
+			}
 
 			return EVP_PKEY_CTX_set_rsa_pss_keygen_saltlen(ctx, saltlen);
 		}
@@ -756,32 +784,36 @@ pkey_rsa_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
 {
 	RSA *rsa = NULL;
 	RSA_PKEY_CTX *rctx = ctx->data;
-	BN_GENCB *pcb, cb;
-	int ret;
+	BN_GENCB *pcb = NULL;
+	BN_GENCB cb = {0};
+	int ret = 0;
 
 	if (rctx->pub_exp == NULL) {
 		if ((rctx->pub_exp = BN_new()) == NULL)
-			return 0;
+			goto err;
 		if (!BN_set_word(rctx->pub_exp, RSA_F4))
-			return 0;
+			goto err;
 	}
+
 	if ((rsa = RSA_new()) == NULL)
-		return 0;
+		goto err;
 	if (ctx->pkey_gencb != NULL) {
 		pcb = &cb;
 		evp_pkey_set_cb_translate(pcb, ctx);
-	} else {
-		pcb = NULL;
 	}
-	ret = RSA_generate_key_ex(rsa, rctx->nbits, rctx->pub_exp, pcb);
-	if (ret > 0 && !rsa_set_pss_param(rsa, ctx)) {
-		RSA_free(rsa);
-		return 0;
-	}
-	if (ret > 0)
-		EVP_PKEY_assign(pkey, ctx->pmeth->pkey_id, rsa);
-	else
-		RSA_free(rsa);
+	if (!RSA_generate_key_ex(rsa, rctx->nbits, rctx->pub_exp, pcb))
+		goto err;
+	if (!rsa_set_pss_param(rsa, ctx))
+		goto err;
+	if (!EVP_PKEY_assign(pkey, ctx->pmeth->pkey_id, rsa))
+		goto err;
+	rsa = NULL;
+
+	ret = 1;
+
+ err:
+	RSA_free(rsa);
+
 	return ret;
 }
 

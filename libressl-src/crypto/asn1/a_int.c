@@ -1,4 +1,4 @@
-/* $OpenBSD: a_int.c,v 1.47 2023/07/05 21:23:36 beck Exp $ */
+/* $OpenBSD: a_int.c,v 1.49 2025/05/10 05:54:38 tb Exp $ */
 /* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
@@ -64,15 +64,16 @@
 #include <openssl/asn1t.h>
 #include <openssl/bn.h>
 #include <openssl/buffer.h>
-#include <openssl/err.h>
 
 #include "bytestring.h"
+#include "err_local.h"
 
 const ASN1_ITEM ASN1_INTEGER_it = {
 	.itype = ASN1_ITYPE_PRIMITIVE,
 	.utype = V_ASN1_INTEGER,
 	.sname = "ASN1_INTEGER",
 };
+LCRYPTO_ALIAS(ASN1_INTEGER_it);
 
 ASN1_INTEGER *
 ASN1_INTEGER_new(void)

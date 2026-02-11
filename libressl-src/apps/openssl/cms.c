@@ -1,4 +1,4 @@
-/* $OpenBSD: cms.c,v 1.34 2023/04/14 15:27:13 tb Exp $ */
+/* $OpenBSD: cms.c,v 1.38 2025/06/07 08:24:15 tb Exp $ */
 /* Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL
  * project.
  */
@@ -110,6 +110,7 @@ static struct {
 	X509 *cert;
 	char *certfile;
 	char *certsoutfile;
+	char *crlfile;
 	const EVP_CIPHER *cipher;
 	char *contfile;
 	ASN1_OBJECT *econtent_type;
@@ -192,14 +193,32 @@ get_cipher_by_name(char *name)
 static int
 cms_opt_cipher(int argc, char **argv, int *argsused)
 {
+	const EVP_CIPHER *cipher;
 	char *name = argv[0];
 
 	if (*name++ != '-')
 		return (1);
 
-	if ((cfg.cipher = get_cipher_by_name(name)) == NULL)
-		if ((cfg.cipher = EVP_get_cipherbyname(name)) == NULL)
+	if ((cipher = get_cipher_by_name(name)) == NULL)
+		if ((cipher = EVP_get_cipherbyname(name)) == NULL)
 			return (1);
+
+	/*
+	 * XXX - this should really be done in CMS_{encrypt,decrypt}() until
+	 * we have proper support for AuthEnvelopedData (RFC 5084), but this
+	 * is good enough for now to avoid outputting garbage with this rusty
+	 * swiss army knife.
+	 */
+	if ((EVP_CIPHER_flags(cipher) & EVP_CIPH_FLAG_AEAD_CIPHER) != 0) {
+		BIO_printf(bio_err, "AuthEnvelopedData is not supported\n");
+		return (1);
+	}
+	if (EVP_CIPHER_mode(cipher) == EVP_CIPH_XTS_MODE) {
+		BIO_printf(bio_err, "XTS mode not supported\n");
+		return (1);
+	}
+
+	cfg.cipher = cipher;
 
 	*argsused = 1;
 	return (0);
@@ -474,7 +493,7 @@ static const struct option cms_options[] = {
 	},
 	{
 		.name = "aes256",
-		.desc = "Encrypt PEM output with CBC AES",
+		.desc = "Encrypt PEM output with CBC AES (default)",
 		.type = OPTION_ARGV_FUNC,
 		.opt.argvfunc = cms_opt_cipher,
 	},
@@ -508,7 +527,7 @@ static const struct option cms_options[] = {
 	},
 	{
 		.name = "des3",
-		.desc = "Encrypt with triple DES (default)",
+		.desc = "Encrypt with triple DES",
 		.type = OPTION_ARGV_FUNC,
 		.opt.argvfunc = cms_opt_cipher,
 	},
@@ -546,6 +565,13 @@ static const struct option cms_options[] = {
 		.desc = "Certificate Authority path",
 		.type = OPTION_ARG,
 		.opt.arg = &cfg.CApath,
+	},
+	{
+		.name = "CRLfile",
+		.argname = "file",
+		.desc = "Other certificate revocation lists file",
+		.type = OPTION_ARG,
+		.opt.arg = &cfg.crlfile,
 	},
 	{
 		.name = "binary",
@@ -1111,10 +1137,10 @@ cms_usage(void)
 	    "[-aes128 | -aes192 | -aes256 | -camellia128 |\n"
 	    "    -camellia192 | -camellia256 | -des | -des3 |\n"
 	    "    -rc2-40 | -rc2-64 | -rc2-128] [-CAfile file]\n"
-	    "    [-CApath directory] [-binary] [-certfile file]\n"
-	    "    [-certsout file] [-cmsout] [-compress] [-content file]\n"
-	    "    [-crlfeol] [-data_create] [-data_out] [-debug_decrypt]\n"
-	    "    [-decrypt] [-digest_create] [-digest_verify]\n"
+	    "    [-CApath directory] [-CRLfile file] [-binary]\n"
+	    "    [-certfile file] [-certsout file] [-cmsout] [-compress]\n"
+	    "    [-content file] [-crlfeol] [-data_create] [-data_out]\n"
+	    "    [-debug_decrypt] [-decrypt] [-digest_create] [-digest_verify]\n"
 	    "    [-econtent_type type] [-encrypt] [-EncryptedData_decrypt]\n"
 	    "    [-EncryptedData_encrypt] [-from addr] [-in file]\n"
 	    "    [-inform der | pem | smime] [-inkey file]\n"
@@ -1140,7 +1166,7 @@ cms_usage(void)
 
 	fprintf(stderr, "\nValid purposes:\n\n");
 	for (i = 0; i < X509_PURPOSE_get_count(); i++) {
-		X509_PURPOSE *ptmp = X509_PURPOSE_get0(i);
+		const X509_PURPOSE *ptmp = X509_PURPOSE_get0(i);
 		fprintf(stderr, "  %-18s%s\n", X509_PURPOSE_get0_sname(ptmp),
 		    X509_PURPOSE_get0_name(ptmp));
 	}
@@ -1158,6 +1184,7 @@ cms_main(int argc, char **argv)
 	X509 *recip = NULL, *signer = NULL;
 	EVP_PKEY *key = NULL;
 	STACK_OF(X509) *other = NULL;
+	STACK_OF(X509_CRL) *crls = NULL;
 	BIO *in = NULL, *out = NULL, *indata = NULL, *rctin = NULL;
 	int badarg = 0;
 	CMS_ReceiptRequest *rr = NULL;
@@ -1282,14 +1309,8 @@ cms_main(int argc, char **argv)
 	}
 
 	if (cfg.operation == SMIME_ENCRYPT) {
-		if (cfg.cipher == NULL) {
-#ifndef OPENSSL_NO_DES
-			cfg.cipher = EVP_des_ede3_cbc();
-#else
-			BIO_printf(bio_err, "No cipher selected\n");
-			goto end;
-#endif
-		}
+		if (cfg.cipher == NULL)
+			cfg.cipher = EVP_aes_256_cbc();
 		if (cfg.secret_key != NULL &&
 		    cfg.secret_keyid == NULL) {
 			BIO_printf(bio_err, "No secret key id\n");
@@ -1316,6 +1337,14 @@ cms_main(int argc, char **argv)
 			goto end;
 		}
 	}
+
+	if (cfg.crlfile != NULL) {
+		crls = load_crls(bio_err, cfg.crlfile, FORMAT_PEM, NULL,
+		    "other CRLs");
+		if (crls == NULL)
+			goto end;
+	}
+
 	if (cfg.recipfile != NULL &&
 	    (cfg.operation == SMIME_DECRYPT)) {
 		if ((recip = load_cert(bio_err, cfg.recipfile,
@@ -1677,6 +1706,15 @@ cms_main(int argc, char **argv)
 		    cfg.secret_keylen, indata, out, cfg.flags))
 			goto end;
 	} else if (cfg.operation == SMIME_VERIFY) {
+		if (cfg.crlfile != NULL) {
+			int i;
+
+			for (i = 0; i < sk_X509_CRL_num(crls); i++) {
+				X509_CRL *crl = sk_X509_CRL_value(crls, i);
+				if (!CMS_add1_crl(cms, crl))
+					goto end;
+			}
+		}
 		if (CMS_verify(cms, other, store, indata, out,
 		    cfg.flags) > 0) {
 			BIO_printf(bio_err, "Verification successful\n");
@@ -1752,6 +1790,7 @@ cms_main(int argc, char **argv)
 
 	sk_X509_pop_free(cfg.encerts, X509_free);
 	sk_X509_pop_free(other, X509_free);
+	sk_X509_CRL_pop_free(crls, X509_CRL_free);
 	X509_VERIFY_PARAM_free(cfg.vpm);
 	sk_OPENSSL_STRING_free(cfg.sksigners);
 	sk_OPENSSL_STRING_free(cfg.skkeys);

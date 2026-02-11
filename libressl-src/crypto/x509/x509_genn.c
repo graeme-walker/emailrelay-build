@@ -1,4 +1,4 @@
-/* $OpenBSD: x509_genn.c,v 1.6 2023/04/25 15:51:04 tb Exp $ */
+/* $OpenBSD: x509_genn.c,v 1.8 2025/05/10 05:54:39 tb Exp $ */
 /* Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL
  * project 1999.
  */
@@ -63,6 +63,8 @@
 #include <openssl/conf.h>
 #include <openssl/x509v3.h>
 
+#include "err_local.h"
+
 static const ASN1_TEMPLATE OTHERNAME_seq_tt[] = {
 	{
 		.flags = 0,
@@ -90,6 +92,7 @@ const ASN1_ITEM OTHERNAME_it = {
 	.size = sizeof(OTHERNAME),
 	.sname = "OTHERNAME",
 };
+LCRYPTO_ALIAS(OTHERNAME_it);
 
 
 OTHERNAME *
@@ -148,6 +151,7 @@ const ASN1_ITEM EDIPARTYNAME_it = {
 	.size = sizeof(EDIPARTYNAME),
 	.sname = "EDIPARTYNAME",
 };
+LCRYPTO_ALIAS(EDIPARTYNAME_it);
 
 
 EDIPARTYNAME *
@@ -256,6 +260,7 @@ const ASN1_ITEM GENERAL_NAME_it = {
 	.size = sizeof(GENERAL_NAME),
 	.sname = "GENERAL_NAME",
 };
+LCRYPTO_ALIAS(GENERAL_NAME_it);
 
 
 GENERAL_NAME *
@@ -304,6 +309,7 @@ const ASN1_ITEM GENERAL_NAMES_it = {
 	.size = 0,
 	.sname = "GENERAL_NAMES",
 };
+LCRYPTO_ALIAS(GENERAL_NAMES_it);
 
 
 GENERAL_NAMES *

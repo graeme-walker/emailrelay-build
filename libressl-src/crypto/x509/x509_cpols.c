@@ -1,4 +1,4 @@
-/* $OpenBSD: x509_cpols.c,v 1.11 2023/04/26 20:54:21 tb Exp $ */
+/* $OpenBSD: x509_cpols.c,v 1.16 2025/05/10 05:54:39 tb Exp $ */
 /* Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL
  * project 1999.
  */
@@ -62,9 +62,9 @@
 #include <openssl/asn1.h>
 #include <openssl/asn1t.h>
 #include <openssl/conf.h>
-#include <openssl/err.h>
 #include <openssl/x509v3.h>
 
+#include "err_local.h"
 #include "x509_local.h"
 
 /* Certificate policies extension support: this one is a bit complex... */
@@ -82,7 +82,7 @@ static POLICYQUALINFO *notice_section(X509V3_CTX *ctx,
     STACK_OF(CONF_VALUE) *unot, int ia5org);
 static int nref_nos(STACK_OF(ASN1_INTEGER) *nnums, STACK_OF(CONF_VALUE) *nos);
 
-const X509V3_EXT_METHOD v3_cpols = {
+static const X509V3_EXT_METHOD x509v3_ext_certificate_policies = {
 	.ext_nid = NID_certificate_policies,
 	.ext_flags = 0,
 	.it = &CERTIFICATEPOLICIES_it,
@@ -98,6 +98,12 @@ const X509V3_EXT_METHOD v3_cpols = {
 	.r2i = (X509V3_EXT_R2I)r2i_certpol,
 	.usr_data = NULL,
 };
+
+const X509V3_EXT_METHOD *
+x509v3_ext_method_certificate_policies(void)
+{
+	return &x509v3_ext_certificate_policies;
+}
 
 static const ASN1_TEMPLATE CERTIFICATEPOLICIES_item_tt = {
 	.flags = ASN1_TFLG_SEQUENCE_OF,
@@ -116,6 +122,7 @@ const ASN1_ITEM CERTIFICATEPOLICIES_it = {
 	.size = 0,
 	.sname = "CERTIFICATEPOLICIES",
 };
+LCRYPTO_ALIAS(CERTIFICATEPOLICIES_it);
 
 
 CERTIFICATEPOLICIES *
@@ -173,6 +180,7 @@ const ASN1_ITEM POLICYINFO_it = {
 	.size = sizeof(POLICYINFO),
 	.sname = "POLICYINFO",
 };
+LCRYPTO_ALIAS(POLICYINFO_it);
 
 
 POLICYINFO *
@@ -270,6 +278,7 @@ const ASN1_ITEM POLICYQUALINFO_it = {
 	.size = sizeof(POLICYQUALINFO),
 	.sname = "POLICYQUALINFO",
 };
+LCRYPTO_ALIAS(POLICYQUALINFO_it);
 
 
 POLICYQUALINFO *
@@ -327,6 +336,7 @@ const ASN1_ITEM USERNOTICE_it = {
 	.size = sizeof(USERNOTICE),
 	.sname = "USERNOTICE",
 };
+LCRYPTO_ALIAS(USERNOTICE_it);
 
 
 USERNOTICE *
@@ -384,6 +394,7 @@ const ASN1_ITEM NOTICEREF_it = {
 	.size = sizeof(NOTICEREF),
 	.sname = "NOTICEREF",
 };
+LCRYPTO_ALIAS(NOTICEREF_it);
 
 
 NOTICEREF *
@@ -450,14 +461,13 @@ r2i_certpol(X509V3_EXT_METHOD *method, X509V3_CTX *ctx, char *value)
 			continue;
 		} else if (*pstr == '@') {
 			STACK_OF(CONF_VALUE) *polsect;
-			polsect = X509V3_get_section(ctx, pstr + 1);
+			polsect = X509V3_get0_section(ctx, pstr + 1);
 			if (!polsect) {
 				X509V3error(X509V3_R_INVALID_SECTION);
 				X509V3_conf_err(cnf);
 				goto err;
 			}
 			pol = policy_section(ctx, polsect, ia5org);
-			X509V3_section_free(ctx, polsect);
 			if (!pol)
 				goto err;
 		} else {
@@ -533,14 +543,13 @@ policy_section(X509V3_CTX *ctx, STACK_OF(CONF_VALUE) *polstrs, int ia5org)
 				X509V3_conf_err(cnf);
 				goto err;
 			}
-			unot = X509V3_get_section(ctx, cnf->value + 1);
+			unot = X509V3_get0_section(ctx, cnf->value + 1);
 			if (unot == NULL) {
 				X509V3error(X509V3_R_INVALID_SECTION);
 				X509V3_conf_err(cnf);
 				goto err;
 			}
 			qual = notice_section(ctx, unot, ia5org);
-			X509V3_section_free(ctx, unot);
 			if (qual == NULL)
 				goto err;
 

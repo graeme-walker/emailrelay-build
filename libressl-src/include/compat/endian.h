@@ -13,12 +13,27 @@
 #define PDP_ENDIAN 3412
 
 /*
- * Use GCC and Visual Studio compiler defines to determine endian.
+ * Use GCC compiler defines to determine endianness.
  */
+#if defined(__BYTE_ORDER__)
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 #define BYTE_ORDER LITTLE_ENDIAN
 #else
 #define BYTE_ORDER BIG_ENDIAN
+#endif
+#endif
+
+/*
+ * Use build system defines to determine endianness.
+ */
+#if !defined(BYTE_ORDER)
+#if defined(HAVE_LITTLE_ENDIAN)
+#define BYTE_ORDER LITTLE_ENDIAN
+#elif defined(HAVE_BIG_ENDIAN)
+#define BYTE_ORDER BIG_ENDIAN
+#else
+#error "Could not detect endianness."
+#endif
 #endif
 
 #elif defined(HAVE_ENDIAN_H)
@@ -47,7 +62,7 @@
 #endif
 #endif
 
-#if defined(__APPLE__) && !defined(HAVE_ENDIAN_H)
+#if defined(__APPLE__)
 #include <libkern/OSByteOrder.h>
 #define be16toh(x) OSSwapBigToHostInt16((x))
 #define htobe16(x) OSSwapHostToBigInt16((x))
@@ -59,7 +74,7 @@
 #define htobe64(x) OSSwapHostToBigInt64(x)
 #define le64toh(x) OSSwapLittleToHostInt64(x)
 #define be64toh(x) OSSwapBigToHostInt64(x)
-#endif /* __APPLE__ && !HAVE_ENDIAN_H */
+#endif /* __APPLE__ */
 
 #if defined(_WIN32) && !defined(HAVE_ENDIAN_H)
 #include <winsock2.h>
@@ -86,6 +101,8 @@
 #endif
 
 #define htobe64(x) ntohll((x))
+#define htole64(x) (x)
+#define le64toh(x) (x)
 #endif /* _WIN32 && !HAVE_ENDIAN_H */
 
 #ifdef __linux__
@@ -136,6 +153,8 @@
 #define htole32(x) LE_32(x)
 #define htobe32(x) BE_32(x)
 #define be64toh(x) BE_64(x)
+#define le64toh(x) LE_64(x)
+#define htole64(x) LE_64(x)
 #define htobe64(x) BE_64(x)
 #endif
 

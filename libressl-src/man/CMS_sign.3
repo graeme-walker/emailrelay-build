@@ -1,4 +1,4 @@
-.\" $OpenBSD: CMS_sign.3,v 1.9 2020/06/24 18:15:00 jmc Exp $
+.\" $OpenBSD: CMS_sign.3,v 1.13 2025/06/08 22:40:29 schwarze Exp $
 .\" full merge up to: OpenSSL e9b77246 Jan 20 19:58:49 2017 +0100
 .\"
 .\" This file was written by Dr. Stephen Henson <steve@openssl.org>.
@@ -48,13 +48,14 @@
 .\" ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 .\" OF THE POSSIBILITY OF SUCH DAMAGE.
 .\"
-.Dd $Mdocdate: June 24 2020 $
+.Dd $Mdocdate: June 8 2025 $
 .Dt CMS_SIGN 3
 .Os
 .Sh NAME
 .Nm CMS_sign
 .Nd create a CMS SignedData structure
 .Sh SYNOPSIS
+.Lb libcrypto
 .In openssl/cms.h
 .Ft CMS_ContentInfo *
 .Fo CMS_sign
@@ -127,8 +128,8 @@ attribute.
 Omit just the
 .Vt SMIMECapabilities .
 If present, the SMIMECapabilities attribute indicates support for the
-following algorithms in preference order: 256-bit AES, Gost R3411-94,
-Gost 28147-89, 192-bit AES, 128-bit AES, triple DES, 128-bit RC2, 64-bit
+following algorithms in preference order: 256-bit AES,
+192-bit AES, 128-bit AES, triple DES, 128-bit RC2, 64-bit
 RC2, DES and 40-bit RC2.
 If any of these algorithms is not available, then it will not be
 included.
@@ -176,7 +177,7 @@ added before finalization.
 .Pp
 If a signer is specified, it will use the default digest for the signing
 algorithm.
-This is SHA1 for both RSA and DSA keys.
+This is SHA-1 for both RSA and DSA keys.
 .Pp
 If
 .Fa signcert
@@ -230,6 +231,9 @@ section 5.1: SignedData Type
 .It
 section 5.3: SignerInfo Type
 .El
+.Pp
+RFC 8419: Use of Edwards-Curve Digital Signature Algorithm (EdDSA) Signatures
+in the Cryptographic Message Syntax (CMS)
 .Pp
 RFC 8551: Secure/Multipurpose Internet Mail Extensions (S/MIME)
 Version\ 4.0 Message Specification,

@@ -1,4 +1,4 @@
-.\" $OpenBSD: CMAC_Init.3,v 1.4 2020/08/06 22:17:49 schwarze Exp $
+.\" $OpenBSD: CMAC_Init.3,v 1.10 2025/06/08 22:40:29 schwarze Exp $
 .\"
 .\" Copyright (c) 2020 Ingo Schwarze <schwarze@openbsd.org>
 .\"
@@ -14,7 +14,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .\"
-.Dd $Mdocdate: August 6 2020 $
+.Dd $Mdocdate: June 8 2025 $
 .Dt CMAC_INIT 3
 .Os
 .Sh NAME
@@ -22,13 +22,13 @@
 .Nm CMAC_Init ,
 .Nm CMAC_Update ,
 .Nm CMAC_Final ,
-.Nm CMAC_resume ,
 .Nm CMAC_CTX_copy ,
 .Nm CMAC_CTX_get0_cipher_ctx ,
 .Nm CMAC_CTX_cleanup ,
 .Nm CMAC_CTX_free
 .Nd Cipher-based message authentication code
 .Sh SYNOPSIS
+.Lb libcrypto
 .In openssl/cmac.h
 .Ft CMAC_CTX *
 .Fn CMAC_CTX_new void
@@ -38,7 +38,7 @@
 .Fa "const void *key"
 .Fa "size_t key_len"
 .Fa "const EVP_CIPHER *cipher"
-.Fa "ENGINE *impl"
+.Fa "ENGINE *engine"
 .Fc
 .Ft int
 .Fo CMAC_Update
@@ -52,8 +52,6 @@
 .Fa "unsigned char *out_mac"
 .Fa "size_t *out_len"
 .Fc
-.Ft int
-.Fn CMAC_resume "CMAC_CTX *ctx"
 .Ft int
 .Fo CMAC_CTX_copy
 .Fa "CMAC_CTX *out_ctx"
@@ -72,13 +70,11 @@ arbitrary block cipher using a symmetric key.
 The present manual page describes low-level functions implementing CMAC.
 Instead of using these functions directly,
 application programs normally call
-.Xr EVP_PKEY_CTX_new_id 3
-with an argument of
-.Dv EVP_PKEY_CMAC
+.Xr EVP_PKEY_new_CMAC_key 3
 and then pass the resulting
-.Vt EVP_MD_CTX
+.Vt EVP_PKEY
 object to
-.Xr EVP_DigestInit_ex 3 .
+.Xr EVP_DigestSignInit 3 .
 .Pp
 The CMAC API is object-oriented.
 Calculating a message authentication code requires a
@@ -108,7 +104,7 @@ for use by
 Functions to obtain suitable
 .Vt EVP_CIPHER
 objects are listed in the CIPHER LISTING section of the
-.Xr EVP_Cipher 3
+.Xr EVP_EncryptInit 3
 manual page.
 Unless
 .Fa key
@@ -127,22 +123,21 @@ and initializes
 .Fa ctx
 for subsequently feeding in data with
 .Fn CMAC_Update .
-To use the default cipher implementations provided by the library, pass
+The
+.Fa engine
+argument is ignored; passing
 .Dv NULL
-as the
-.Fa impl
-argument.
+is recommended.
 .Pp
 If
 .Fa ctx
 is already initialized,
 .Fn CMAC_Init
 can be called again with
-.Fa key ,
-.Fa cipher ,
+.Fa key
 and
-.Fa impl
-all set to
+.Fa cipher
+both set to
 .Dv NULL
 and
 .Fa key_len
@@ -184,19 +179,6 @@ resulting message authentication code to
 .Fa out_mac .
 The caller is responsible for providing a buffer of sufficient size.
 .Pp
-Calling
-.Fn CMAC_resume
-after
-.Fn CMAC_Final
-allows the user to subsequently append additional data with
-.Fn CMAC_Update .
-Otherwise, unless
-.Fn CMAC_Init
-is called to start from scratch,
-.Fn CMAC_Update
-can no longer be used after
-.Fn CMAC_Final .
-.Pp
 .Fn CMAC_CTX_copy
 performs a deep copy of the already initialized
 .Fa in_ctx
@@ -236,7 +218,6 @@ It succeeds unless memory is exhausted.
 .Fn CMAC_Init ,
 .Fn CMAC_Update ,
 .Fn CMAC_Final ,
-.Fn CMAC_resume ,
 and
 .Fn CMAC_CTX_copy
 return 1 on success or 0 on failure.
@@ -267,14 +248,14 @@ The CMAC code itself does not use the
 framework, so in general, the reasons for failure cannot be found out with
 .Xr ERR_get_error 3 .
 However, since the
-.Xr EVP_Cipher 3
+.Xr EVP_EncryptInit 3
 functions are used internally, entries may still get pushed onto
 the error stack in some cases of failure.
 .Sh SEE ALSO
 .Xr EVP_aes_128_cbc 3 ,
-.Xr EVP_Cipher 3 ,
-.Xr EVP_DigestInit 3 ,
-.Xr EVP_PKEY_CTX_new_id 3 ,
+.Xr EVP_DigestSignInit 3 ,
+.Xr EVP_EncryptInit 3 ,
+.Xr EVP_PKEY_new_CMAC_key 3 ,
 .Xr HMAC 3
 .Sh STANDARDS
 .Rs

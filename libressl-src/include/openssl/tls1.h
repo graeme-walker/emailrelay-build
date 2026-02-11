@@ -1,4 +1,4 @@
-/* $OpenBSD: tls1.h,v 1.56 2022/07/17 14:39:09 jsing Exp $ */
+/* $OpenBSD: tls1.h,v 1.61 2025/04/18 07:34:01 tb Exp $ */
 /* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
@@ -197,7 +197,7 @@ extern "C" {
 /* Codes 110-114 from RFC 3546. */
 #define TLS1_AD_UNSUPPORTED_EXTENSION		110
 #define TLS1_AD_CERTIFICATE_UNOBTAINABLE	111
-#define TLS1_AD_UNRECOGNIZED_NAME	 	112
+#define TLS1_AD_UNRECOGNIZED_NAME		112
 #define TLS1_AD_BAD_CERTIFICATE_STATUS_RESPONSE	113
 #define TLS1_AD_BAD_CERTIFICATE_HASH_VALUE	114
 /* Code 115 from RFC 4279. */
@@ -315,6 +315,9 @@ int SSL_get_servername_type(const SSL *s);
 int SSL_export_keying_material(SSL *s, unsigned char *out, size_t olen,
     const char *label, size_t llen, const unsigned char *p, size_t plen,
     int use_context);
+
+int SSL_get_signature_type_nid(const SSL *ssl, int *nid);
+int SSL_get_peer_signature_type_nid(const SSL *ssl, int *nid);
 
 #define SSL_set_tlsext_host_name(s,name) \
 SSL_ctrl(s,SSL_CTRL_SET_TLSEXT_HOSTNAME,TLSEXT_NAMETYPE_host_name,(char *)name)
@@ -452,7 +455,7 @@ SSL_CTX_callback_ctrl(ssl,SSL_CTRL_SET_TLSEXT_TICKET_KEY_CB,(void (*)(void))cb)
 #define TLS1_CK_DH_RSA_WITH_SEED_SHA                    0x03000098
 #define TLS1_CK_DHE_DSS_WITH_SEED_SHA                   0x03000099
 #define TLS1_CK_DHE_RSA_WITH_SEED_SHA                   0x0300009A
-#define TLS1_CK_ADH_WITH_SEED_SHA                	0x0300009B
+#define TLS1_CK_ADH_WITH_SEED_SHA			0x0300009B
 
 /* TLS v1.2 GCM ciphersuites from RFC 5288. */
 #define TLS1_CK_RSA_WITH_AES_128_GCM_SHA256		0x0300009C
@@ -737,23 +740,6 @@ SSL_CTX_callback_ctrl(ssl,SSL_CTRL_SET_TLSEXT_TICKET_KEY_CB,(void (*)(void))cb)
 #define TLS1_3_RFC_AES_128_CCM_8_SHA256			"TLS_AES_128_CCM_8_SHA256"
 #endif
 
-#define TLS_CT_RSA_SIGN			1
-#define TLS_CT_DSS_SIGN			2
-#define TLS_CT_RSA_FIXED_DH		3
-#define TLS_CT_DSS_FIXED_DH		4
-#define TLS_CT_GOST94_SIGN		21
-#define TLS_CT_GOST01_SIGN		22
-#define TLS_CT_ECDSA_SIGN		64
-#define TLS_CT_RSA_FIXED_ECDH		65
-#define TLS_CT_ECDSA_FIXED_ECDH 	66
-#define TLS_CT_GOST12_256_SIGN		67
-#define TLS_CT_GOST12_512_SIGN		68
-#define TLS_CT_GOST12_256_SIGN_COMPAT	238 /* pre-IANA, for compat */
-#define TLS_CT_GOST12_512_SIGN_COMPAT	239 /* pre-IANA, for compat */
-/* when correcting this number, correct also SSL3_CT_NUMBER in ssl3.h (see
- * comment there) */
-#define TLS_CT_NUMBER			13
-
 #define TLS1_FINISH_MAC_LENGTH		12
 
 #define TLS_MD_MAX_CONST_SIZE			20
@@ -761,8 +747,6 @@ SSL_CTX_callback_ctrl(ssl,SSL_CTRL_SET_TLSEXT_TICKET_KEY_CB,(void (*)(void))cb)
 #define TLS_MD_CLIENT_FINISH_CONST_SIZE		15
 #define TLS_MD_SERVER_FINISH_CONST		"server finished"
 #define TLS_MD_SERVER_FINISH_CONST_SIZE		15
-#define TLS_MD_SERVER_WRITE_KEY_CONST		"server write key"
-#define TLS_MD_SERVER_WRITE_KEY_CONST_SIZE	16
 #define TLS_MD_KEY_EXPANSION_CONST		"key expansion"
 #define TLS_MD_KEY_EXPANSION_CONST_SIZE		13
 #define TLS_MD_CLIENT_WRITE_KEY_CONST		"client write key"

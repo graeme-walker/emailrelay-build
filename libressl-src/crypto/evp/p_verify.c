@@ -1,4 +1,4 @@
-/* $OpenBSD: p_verify.c,v 1.18 2023/07/07 19:37:54 beck Exp $ */
+/* $OpenBSD: p_verify.c,v 1.22 2025/05/10 05:54:38 tb Exp $ */
 /* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
@@ -58,7 +58,6 @@
 
 #include <stdio.h>
 
-#include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/objects.h>
 #include <openssl/x509.h>
@@ -71,16 +70,16 @@ EVP_VerifyFinal(EVP_MD_CTX *ctx, const unsigned char *sigbuf,
 {
 	unsigned char m[EVP_MAX_MD_SIZE];
 	unsigned int m_len;
-	EVP_MD_CTX tmp_ctx;
+	EVP_MD_CTX *md_ctx;
 	EVP_PKEY_CTX *pkctx = NULL;
 	int ret = 0;
 
-	EVP_MD_CTX_init(&tmp_ctx);
-	if (!EVP_MD_CTX_copy_ex(&tmp_ctx, ctx))
+	if ((md_ctx = EVP_MD_CTX_new()) == NULL)
 		goto err;
-	if (!EVP_DigestFinal_ex(&tmp_ctx, &(m[0]), &m_len))
+	if (!EVP_MD_CTX_copy_ex(md_ctx, ctx))
 		goto err;
-	EVP_MD_CTX_cleanup(&tmp_ctx);
+	if (!EVP_DigestFinal_ex(md_ctx, &(m[0]), &m_len))
+		goto err;
 
 	ret = -1;
 	if ((pkctx = EVP_PKEY_CTX_new(pkey, NULL)) == NULL)
@@ -92,6 +91,8 @@ EVP_VerifyFinal(EVP_MD_CTX *ctx, const unsigned char *sigbuf,
 	ret = EVP_PKEY_verify(pkctx, sigbuf, siglen, m, m_len);
 
  err:
+	EVP_MD_CTX_free(md_ctx);
 	EVP_PKEY_CTX_free(pkctx);
 	return ret;
 }
+LCRYPTO_ALIAS(EVP_VerifyFinal);

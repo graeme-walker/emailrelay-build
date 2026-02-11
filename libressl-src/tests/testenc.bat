@@ -1,33 +1,49 @@
 @echo off
 setlocal enabledelayedexpansion
-REM	testenc.bat
 
-set test=p
+:: Copyright (c) 2016 Kinichiro Inoguchi
+::
+:: Permission to use, copy, modify, and distribute this software for any
+:: purpose with or without fee is hereby granted, provided that the above
+:: copyright notice and this permission notice appear in all copies.
+::
+:: THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+:: WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+:: MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+:: ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+:: WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+:: ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+:: OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+set test=P
 
 set openssl_bin=%1
 set openssl_bin=%openssl_bin:/=\%
 if not exist %openssl_bin% exit /b 1
 
+echo copy %srcdir%\openssl.cnf %test%
 copy %srcdir%\openssl.cnf %test%
 
 echo cat
-%openssl_bin% enc -in %test% -out %test%.cipher
-%openssl_bin% enc -in %test%.cipher -out %test%.clear
-fc /b %test% %test%.clear
+echo %openssl_bin% enc -in %test% -out %test%.CIPHER
+%openssl_bin% enc -in %test% -out %test%.CIPHER
+%openssl_bin% enc -in %test%.CIPHER -out %test%.CLEAR
+fc /b %test% %test%.CLEAR
 if !errorlevel! neq 0 (
 	exit /b 1
 ) else (
-	del %test%.cipher %test%.clear
+	del %test%.CIPHER %test%.CLEAR
 )
 
 echo base64
-%openssl_bin% enc -a -e -in %test% -out %test%.cipher
-%openssl_bin% enc -a -d -in %test%.cipher -out %test%.clear
-fc /b %test% %test%.clear
+%openssl_bin% enc -a -e -in %test% -out %test%.CIPHER
+%openssl_bin% enc -a -d -in %test%.CIPHER -out %test%.CLEAR
+dir
+fc /b %test% %test%.CLEAR
 if !errorlevel! neq 0 (
 	exit /b 1
 ) else (
-	del %test%.cipher %test%.clear
+	del %test%.CIPHER %test%.CLEAR
 )
 
 for %%i in (
@@ -45,23 +61,23 @@ for %%i in (
 	rc4 rc4-40
 ) do (
 	echo %%i
-	%openssl_bin% %%i -e -k test -in %test% -out %test%.%%i.cipher
-	%openssl_bin% %%i -d -k test -in %test%.%%i.cipher -out %test%.%%i.clear
-	fc /b %test% %test%.%%i.clear
+	%openssl_bin% %%i -e -k test -in %test% -out %test%.%%i.CIPHER
+	%openssl_bin% %%i -d -k test -in %test%.%%i.CIPHER -out %test%.%%i.CLEAR
+	fc /b %test% %test%.%%i.CLEAR
 	if !errorlevel! neq 0 (
 		exit /b 1
 	) else (
-		del %test%.%%i.cipher %test%.%%i.clear
+		del %test%.%%i.CIPHER %test%.%%i.CLEAR
 	)
 
 	echo %%i base64
-	%openssl_bin% %%i -a -e -k test -in %test% -out %test%.%%i.cipher
-	%openssl_bin% %%i -a -d -k test -in %test%.%%i.cipher -out %test%.%%i.clear
-	fc /b %test% %test%.%%i.clear
+	%openssl_bin% %%i -a -e -k test -in %test% -out %test%.%%i.CIPHER
+	%openssl_bin% %%i -a -d -k test -in %test%.%%i.CIPHER -out %test%.%%i.CLEAR
+	fc /b %test% %test%.%%i.CLEAR
 	if !errorlevel! neq 0 (
 		exit /b 1
 	) else (
-		del %test%.%%i.cipher %test%.%%i.clear
+		del %test%.%%i.CIPHER %test%.%%i.CLEAR
 	)
 )
 

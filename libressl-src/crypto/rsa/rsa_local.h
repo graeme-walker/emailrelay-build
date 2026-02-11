@@ -1,4 +1,4 @@
-/* $OpenBSD: rsa_local.h,v 1.6 2023/08/09 12:09:06 tb Exp $ */
+/* $OpenBSD: rsa_local.h,v 1.10 2025/01/05 15:39:12 tb Exp $ */
 /* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
@@ -60,10 +60,6 @@ __BEGIN_HIDDEN_DECLS
 
 #define RSA_MIN_MODULUS_BITS	512
 
-/* Macros to test if a pkey or ctx is for a PSS key */
-#define pkey_is_pss(pkey) (pkey->ameth->pkey_id == EVP_PKEY_RSA_PSS)
-#define pkey_ctx_is_pss(ctx) (ctx->pmeth->pkey_id == EVP_PKEY_RSA_PSS)
-
 struct rsa_meth_st {
 	char *name;
 	int (*rsa_pub_enc)(int flen, const unsigned char *from,
@@ -85,9 +81,7 @@ struct rsa_meth_st {
 /* New sign and verify functions: some libraries don't allow arbitrary data
  * to be signed/verified: this allows them to be used. Note: for this to work
  * the RSA_public_decrypt() and RSA_private_encrypt() should *NOT* be used
- * RSA_sign(), RSA_verify() should be used instead. Note: for backwards
- * compatibility this functionality is only enabled if the RSA_FLAG_SIGN_VER
- * option is set in 'flags'.
+ * RSA_sign(), RSA_verify() should be used instead.
  */
 	int (*rsa_sign)(int type, const unsigned char *m, unsigned int m_length,
 	    unsigned char *sigret, unsigned int *siglen, const RSA *rsa);
@@ -102,14 +96,9 @@ struct rsa_meth_st {
 };
 
 struct rsa_st {
-	/* The first parameter is used to pickup errors where
-	 * this is passed instead of aEVP_PKEY, it is set to 0 */
-	int pad;
 	long version;
 	const RSA_METHOD *meth;
 
-	/* functional reference if 'meth' is ENGINE-provided */
-	ENGINE *engine;
 	BIGNUM *n;
 	BIGNUM *e;
 	BIGNUM *d;

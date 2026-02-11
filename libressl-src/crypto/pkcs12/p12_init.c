@@ -1,4 +1,4 @@
-/* $OpenBSD: p12_init.c,v 1.16 2023/02/16 08:38:17 tb Exp $ */
+/* $OpenBSD: p12_init.c,v 1.18 2025/05/10 05:54:38 tb Exp $ */
 /* Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL
  * project 1999.
  */
@@ -58,9 +58,9 @@
 
 #include <stdio.h>
 
-#include <openssl/err.h>
 #include <openssl/pkcs12.h>
 
+#include "err_local.h"
 #include "pkcs12_local.h"
 
 /* Initialise a PKCS12 structure to take data */
@@ -98,4 +98,3 @@ err:
 		PKCS12_free(pkcs12);
 	return NULL;
 }
-LCRYPTO_ALIAS(PKCS12_init);

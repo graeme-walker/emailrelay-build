@@ -1,4 +1,4 @@
-/* $OpenBSD: ocspcheck.c,v 1.31 2022/12/28 21:30:17 jmc Exp $ */
+/* $OpenBSD: ocspcheck.c,v 1.34 2024/12/04 07:58:51 tb Exp $ */
 
 /*
  * Copyright (c) 2017,2020 Bob Beck <beck@openbsd.org>
@@ -34,6 +34,7 @@
 
 #include <openssl/err.h>
 #include <openssl/ocsp.h>
+#include <openssl/posix_time.h>
 #include <openssl/ssl.h>
 
 #include "http.h"
@@ -189,10 +190,11 @@ parse_ocsp_time(ASN1_GENERALIZEDTIME *gt)
 	if (gt == NULL)
 		return -1;
 	/* RFC 6960 specifies that all times in OCSP must be GENERALIZEDTIME */
-	if (ASN1_time_parse(gt->data, gt->length, &tm,
-		V_ASN1_GENERALIZEDTIME) == -1)
+	if (!ASN1_GENERALIZEDTIME_check(gt))
 		return -1;
-	if ((rv = timegm(&tm)) == -1)
+	if (!ASN1_TIME_to_tm(gt, &tm))
+		return -1;
+	if (!OPENSSL_timegm(&tm, &rv))
 		return -1;
 	return rv;
 }
@@ -554,8 +556,7 @@ main(int argc, char **argv)
 	struct source sources[MAX_SERVERS_DNS];
 	int i, ch, staplefd = -1, infd = -1, nonce = 1;
 	ocsp_request *request = NULL;
-	size_t rescount, httphsz = 0, instaplesz = 0;
-	struct httphead	*httph = NULL;
+	size_t rescount, instaplesz = 0;
 	struct httpget *hget;
 	X509_STORE *castore;
 	ssize_t written, w;
@@ -680,8 +681,8 @@ main(int argc, char **argv)
 		}
 
 		dspew("Server at %s returns:\n", host);
-		for (i = 0; i < httphsz; i++)
-			dspew("	  [%s]=[%s]\n", httph[i].key, httph[i].val);
+		for (i = 0; i < hget->headsz; i++)
+			dspew("   [%s]=[%s]\n", hget->head[i].key, hget->head[i].val);
 		dspew("	  [Body]=[%zu bytes]\n", hget->bodypartsz);
 		if (hget->bodypartsz <= 0)
 			errx(1, "No body in reply from %s", host);

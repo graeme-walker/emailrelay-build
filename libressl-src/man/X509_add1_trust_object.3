@@ -1,4 +1,4 @@
-.\" $OpenBSD: X509_add1_trust_object.3,v 1.3 2021/07/24 14:33:14 schwarze Exp $
+.\" $OpenBSD: X509_add1_trust_object.3,v 1.5 2025/06/08 22:40:30 schwarze Exp $
 .\"
 .\" Copyright (c) 2021 Ingo Schwarze <schwarze@openbsd.org>
 .\"
@@ -14,7 +14,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .\"
-.Dd $Mdocdate: July 24 2021 $
+.Dd $Mdocdate: June 8 2025 $
 .Dt X509_ADD1_TRUST_OBJECT 3
 .Os
 .Sh NAME
@@ -24,6 +24,7 @@
 .Nm X509_reject_clear
 .Nd mark an X.509 certificate as intended for a specific purpose
 .Sh SYNOPSIS
+.Lb libcrypto
 .In openssl/x509.h
 .Ft int
 .Fo X509_add1_trust_object
@@ -93,7 +94,6 @@ does not contain a sub-object that can hold non-standard auxiliary data.
 .Xr EXTENDED_KEY_USAGE_new 3 ,
 .Xr OBJ_nid2obj 3 ,
 .Xr X509_CERT_AUX_new 3 ,
-.Xr X509_check_trust 3 ,
 .Xr X509_new 3
 .Sh HISTORY
 These functions first appeared in OpenSSL 0.9.4 and have been available since

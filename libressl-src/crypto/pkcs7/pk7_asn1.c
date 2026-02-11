@@ -1,4 +1,4 @@
-/* $OpenBSD: pk7_asn1.c,v 1.17 2023/04/25 18:04:03 tb Exp $ */
+/* $OpenBSD: pk7_asn1.c,v 1.19 2025/06/11 18:11:55 tb Exp $ */
 /* Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL
  * project 2000.
  */
@@ -84,7 +84,6 @@ static const ASN1_ADB_TABLE PKCS7_adbtbl[] = {
 			.field_name = "d.data",
 			.item = &ASN1_OCTET_STRING_NDEF_it,
 		},
-	
 	},
 	{
 		.value = NID_pkcs7_signed,
@@ -95,7 +94,6 @@ static const ASN1_ADB_TABLE PKCS7_adbtbl[] = {
 			.field_name = "d.sign",
 			.item = &PKCS7_SIGNED_it,
 		},
-	
 	},
 	{
 		.value = NID_pkcs7_enveloped,
@@ -106,7 +104,6 @@ static const ASN1_ADB_TABLE PKCS7_adbtbl[] = {
 			.field_name = "d.enveloped",
 			.item = &PKCS7_ENVELOPE_it,
 		},
-	
 	},
 	{
 		.value = NID_pkcs7_signedAndEnveloped,
@@ -117,7 +114,6 @@ static const ASN1_ADB_TABLE PKCS7_adbtbl[] = {
 			.field_name = "d.signed_and_enveloped",
 			.item = &PKCS7_SIGN_ENVELOPE_it,
 		},
-	
 	},
 	{
 		.value = NID_pkcs7_digest,
@@ -128,7 +124,6 @@ static const ASN1_ADB_TABLE PKCS7_adbtbl[] = {
 			.field_name = "d.digest",
 			.item = &PKCS7_DIGEST_it,
 		},
-	
 	},
 	{
 		.value = NID_pkcs7_encrypted,
@@ -139,7 +134,6 @@ static const ASN1_ADB_TABLE PKCS7_adbtbl[] = {
 			.field_name = "d.encrypted",
 			.item = &PKCS7_ENCRYPT_it,
 		},
-	
 	},
 };
 
@@ -214,6 +208,7 @@ const ASN1_ITEM PKCS7_it = {
 	.size = sizeof(PKCS7),
 	.sname = "PKCS7",
 };
+LCRYPTO_ALIAS(PKCS7_it);
 
 
 PKCS7 *
@@ -306,6 +301,7 @@ const ASN1_ITEM PKCS7_SIGNED_it = {
 	.size = sizeof(PKCS7_SIGNED),
 	.sname = "PKCS7_SIGNED",
 };
+LCRYPTO_ALIAS(PKCS7_SIGNED_it);
 
 
 PKCS7_SIGNED *
@@ -422,6 +418,7 @@ const ASN1_ITEM PKCS7_SIGNER_INFO_it = {
 	.size = sizeof(PKCS7_SIGNER_INFO),
 	.sname = "PKCS7_SIGNER_INFO",
 };
+LCRYPTO_ALIAS(PKCS7_SIGNER_INFO_it);
 
 
 PKCS7_SIGNER_INFO *
@@ -479,6 +476,7 @@ const ASN1_ITEM PKCS7_ISSUER_AND_SERIAL_it = {
 	.size = sizeof(PKCS7_ISSUER_AND_SERIAL),
 	.sname = "PKCS7_ISSUER_AND_SERIAL",
 };
+LCRYPTO_ALIAS(PKCS7_ISSUER_AND_SERIAL_it);
 
 
 PKCS7_ISSUER_AND_SERIAL *
@@ -543,6 +541,7 @@ const ASN1_ITEM PKCS7_ENVELOPE_it = {
 	.size = sizeof(PKCS7_ENVELOPE),
 	.sname = "PKCS7_ENVELOPE",
 };
+LCRYPTO_ALIAS(PKCS7_ENVELOPE_it);
 
 
 PKCS7_ENVELOPE *
@@ -633,6 +632,7 @@ const ASN1_ITEM PKCS7_RECIP_INFO_it = {
 	.size = sizeof(PKCS7_RECIP_INFO),
 	.sname = "PKCS7_RECIP_INFO",
 };
+LCRYPTO_ALIAS(PKCS7_RECIP_INFO_it);
 
 
 PKCS7_RECIP_INFO *
@@ -697,6 +697,7 @@ const ASN1_ITEM PKCS7_ENC_CONTENT_it = {
 	.size = sizeof(PKCS7_ENC_CONTENT),
 	.sname = "PKCS7_ENC_CONTENT",
 };
+LCRYPTO_ALIAS(PKCS7_ENC_CONTENT_it);
 
 
 PKCS7_ENC_CONTENT *
@@ -789,6 +790,7 @@ const ASN1_ITEM PKCS7_SIGN_ENVELOPE_it = {
 	.size = sizeof(PKCS7_SIGN_ENVELOPE),
 	.sname = "PKCS7_SIGN_ENVELOPE",
 };
+LCRYPTO_ALIAS(PKCS7_SIGN_ENVELOPE_it);
 
 
 PKCS7_SIGN_ENVELOPE *
@@ -846,6 +848,7 @@ const ASN1_ITEM PKCS7_ENCRYPT_it = {
 	.size = sizeof(PKCS7_ENCRYPT),
 	.sname = "PKCS7_ENCRYPT",
 };
+LCRYPTO_ALIAS(PKCS7_ENCRYPT_it);
 
 
 PKCS7_ENCRYPT *
@@ -917,6 +920,7 @@ const ASN1_ITEM PKCS7_DIGEST_it = {
 	.size = sizeof(PKCS7_DIGEST),
 	.sname = "PKCS7_DIGEST",
 };
+LCRYPTO_ALIAS(PKCS7_DIGEST_it);
 
 
 PKCS7_DIGEST *
@@ -971,6 +975,7 @@ const ASN1_ITEM PKCS7_ATTR_SIGN_it = {
 	.size = 0,
 	.sname = "PKCS7_ATTR_SIGN",
 };
+LCRYPTO_ALIAS(PKCS7_ATTR_SIGN_it);
 
 /* When verifying attributes we need to use the received order. So
  * we use SEQUENCE OF and tag it to SET OF
@@ -993,6 +998,7 @@ const ASN1_ITEM PKCS7_ATTR_VERIFY_it = {
 	.size = 0,
 	.sname = "PKCS7_ATTR_VERIFY",
 };
+LCRYPTO_ALIAS(PKCS7_ATTR_VERIFY_it);
 
 
 int

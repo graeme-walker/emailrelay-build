@@ -84,17 +84,17 @@ if "%1"=="download" (
 	rem download libressl
 	if not exist libressl-src (
 		echo winbuildall: downloading libressl source
-		curl -L -O https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-4.1.0.tar.gz
+		curl -L -O https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-4.2.1.tar.gz
 		mkdir libressl-src
-		tar -m -C libressl-src --strip-components=1 -xf libressl-4.1.0.tar.gz
+		tar -m -C libressl-src --strip-components=1 -xf libressl-4.2.1.tar.gz
 	)
 
 	rem download mbedtls
 	if not exist mbedtls-src (
 		echo winbuildall: downloading mbedtls source
-		curl -L -O https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v3.6.3.1.tar.gz
+		curl -L -O https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/mbedtls-3.6.5.tar.gz
 		mkdir mbedtls-src
-		tar -m -C mbedtls-src --strip-components=1 -xf v3.6.3.1.tar.gz
+		tar -m -C mbedtls-src --strip-components=1 -xf mbedtls-3.6.5.tar.gz
 	)
 
 	rem download qt

@@ -1,4 +1,4 @@
-/*	$OpenBSD: bs_ber.c,v 1.11 2021/05/16 10:58:27 jsing Exp $	*/
+/*	$OpenBSD: bs_ber.c,v 1.13 2025/03/28 12:13:03 tb Exp $	*/
 /*
  * Copyright (c) 2014, Google Inc.
  *
@@ -15,6 +15,7 @@
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <stdint.h>
 #include <string.h>
 
 #include "bytestring.h"
@@ -160,7 +161,7 @@ cbs_convert_indefinite(CBS *in, CBB *out, char squash_header,
 				 * This is a hack, but it sufficies to handle
 				 * NSS's output. If we find an indefinite
 				 * length, context-specific tag with a definite,
-				 * primtive tag inside it, then we assume that
+				 * primitive tag inside it, then we assume that
 				 * the context-specific tag is implicit and the
 				 * tags within are fragments of a primitive type
 				 * that need to be concatenated.

@@ -1,4 +1,4 @@
-/* $OpenBSD: tls_internal.h,v 1.83 2023/06/27 18:19:59 tb Exp $ */
+/* $OpenBSD: tls_internal.h,v 1.86 2024/12/10 08:40:30 tb Exp $ */
 /*
  * Copyright (c) 2014 Jeremie Courreges-Anglas <jca@openbsd.org>
  * Copyright (c) 2014 Joel Sing <jsing@openbsd.org>
@@ -46,7 +46,8 @@ union tls_addr {
 
 struct tls_error {
 	char *msg;
-	int num;
+	int code;
+	int errno_value;
 	int tls;
 };
 
@@ -128,6 +129,7 @@ struct tls_conninfo {
 	int session_resumed;
 	char *version;
 
+	char *common_name;
 	char *hash;
 	char *issuer;
 	char *subject;
@@ -237,6 +239,8 @@ struct tls_config *tls_config_new_internal(void);
 struct tls *tls_new(void);
 struct tls *tls_server_conn(struct tls *ctx);
 
+int tls_get_common_name(struct tls *_ctx, X509 *_cert, const char *_in_name,
+    char **_out_common_name);
 int tls_check_name(struct tls *ctx, X509 *cert, const char *servername,
     int *match);
 int tls_configure_server(struct tls *ctx);
@@ -258,27 +262,27 @@ int tls_set_cbs(struct tls *ctx,
     tls_read_cb read_cb, tls_write_cb write_cb, void *cb_arg);
 
 void tls_error_clear(struct tls_error *error);
-int tls_error_set(struct tls_error *error, const char *fmt, ...)
-    __attribute__((__format__ (printf, 2, 3)))
-    __attribute__((__nonnull__ (2)));
-int tls_error_setx(struct tls_error *error, const char *fmt, ...)
-    __attribute__((__format__ (printf, 2, 3)))
-    __attribute__((__nonnull__ (2)));
-int tls_config_set_error(struct tls_config *cfg, const char *fmt, ...)
-    __attribute__((__format__ (printf, 2, 3)))
-    __attribute__((__nonnull__ (2)));
-int tls_config_set_errorx(struct tls_config *cfg, const char *fmt, ...)
-    __attribute__((__format__ (printf, 2, 3)))
-    __attribute__((__nonnull__ (2)));
-int tls_set_error(struct tls *ctx, const char *fmt, ...)
-    __attribute__((__format__ (printf, 2, 3)))
-    __attribute__((__nonnull__ (2)));
-int tls_set_errorx(struct tls *ctx, const char *fmt, ...)
-    __attribute__((__format__ (printf, 2, 3)))
-    __attribute__((__nonnull__ (2)));
-int tls_set_ssl_errorx(struct tls *ctx, const char *fmt, ...)
-    __attribute__((__format__ (printf, 2, 3)))
-    __attribute__((__nonnull__ (2)));
+int tls_error_set(struct tls_error *error, int code, const char *fmt, ...)
+    __attribute__((__format__ (printf, 3, 4)))
+    __attribute__((__nonnull__ (3)));
+int tls_error_setx(struct tls_error *error, int code, const char *fmt, ...)
+    __attribute__((__format__ (printf, 3, 4)))
+    __attribute__((__nonnull__ (3)));
+int tls_config_set_error(struct tls_config *cfg, int code, const char *fmt, ...)
+    __attribute__((__format__ (printf, 3, 4)))
+    __attribute__((__nonnull__ (3)));
+int tls_config_set_errorx(struct tls_config *cfg, int code, const char *fmt, ...)
+    __attribute__((__format__ (printf, 3, 4)))
+    __attribute__((__nonnull__ (3)));
+int tls_set_error(struct tls *ctx, int code, const char *fmt, ...)
+    __attribute__((__format__ (printf, 3, 4)))
+    __attribute__((__nonnull__ (3)));
+int tls_set_errorx(struct tls *ctx, int code, const char *fmt, ...)
+    __attribute__((__format__ (printf, 3, 4)))
+    __attribute__((__nonnull__ (3)));
+int tls_set_ssl_errorx(struct tls *ctx, int code, const char *fmt, ...)
+    __attribute__((__format__ (printf, 3, 4)))
+    __attribute__((__nonnull__ (3)));
 
 int tls_ssl_error(struct tls *ctx, SSL *ssl_conn, int ssl_ret,
     const char *prefix);

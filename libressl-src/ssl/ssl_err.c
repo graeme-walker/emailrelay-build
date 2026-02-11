@@ -1,4 +1,4 @@
-/* $OpenBSD: ssl_err.c,v 1.46 2023/07/08 16:40:13 beck Exp $ */
+/* $OpenBSD: ssl_err.c,v 1.55 2025/05/10 05:49:21 tb Exp $ */
 /* ====================================================================
  * Copyright (c) 1999-2011 The OpenSSL Project.  All rights reserved.
  *
@@ -67,7 +67,7 @@
 #define ERR_REASON(reason) ERR_PACK(ERR_LIB_SSL,0,reason)
 
 /* See SSL_state_func_code below */
-static ERR_STRING_DATA SSL_str_functs[]= {
+static const ERR_STRING_DATA SSL_str_functs[] = {
 	{ERR_FUNC(1),  "CONNECT_CW_FLUSH"},
 	{ERR_FUNC(2),  "CONNECT_CW_CLNT_HELLO"},
 	{ERR_FUNC(3),  "CONNECT_CW_CLNT_HELLO"},
@@ -136,24 +136,24 @@ static ERR_STRING_DATA SSL_str_functs[]= {
 	{ERR_FUNC(70),  "ACCEPT_SW_SESSION_TICKET"},
 	{ERR_FUNC(71),  "ACCEPT_SW_CERT_STATUS"},
 	{ERR_FUNC(72),  "ACCEPT_SW_CERT_STATUS"},
-	{ERR_FUNC(73), 	"ST_BEFORE"},
-	{ERR_FUNC(74), 	"ST_ACCEPT"},
-	{ERR_FUNC(75), 	"ST_CONNECT"},
-	{ERR_FUNC(76), 	"ST_OK"},
-	{ERR_FUNC(77), 	"ST_RENEGOTIATE"},
-	{ERR_FUNC(78), 	"ST_BEFORE_CONNECT"},
-	{ERR_FUNC(79), 	"ST_OK_CONNECT"},
-	{ERR_FUNC(80), 	"ST_BEFORE_ACCEPT"},
-	{ERR_FUNC(81), 	"ST_OK_ACCEPT"},
+	{ERR_FUNC(73),	"ST_BEFORE"},
+	{ERR_FUNC(74),	"ST_ACCEPT"},
+	{ERR_FUNC(75),	"ST_CONNECT"},
+	{ERR_FUNC(76),	"ST_OK"},
+	{ERR_FUNC(77),	"ST_RENEGOTIATE"},
+	{ERR_FUNC(78),	"ST_BEFORE_CONNECT"},
+	{ERR_FUNC(79),	"ST_OK_CONNECT"},
+	{ERR_FUNC(80),	"ST_BEFORE_ACCEPT"},
+	{ERR_FUNC(81),	"ST_OK_ACCEPT"},
 	{ERR_FUNC(83),  "DTLS1_ST_CR_HELLO_VERIFY_REQUEST"},
-	{ERR_FUNC(84), 	"DTLS1_ST_CR_HELLO_VERIFY_REQUEST"},
-	{ERR_FUNC(85), 	"DTLS1_ST_SW_HELLO_VERIFY_REQUEST"},
-	{ERR_FUNC(86), 	"DTLS1_ST_SW_HELLO_VERIFY_REQUEST"},
+	{ERR_FUNC(84),	"DTLS1_ST_CR_HELLO_VERIFY_REQUEST"},
+	{ERR_FUNC(85),	"DTLS1_ST_SW_HELLO_VERIFY_REQUEST"},
+	{ERR_FUNC(86),	"DTLS1_ST_SW_HELLO_VERIFY_REQUEST"},
 	{ERR_FUNC(0xfff),   "(UNKNOWN)SSL_internal"},
 	{0, NULL}
 };
 
-static ERR_STRING_DATA SSL_str_reasons[]= {
+static const ERR_STRING_DATA SSL_str_reasons[] = {
 	{ERR_REASON(SSL_R_APP_DATA_IN_HANDSHAKE) , "app data in handshake"},
 	{ERR_REASON(SSL_R_ATTEMPT_TO_REUSE_SESSION_IN_DIFFERENT_CONTEXT), "attempt to reuse session in different context"},
 	{ERR_REASON(SSL_R_BAD_ALERT_RECORD)      , "bad alert record"},
@@ -306,7 +306,6 @@ static ERR_STRING_DATA SSL_str_reasons[]= {
 	{ERR_REASON(SSL_R_NO_CLIENT_CERT_METHOD) , "no client cert method"},
 	{ERR_REASON(SSL_R_NO_CLIENT_CERT_RECEIVED), "no client cert received"},
 	{ERR_REASON(SSL_R_NO_COMPRESSION_SPECIFIED), "no compression specified"},
-	{ERR_REASON(SSL_R_NO_GOST_CERTIFICATE_SENT_BY_PEER), "Peer haven't sent GOST certificate, required for selected ciphersuite"},
 	{ERR_REASON(SSL_R_NO_METHOD_SPECIFIED)   , "no method specified"},
 	{ERR_REASON(SSL_R_NO_PRIVATEKEY)         , "no privatekey"},
 	{ERR_REASON(SSL_R_NO_PRIVATE_KEY_ASSIGNED), "no private key assigned"},
@@ -393,6 +392,8 @@ static ERR_STRING_DATA SSL_str_reasons[]= {
 	{ERR_REASON(SSL_R_SSL_SESSION_ID_HAS_BAD_LENGTH), "ssl session id has bad length"},
 	{ERR_REASON(SSL_R_SSL_SESSION_ID_IS_DIFFERENT), "ssl session id is different"},
 	{ERR_REASON(SSL_R_SSL_SESSION_ID_TOO_LONG), "ssl session id is too long"},
+	{ERR_REASON(SSL_R_TLSV13_ALERT_CERTIFICATE_REQUIRED), "tlsv13 alert certificate required"},
+	{ERR_REASON(SSL_R_TLSV13_ALERT_MISSING_EXTENSION), "tlsv13 alert missing extension"},
 	{ERR_REASON(SSL_R_TLSV1_ALERT_ACCESS_DENIED), "tlsv1 alert access denied"},
 	{ERR_REASON(SSL_R_TLSV1_ALERT_DECODE_ERROR), "tlsv1 alert decode error"},
 	{ERR_REASON(SSL_R_TLSV1_ALERT_DECRYPTION_FAILED), "tlsv1 alert decryption failed"},
@@ -401,10 +402,12 @@ static ERR_STRING_DATA SSL_str_reasons[]= {
 	{ERR_REASON(SSL_R_TLSV1_ALERT_INAPPROPRIATE_FALLBACK), "tlsv1 alert inappropriate fallback"},
 	{ERR_REASON(SSL_R_TLSV1_ALERT_INSUFFICIENT_SECURITY), "tlsv1 alert insufficient security"},
 	{ERR_REASON(SSL_R_TLSV1_ALERT_INTERNAL_ERROR), "tlsv1 alert internal error"},
+	{ERR_REASON(SSL_R_TLSV1_ALERT_NO_APPLICATION_PROTOCOL), "tlsv1 alert no application protocol"},
 	{ERR_REASON(SSL_R_TLSV1_ALERT_NO_RENEGOTIATION), "tlsv1 alert no renegotiation"},
 	{ERR_REASON(SSL_R_TLSV1_ALERT_PROTOCOL_VERSION), "tlsv1 alert protocol version"},
 	{ERR_REASON(SSL_R_TLSV1_ALERT_RECORD_OVERFLOW), "tlsv1 alert record overflow"},
 	{ERR_REASON(SSL_R_TLSV1_ALERT_UNKNOWN_CA), "tlsv1 alert unknown ca"},
+	{ERR_REASON(SSL_R_TLSV1_ALERT_UNKNOWN_PSK_IDENTITY), "tlsv1 alert unknown psk_identity"},
 	{ERR_REASON(SSL_R_TLSV1_ALERT_USER_CANCELLED), "tlsv1 alert user cancelled"},
 	{ERR_REASON(SSL_R_TLSV1_BAD_CERTIFICATE_HASH_VALUE), "tlsv1 bad certificate hash value"},
 	{ERR_REASON(SSL_R_TLSV1_BAD_CERTIFICATE_STATUS_RESPONSE), "tlsv1 bad certificate status response"},
@@ -418,7 +421,6 @@ static ERR_STRING_DATA SSL_str_reasons[]= {
 	{ERR_REASON(SSL_R_TLS_INVALID_ECPOINTFORMAT_LIST), "tls invalid ecpointformat list"},
 	{ERR_REASON(SSL_R_TLS_PEER_DID_NOT_RESPOND_WITH_CERTIFICATE_LIST), "tls peer did not respond with certificate list"},
 	{ERR_REASON(SSL_R_TLS_RSA_ENCRYPTED_VALUE_LENGTH_IS_WRONG), "tls rsa encrypted value length is wrong"},
-	{ERR_REASON(SSL_R_TRIED_TO_USE_UNSUPPORTED_CIPHER), "tried to use unsupported cipher"},
 	{ERR_REASON(SSL_R_UNABLE_TO_DECODE_DH_CERTS), "unable to decode dh certs"},
 	{ERR_REASON(SSL_R_UNABLE_TO_DECODE_ECDH_CERTS), "unable to decode ecdh certs"},
 	{ERR_REASON(SSL_R_UNABLE_TO_EXTRACT_PUBLIC_KEY), "unable to extract public key"},
@@ -477,8 +479,9 @@ ERR_load_SSL_strings(void)
 {
 #ifndef OPENSSL_NO_ERR
 	if (ERR_func_error_string(SSL_str_functs[0].error) == NULL) {
-		ERR_load_strings(0, SSL_str_functs);
-		ERR_load_strings(0, SSL_str_reasons);
+		/* TMP UGLY CASTS */
+		ERR_load_strings(0, (ERR_STRING_DATA *)SSL_str_functs);
+		ERR_load_strings(0, (ERR_STRING_DATA *)SSL_str_reasons);
 	}
 #endif
 }
@@ -666,8 +669,7 @@ SSL_state_func_code(int state) {
 }
 
 void
-SSL_error_internal(const SSL *s, int r, char *f, int l)
+SSL_error_internal(const SSL *s, int r, const char *f, int l)
 {
-	ERR_PUT_error(ERR_LIB_SSL,
-	    (SSL_state_func_code(s->s3->hs.state)), r, f, l);
+	ERR_PUT_error(ERR_LIB_SSL, SSL_state_func_code(s->s3->hs.state), r, f, l);
 }

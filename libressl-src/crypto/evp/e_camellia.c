@@ -1,4 +1,4 @@
-/* $OpenBSD: e_camellia.c,v 1.18 2023/07/07 19:37:53 beck Exp $ */
+/* $OpenBSD: e_camellia.c,v 1.22 2025/05/27 03:58:12 tb Exp $ */
 /* ====================================================================
  * Copyright (c) 2006 The OpenSSL Project.  All rights reserved.
  *
@@ -59,9 +59,9 @@
 
 #ifndef OPENSSL_NO_CAMELLIA
 #include <openssl/evp.h>
-#include <openssl/err.h>
 #include <openssl/camellia.h>
 
+#include "err_local.h"
 #include "evp_local.h"
 
 /* Camellia subkey Structure */
@@ -163,15 +163,14 @@ static const EVP_CIPHER camellia_128_cbc = {
 	.block_size = 16,
 	.key_len = 16,
 	.iv_len = 16,
-	.flags = 0 | EVP_CIPH_CBC_MODE,
+	.flags = EVP_CIPH_CBC_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_128_cbc_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -179,21 +178,21 @@ EVP_camellia_128_cbc(void)
 {
 	return &camellia_128_cbc;
 }
+LCRYPTO_ALIAS(EVP_camellia_128_cbc);
 
 static const EVP_CIPHER camellia_128_cfb128 = {
 	.nid = NID_camellia_128_cfb128,
 	.block_size = 1,
 	.key_len = 16,
 	.iv_len = 16,
-	.flags = 0 | EVP_CIPH_CFB_MODE,
+	.flags = EVP_CIPH_CFB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_128_cfb128_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -201,21 +200,21 @@ EVP_camellia_128_cfb128(void)
 {
 	return &camellia_128_cfb128;
 }
+LCRYPTO_ALIAS(EVP_camellia_128_cfb128);
 
 static const EVP_CIPHER camellia_128_ofb = {
 	.nid = NID_camellia_128_ofb128,
 	.block_size = 1,
 	.key_len = 16,
 	.iv_len = 16,
-	.flags = 0 | EVP_CIPH_OFB_MODE,
+	.flags = EVP_CIPH_OFB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_128_ofb_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -223,21 +222,21 @@ EVP_camellia_128_ofb(void)
 {
 	return &camellia_128_ofb;
 }
+LCRYPTO_ALIAS(EVP_camellia_128_ofb);
 
 static const EVP_CIPHER camellia_128_ecb = {
 	.nid = NID_camellia_128_ecb,
 	.block_size = 16,
 	.key_len = 16,
 	.iv_len = 0,
-	.flags = 0 | EVP_CIPH_ECB_MODE,
+	.flags = EVP_CIPH_ECB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_128_ecb_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -245,6 +244,7 @@ EVP_camellia_128_ecb(void)
 {
 	return &camellia_128_ecb;
 }
+LCRYPTO_ALIAS(EVP_camellia_128_ecb);
 
 static int
 camellia_192_cbc_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out, const unsigned char *in, size_t inl)
@@ -321,15 +321,14 @@ static const EVP_CIPHER camellia_192_cbc = {
 	.block_size = 16,
 	.key_len = 24,
 	.iv_len = 16,
-	.flags = 0 | EVP_CIPH_CBC_MODE,
+	.flags = EVP_CIPH_CBC_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_192_cbc_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -337,21 +336,21 @@ EVP_camellia_192_cbc(void)
 {
 	return &camellia_192_cbc;
 }
+LCRYPTO_ALIAS(EVP_camellia_192_cbc);
 
 static const EVP_CIPHER camellia_192_cfb128 = {
 	.nid = NID_camellia_192_cfb128,
 	.block_size = 1,
 	.key_len = 24,
 	.iv_len = 16,
-	.flags = 0 | EVP_CIPH_CFB_MODE,
+	.flags = EVP_CIPH_CFB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_192_cfb128_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -359,21 +358,21 @@ EVP_camellia_192_cfb128(void)
 {
 	return &camellia_192_cfb128;
 }
+LCRYPTO_ALIAS(EVP_camellia_192_cfb128);
 
 static const EVP_CIPHER camellia_192_ofb = {
 	.nid = NID_camellia_192_ofb128,
 	.block_size = 1,
 	.key_len = 24,
 	.iv_len = 16,
-	.flags = 0 | EVP_CIPH_OFB_MODE,
+	.flags = EVP_CIPH_OFB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_192_ofb_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -381,21 +380,21 @@ EVP_camellia_192_ofb(void)
 {
 	return &camellia_192_ofb;
 }
+LCRYPTO_ALIAS(EVP_camellia_192_ofb);
 
 static const EVP_CIPHER camellia_192_ecb = {
 	.nid = NID_camellia_192_ecb,
 	.block_size = 16,
 	.key_len = 24,
 	.iv_len = 0,
-	.flags = 0 | EVP_CIPH_ECB_MODE,
+	.flags = EVP_CIPH_ECB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_192_ecb_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -403,6 +402,7 @@ EVP_camellia_192_ecb(void)
 {
 	return &camellia_192_ecb;
 }
+LCRYPTO_ALIAS(EVP_camellia_192_ecb);
 
 static int
 camellia_256_cbc_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out, const unsigned char *in, size_t inl)
@@ -479,15 +479,14 @@ static const EVP_CIPHER camellia_256_cbc = {
 	.block_size = 16,
 	.key_len = 32,
 	.iv_len = 16,
-	.flags = 0 | EVP_CIPH_CBC_MODE,
+	.flags = EVP_CIPH_CBC_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_256_cbc_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -495,21 +494,21 @@ EVP_camellia_256_cbc(void)
 {
 	return &camellia_256_cbc;
 }
+LCRYPTO_ALIAS(EVP_camellia_256_cbc);
 
 static const EVP_CIPHER camellia_256_cfb128 = {
 	.nid = NID_camellia_256_cfb128,
 	.block_size = 1,
 	.key_len = 32,
 	.iv_len = 16,
-	.flags = 0 | EVP_CIPH_CFB_MODE,
+	.flags = EVP_CIPH_CFB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_256_cfb128_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -517,21 +516,21 @@ EVP_camellia_256_cfb128(void)
 {
 	return &camellia_256_cfb128;
 }
+LCRYPTO_ALIAS(EVP_camellia_256_cfb128);
 
 static const EVP_CIPHER camellia_256_ofb = {
 	.nid = NID_camellia_256_ofb128,
 	.block_size = 1,
 	.key_len = 32,
 	.iv_len = 16,
-	.flags = 0 | EVP_CIPH_OFB_MODE,
+	.flags = EVP_CIPH_OFB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_256_ofb_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -539,21 +538,21 @@ EVP_camellia_256_ofb(void)
 {
 	return &camellia_256_ofb;
 }
+LCRYPTO_ALIAS(EVP_camellia_256_ofb);
 
 static const EVP_CIPHER camellia_256_ecb = {
 	.nid = NID_camellia_256_ecb,
 	.block_size = 16,
 	.key_len = 32,
 	.iv_len = 0,
-	.flags = 0 | EVP_CIPH_ECB_MODE,
+	.flags = EVP_CIPH_ECB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_256_ecb_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -561,6 +560,7 @@ EVP_camellia_256_ecb(void)
 {
 	return &camellia_256_ecb;
 }
+LCRYPTO_ALIAS(EVP_camellia_256_ecb);
 
 static int
 camellia_128_cfb1_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out, const unsigned char *in, size_t inl)
@@ -589,15 +589,14 @@ static const EVP_CIPHER camellia_128_cfb1 = {
 	.block_size = 1,
 	.key_len = 128/8,
 	.iv_len = 16,
-	.flags = 0 | EVP_CIPH_CFB_MODE,
+	.flags = EVP_CIPH_CFB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_128_cfb1_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -605,6 +604,7 @@ EVP_camellia_128_cfb1(void)
 {
 	return &camellia_128_cfb1;
 }
+LCRYPTO_ALIAS(EVP_camellia_128_cfb1);
 
 static int
 camellia_192_cfb1_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out, const unsigned char *in, size_t inl)
@@ -633,15 +633,14 @@ static const EVP_CIPHER camellia_192_cfb1 = {
 	.block_size = 1,
 	.key_len = 192/8,
 	.iv_len = 16,
-	.flags = 0 | EVP_CIPH_CFB_MODE,
+	.flags = EVP_CIPH_CFB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_192_cfb1_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -649,6 +648,7 @@ EVP_camellia_192_cfb1(void)
 {
 	return &camellia_192_cfb1;
 }
+LCRYPTO_ALIAS(EVP_camellia_192_cfb1);
 
 static int
 camellia_256_cfb1_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out, const unsigned char *in, size_t inl)
@@ -677,15 +677,14 @@ static const EVP_CIPHER camellia_256_cfb1 = {
 	.block_size = 1,
 	.key_len = 256/8,
 	.iv_len = 16,
-	.flags = 0 | EVP_CIPH_CFB_MODE,
+	.flags = EVP_CIPH_CFB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_256_cfb1_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -693,6 +692,7 @@ EVP_camellia_256_cfb1(void)
 {
 	return &camellia_256_cfb1;
 }
+LCRYPTO_ALIAS(EVP_camellia_256_cfb1);
 
 
 static int
@@ -720,15 +720,14 @@ static const EVP_CIPHER camellia_128_cfb8 = {
 	.block_size = 1,
 	.key_len = 128/8,
 	.iv_len = 16,
-	.flags = 0 | EVP_CIPH_CFB_MODE,
+	.flags = EVP_CIPH_CFB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_128_cfb8_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -736,6 +735,7 @@ EVP_camellia_128_cfb8(void)
 {
 	return &camellia_128_cfb8;
 }
+LCRYPTO_ALIAS(EVP_camellia_128_cfb8);
 
 static int
 camellia_192_cfb8_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out, const unsigned char *in, size_t inl)
@@ -762,15 +762,14 @@ static const EVP_CIPHER camellia_192_cfb8 = {
 	.block_size = 1,
 	.key_len = 192/8,
 	.iv_len = 16,
-	.flags = 0 | EVP_CIPH_CFB_MODE,
+	.flags = EVP_CIPH_CFB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_192_cfb8_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -778,6 +777,7 @@ EVP_camellia_192_cfb8(void)
 {
 	return &camellia_192_cfb8;
 }
+LCRYPTO_ALIAS(EVP_camellia_192_cfb8);
 
 static int
 camellia_256_cfb8_cipher(EVP_CIPHER_CTX *ctx, unsigned char *out, const unsigned char *in, size_t inl)
@@ -804,15 +804,14 @@ static const EVP_CIPHER camellia_256_cfb8 = {
 	.block_size = 1,
 	.key_len = 256/8,
 	.iv_len = 16,
-	.flags = 0 | EVP_CIPH_CFB_MODE,
+	.flags = EVP_CIPH_CFB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = camellia_init_key,
 	.do_cipher = camellia_256_cfb8_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(EVP_CAMELLIA_KEY),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -820,4 +819,5 @@ EVP_camellia_256_cfb8(void)
 {
 	return &camellia_256_cfb8;
 }
+LCRYPTO_ALIAS(EVP_camellia_256_cfb8);
 #endif

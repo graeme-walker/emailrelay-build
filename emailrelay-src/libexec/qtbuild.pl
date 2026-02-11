@@ -83,6 +83,7 @@ use strict ;
 use Cwd ;
 use File::Basename ;
 use File::Copy ;
+use IO::File ;
 use Getopt::Long ;
 use lib ( File::Basename::dirname($0) ) ;
 use cmake ;
@@ -149,6 +150,13 @@ print "$cfg_prefix: source-dir=$cfg_source_dir\n" unless $cfg_quiet ;
 print "$cfg_prefix: build-dir=$cfg_build_dir\n" unless $cfg_quiet ;
 print "$cfg_prefix: install-dir=$cfg_install_dir\n" unless $cfg_quiet ;
 print "$cfg_prefix: cmake=$cfg_cmake\n" unless $cfg_quiet ;
+
+if( $cfg_qt5 )
+{
+	_touch( "$cfg_source_dir/qtbase/.git" ) ;
+	_touch( "$cfg_source_dir/qttools/.git" ) ;
+	_touch( "$cfg_source_dir/qttranslations/.git" ) ;
+}
 
 # prepare the 'configure' options -- see qtbase/config_help.txt
 my @configure_args = grep {m/./} (
@@ -288,6 +296,13 @@ sub _run_imp
 	my $rc = system( @$cmd ) ;
 	print "$log_prefix: rc=[$rc]\n" ;
 	die "$cfg_prefix: error: command failed\n" if $rc != 0 ;
+}
+
+sub _touch
+{
+	my ( $path ) = @_ ;
+	my $fh = new IO::File( $path , "w" ) ;
+	$fh && $fh->close() ;
 }
 
 sub _mkdir

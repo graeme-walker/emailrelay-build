@@ -1,4 +1,4 @@
-/* $OpenBSD: x509_info.c,v 1.3 2023/02/16 08:38:17 tb Exp $ */
+/* $OpenBSD: x509_info.c,v 1.6 2025/05/10 05:54:39 tb Exp $ */
 /* Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL
  * project 1999.
  */
@@ -62,8 +62,9 @@
 #include <openssl/asn1.h>
 #include <openssl/asn1t.h>
 #include <openssl/conf.h>
-#include <openssl/err.h>
 #include <openssl/x509v3.h>
+
+#include "err_local.h"
 
 static STACK_OF(CONF_VALUE) *i2v_AUTHORITY_INFO_ACCESS(
     X509V3_EXT_METHOD *method, AUTHORITY_INFO_ACCESS *ainfo,
@@ -71,7 +72,7 @@ static STACK_OF(CONF_VALUE) *i2v_AUTHORITY_INFO_ACCESS(
 static AUTHORITY_INFO_ACCESS *v2i_AUTHORITY_INFO_ACCESS(
     X509V3_EXT_METHOD *method, X509V3_CTX *ctx, STACK_OF(CONF_VALUE) *nval);
 
-const X509V3_EXT_METHOD v3_info = {
+static const X509V3_EXT_METHOD x509v3_ext_info_access = {
 	.ext_nid = NID_info_access,
 	.ext_flags = X509V3_EXT_MULTILINE,
 	.it = &AUTHORITY_INFO_ACCESS_it,
@@ -88,7 +89,13 @@ const X509V3_EXT_METHOD v3_info = {
 	.usr_data = NULL,
 };
 
-const X509V3_EXT_METHOD v3_sinfo = {
+const X509V3_EXT_METHOD *
+x509v3_ext_method_info_access(void)
+{
+	return &x509v3_ext_info_access;
+}
+
+static const X509V3_EXT_METHOD x509v3_ext_sinfo_access = {
 	.ext_nid = NID_sinfo_access,
 	.ext_flags = X509V3_EXT_MULTILINE,
 	.it = &AUTHORITY_INFO_ACCESS_it,
@@ -104,6 +111,12 @@ const X509V3_EXT_METHOD v3_sinfo = {
 	.r2i = NULL,
 	.usr_data = NULL,
 };
+
+const X509V3_EXT_METHOD *
+x509v3_ext_method_sinfo_access(void)
+{
+	return &x509v3_ext_sinfo_access;
+}
 
 static const ASN1_TEMPLATE ACCESS_DESCRIPTION_seq_tt[] = {
 	{
@@ -131,6 +144,7 @@ const ASN1_ITEM ACCESS_DESCRIPTION_it = {
 	.size = sizeof(ACCESS_DESCRIPTION),
 	.sname = "ACCESS_DESCRIPTION",
 };
+LCRYPTO_ALIAS(ACCESS_DESCRIPTION_it);
 
 
 ACCESS_DESCRIPTION *
@@ -179,6 +193,7 @@ const ASN1_ITEM AUTHORITY_INFO_ACCESS_it = {
 	.size = 0,
 	.sname = "AUTHORITY_INFO_ACCESS",
 };
+LCRYPTO_ALIAS(AUTHORITY_INFO_ACCESS_it);
 
 
 AUTHORITY_INFO_ACCESS *

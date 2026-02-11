@@ -20,7 +20,7 @@
  * 3. All advertising materials mentioning features or use of this
  *    software must display the following acknowledgment:
  *    "This product includes software developed by the OpenSSL Project
- *    for use in the OpenSSL Toolkit. (http://www.openssl.org/)"
+ *    for use in the OpenSSL Toolkit. (https://www.openssl.org/)"
  *
  * 4. The names "OpenSSL Toolkit" and "OpenSSL Project" must not be used to
  *    endorse or promote products derived from this software without
@@ -34,7 +34,7 @@
  * 6. Redistributions of any form whatsoever must retain the following
  *    acknowledgment:
  *    "This product includes software developed by the OpenSSL Project
- *    for use in the OpenSSL Toolkit (http://www.openssl.org/)"
+ *    for use in the OpenSSL Toolkit (https://www.openssl.org/)"
  *
  * THIS SOFTWARE IS PROVIDED BY THE OpenSSL PROJECT ``AS IS'' AND ANY
  * EXPRESSED OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -130,9 +130,6 @@
 #define NX509_SIG 32
 #endif
 
-/* Define globals.  They are protected by a lock */
-static void (*savsig[NX509_SIG])(int );
-
 DWORD console_mode;
 static FILE *tty_in, *tty_out;
 static int is_a_tty;
@@ -149,7 +146,7 @@ static int echo_console(UI *ui);
 static int noecho_console(UI *ui);
 static int close_console(UI *ui);
 
-static UI_METHOD ui_openssl = {
+static const UI_METHOD ui_openssl = {
 	.name = "OpenSSL default user interface",
 	.ui_open_session = open_console,
 	.ui_write_string = write_string,
@@ -158,7 +155,7 @@ static UI_METHOD ui_openssl = {
 };
 
 /* The method with all the built-in thingies */
-UI_METHOD *
+const UI_METHOD *
 UI_OpenSSL(void)
 {
 	return &ui_openssl;

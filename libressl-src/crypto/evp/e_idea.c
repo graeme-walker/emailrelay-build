@@ -1,4 +1,4 @@
-/* $OpenBSD: e_idea.c,v 1.20 2023/07/07 19:37:53 beck Exp $ */
+/* $OpenBSD: e_idea.c,v 1.23 2025/05/27 03:58:12 tb Exp $ */
 /* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
@@ -181,15 +181,14 @@ static const EVP_CIPHER idea_cbc = {
 	.block_size = 8,
 	.key_len = 16,
 	.iv_len = 8,
-	.flags = 0 | EVP_CIPH_CBC_MODE,
+	.flags = EVP_CIPH_CBC_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = idea_init_key,
 	.do_cipher = idea_cbc_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(IDEA_KEY_SCHEDULE),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -197,21 +196,21 @@ EVP_idea_cbc(void)
 {
 	return &idea_cbc;
 }
+LCRYPTO_ALIAS(EVP_idea_cbc);
 
 static const EVP_CIPHER idea_cfb64 = {
 	.nid = NID_idea_cfb64,
 	.block_size = 1,
 	.key_len = 16,
 	.iv_len = 8,
-	.flags = 0 | EVP_CIPH_CFB_MODE,
+	.flags = EVP_CIPH_CFB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = idea_init_key,
 	.do_cipher = idea_cfb64_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(IDEA_KEY_SCHEDULE),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -219,21 +218,21 @@ EVP_idea_cfb64(void)
 {
 	return &idea_cfb64;
 }
+LCRYPTO_ALIAS(EVP_idea_cfb64);
 
 static const EVP_CIPHER idea_ofb = {
 	.nid = NID_idea_ofb64,
 	.block_size = 1,
 	.key_len = 16,
 	.iv_len = 8,
-	.flags = 0 | EVP_CIPH_OFB_MODE,
+	.flags = EVP_CIPH_OFB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = idea_init_key,
 	.do_cipher = idea_ofb_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(IDEA_KEY_SCHEDULE),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -241,21 +240,21 @@ EVP_idea_ofb(void)
 {
 	return &idea_ofb;
 }
+LCRYPTO_ALIAS(EVP_idea_ofb);
 
 static const EVP_CIPHER idea_ecb = {
 	.nid = NID_idea_ecb,
 	.block_size = 8,
 	.key_len = 16,
 	.iv_len = 0,
-	.flags = 0 | EVP_CIPH_ECB_MODE,
+	.flags = EVP_CIPH_ECB_MODE | EVP_CIPH_FLAG_DEFAULT_ASN1,
 	.init = idea_init_key,
 	.do_cipher = idea_ecb_cipher,
 	.cleanup = NULL,
 	.ctx_size = sizeof(IDEA_KEY_SCHEDULE),
-	.set_asn1_parameters = EVP_CIPHER_set_asn1_iv,
-	.get_asn1_parameters = EVP_CIPHER_get_asn1_iv,
+	.set_asn1_parameters = NULL,
+	.get_asn1_parameters = NULL,
 	.ctrl = NULL,
-	.app_data = NULL,
 };
 
 const EVP_CIPHER *
@@ -263,4 +262,5 @@ EVP_idea_ecb(void)
 {
 	return &idea_ecb;
 }
+LCRYPTO_ALIAS(EVP_idea_ecb);
 #endif

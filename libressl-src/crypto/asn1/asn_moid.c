@@ -1,4 +1,4 @@
-/* $OpenBSD: asn_moid.c,v 1.16 2023/07/05 21:23:36 beck Exp $ */
+/* $OpenBSD: asn_moid.c,v 1.20 2025/05/10 11:51:01 tb Exp $ */
 /* Written by Stephen Henson (steve@openssl.org) for the OpenSSL
  * project 2001.
  */
@@ -60,12 +60,13 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <openssl/err.h>
 #include <openssl/conf.h>
 #include <openssl/crypto.h>
 #include <openssl/x509.h>
 
 #include "asn1_local.h"
+#include "conf_local.h"
+#include "err_local.h"
 
 /* Simple ASN1 OID module: add all objects in a given section */
 
@@ -105,7 +106,6 @@ ASN1_add_oid_module(void)
 {
 	CONF_module_add("oid_section", oid_module_init, oid_module_finish);
 }
-LCRYPTO_ALIAS(ASN1_add_oid_module);
 
 /* Create an OID based on a name value pair. Accept two formats.
  * shortname = 1.2.3.4

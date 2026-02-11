@@ -1,4 +1,4 @@
-.\" $OpenBSD: EVP_DigestInit.3,v 1.31 2023/09/07 19:59:58 schwarze Exp $
+.\" $OpenBSD: EVP_DigestInit.3,v 1.39 2025/06/08 22:40:29 schwarze Exp $
 .\" full merge up to: OpenSSL 7f572e95 Dec 2 13:57:04 2015 +0000
 .\" selective merge up to: OpenSSL 24a535ea Sep 22 13:14:20 2020 +0100
 .\"
@@ -70,7 +70,7 @@
 .\" ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 .\" OF THE POSSIBILITY OF SUCH DAMAGE.
 .\"
-.Dd $Mdocdate: September 7 2023 $
+.Dd $Mdocdate: June 8 2025 $
 .Dt EVP_DIGESTINIT 3
 .Os
 .Sh NAME
@@ -103,6 +103,7 @@
 .Nm EVP_get_digestbyobj
 .Nd EVP digest routines
 .Sh SYNOPSIS
+.Lb libcrypto
 .In openssl/evp.h
 .Ft EVP_MD_CTX *
 .Fn EVP_MD_CTX_new void
@@ -114,7 +115,7 @@
 .Fo EVP_MD_CTX_free
 .Fa "EVP_MD_CTX *ctx"
 .Fc
-.Ft void
+.Ft int
 .Fo EVP_MD_CTX_init
 .Fa "EVP_MD_CTX *ctx"
 .Fc
@@ -132,7 +133,7 @@
 .Fo EVP_DigestInit_ex
 .Fa "EVP_MD_CTX *ctx"
 .Fa "const EVP_MD *type"
-.Fa "ENGINE *impl"
+.Fa "ENGINE *engine"
 .Fc
 .Ft int
 .Fo EVP_DigestUpdate
@@ -153,7 +154,7 @@
 .Fa "unsigned char *md"
 .Fa "unsigned int *s"
 .Fa "const EVP_MD *type"
-.Fa "ENGINE *impl"
+.Fa "ENGINE *engine"
 .Fc
 .Ft int
 .Fo EVP_MD_CTX_copy_ex
@@ -249,21 +250,16 @@ respectively.
 sets up the digest context
 .Fa ctx
 to use a digest
-.Fa type
-from
-.Vt ENGINE
-.Fa impl .
+.Fa type .
 The
 .Fa type
 will typically be supplied by a function such as
 .Fn EVP_sha512 .
-If
-.Fa impl
-is
-.Dv NULL ,
-then the default implementation of digest
-.Fa type
-is used.
+The
+.Fa ENGINE *engine
+argument is always ignored and passing
+.Dv NULL
+is recommended.
 .Pp
 .Fn EVP_DigestUpdate
 hashes
@@ -306,9 +302,6 @@ bytes of data at
 .Fa d
 using the digest
 .Fa type
-from
-.Vt ENGINE
-.Fa impl
 in a one-shot operation and place the digest value into
 .Fa md ,
 and, unless
@@ -323,6 +316,11 @@ This wrapper uses a temporary digest context and passes its arguments to
 and
 .Fn EVP_DigestFinal_ex
 internally.
+The
+.Fa ENGINE *engine
+argument is always ignored and passing
+.Dv NULL
+is recommended.
 .Pp
 .Fn EVP_MD_CTX_copy_ex
 can be used to copy the message digest state from
@@ -335,8 +333,7 @@ differ in the last few bytes.
 .Fn EVP_DigestInit
 is a deprecated function behaving like
 .Fn EVP_DigestInit_ex
-except that it always uses the default digest implementation
-and that it requires
+except that it requires
 .Fn EVP_MD_CTX_reset
 before it can be used on a context that was already used.
 .Pp
@@ -365,15 +362,16 @@ and
 .Fn EVP_ripemd160
 return
 .Vt EVP_MD
-structures for the SHA224, SHA256, SHA384, SHA512 and
-RIPEMD160 digest algorithms respectively.
+structures for the SHA-224, SHA-256, SHA-384, SHA-512 and
+RIPEMD-160 digest algorithms respectively.
 .Pp
 .Fn EVP_sha512_224
 and
 .Fn EVP_sha512_256
 return an
 .Vt EVP_MD
-structure that provides the truncated SHA512 variants SHA512/224 and SHA512/256,
+structure that provides the truncated SHA-512 variants
+SHA-512/224 and SHA-512/256,
 respectively.
 .Pp
 .Fn EVP_md_null
@@ -399,11 +397,11 @@ in preference to the low-level interfaces.
 This is because the code then becomes transparent to the digest used and
 much more flexible.
 .Pp
-For most applications the
-.Fa impl
-parameter to
-.Fn EVP_DigestInit_ex
-will be set to NULL to use the default digest implementation.
+The
+.Fa ENGINE *engine
+argument is always ignored and passing
+.Dv NULL
+is recommended.
 .Pp
 The functions
 .Fn EVP_DigestInit ,
@@ -418,8 +416,7 @@ New applications should use
 and
 .Fn EVP_MD_CTX_copy_ex
 because they can efficiently reuse a digest context instead of
-initializing and cleaning it up on each call and allow non-default
-implementations of digests to be specified.
+initializing and cleaning it up on each call.
 .Pp
 If digest contexts are not cleaned up after use, memory leaks will occur.
 .Sh RETURN VALUES
@@ -432,7 +429,8 @@ object or
 .Dv NULL
 for failure.
 .Pp
-.Fn EVP_MD_CTX_reset
+.Fn EVP_MD_CTX_reset ,
+.Fn EVP_MD_CTX_init ,
 and
 .Fn EVP_MD_CTX_cleanup
 always return 1.
@@ -533,22 +531,19 @@ main(int argc, char *argv[])
 .Xr EVP_DigestSignInit 3 ,
 .Xr EVP_DigestVerifyInit 3 ,
 .Xr EVP_MD_CTX_ctrl 3 ,
-.Xr EVP_MD_meth_new 3 ,
 .Xr EVP_MD_nid 3 ,
 .Xr EVP_PKEY_CTX_set_signature_md 3 ,
-.Xr EVP_PKEY_meth_set_signctx 3 ,
 .Xr EVP_sha1 3 ,
 .Xr EVP_sha3_224 3 ,
 .Xr EVP_SignInit 3 ,
 .Xr EVP_sm3 3 ,
 .Xr EVP_VerifyInit 3 ,
-.Xr EVP_whirlpool 3 ,
 .Xr HMAC 3 ,
 .Xr OCSP_basic_sign 3 ,
 .Xr OCSP_request_sign 3 ,
 .Xr PKCS5_PBKDF2_HMAC 3 ,
 .Xr PKCS7_sign_add_signer 3 ,
-.Xr X509_ALGOR_set_md 3 ,
+.Xr X509_ALGOR_set0 3 ,
 .Xr X509_digest 3 ,
 .Xr X509_sign 3
 .Sh HISTORY

@@ -1,25 +1,25 @@
-/* $OpenBSD: bio.h,v 1.60 2023/08/25 12:37:33 schwarze Exp $ */
+/* $OpenBSD: bio.h,v 1.65 2025/07/16 18:12:54 tb Exp $ */
 /* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
  * This package is an SSL implementation written
  * by Eric Young (eay@cryptsoft.com).
  * The implementation was written so as to conform with Netscapes SSL.
- * 
+ *
  * This library is free for commercial and non-commercial use as long as
  * the following conditions are aheared to.  The following conditions
  * apply to all code found in this distribution, be it the RC4, RSA,
  * lhash, DES, etc., code; not just the SSL code.  The SSL documentation
  * included with this distribution is covered by the same copyright terms
  * except that the holder is Tim Hudson (tjh@cryptsoft.com).
- * 
+ *
  * Copyright remains Eric Young's, and as such any Copyright notices in
  * the code are not to be removed.
  * If this package is used in a product, Eric Young should be given attribution
  * as the author of the parts of the library used.
  * This can be in the form of a textual message at program startup or
  * in documentation (online or textual) provided with the package.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
@@ -34,10 +34,10 @@
  *     Eric Young (eay@cryptsoft.com)"
  *    The word 'cryptographic' can be left out if the rouines from the library
  *    being used are not cryptographic related :-).
- * 4. If you include any Windows specific code (or a derivative thereof) from 
+ * 4. If you include any Windows specific code (or a derivative thereof) from
  *    the apps directory (application code) you must include an acknowledgement:
  *    "This product includes software written by Tim Hudson (tjh@cryptsoft.com)"
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY ERIC YOUNG ``AS IS'' AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -49,7 +49,7 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- * 
+ *
  * The licence and distribution terms for any publically available version or
  * derivative of this code cannot be changed.  i.e. this code cannot simply be
  * copied and put under another distribution licence
@@ -96,8 +96,8 @@ extern "C" {
 #define BIO_TYPE_BIO		(19|0x0400)		/* (half a) BIO pair */
 #define BIO_TYPE_LINEBUFFER	(20|0x0200)		/* filter */
 #define BIO_TYPE_DGRAM		(21|0x0400|0x0100)
-#define BIO_TYPE_ASN1 		(22|0x0200)		/* filter */
-#define BIO_TYPE_COMP 		(23|0x0200)		/* filter */
+#define BIO_TYPE_ASN1		(22|0x0200)		/* filter */
+#define BIO_TYPE_COMP		(23|0x0200)		/* filter */
 
 #define BIO_TYPE_DESCRIPTOR	0x0100	/* socket, fd, connect or accept */
 #define BIO_TYPE_FILTER		0x0200
@@ -139,14 +139,14 @@ extern "C" {
 #define BIO_CTRL_DGRAM_CONNECT       31  /* BIO dgram special */
 #define BIO_CTRL_DGRAM_SET_CONNECTED 32  /* allow for an externally
 					  * connected socket to be
-					  * passed in */ 
+					  * passed in */
 #define BIO_CTRL_DGRAM_SET_RECV_TIMEOUT 33 /* setsockopt, essentially */
 #define BIO_CTRL_DGRAM_GET_RECV_TIMEOUT 34 /* getsockopt, essentially */
 #define BIO_CTRL_DGRAM_SET_SEND_TIMEOUT 35 /* setsockopt, essentially */
 #define BIO_CTRL_DGRAM_GET_SEND_TIMEOUT 36 /* getsockopt, essentially */
 
 #define BIO_CTRL_DGRAM_GET_RECV_TIMER_EXP 37 /* flag whether the last */
-#define BIO_CTRL_DGRAM_GET_SEND_TIMER_EXP 38 /* I/O operation tiemd out */
+#define BIO_CTRL_DGRAM_GET_SEND_TIMER_EXP 38 /* I/O operation timed out */
 
 /* #ifdef IP_MTU_DISCOVER */
 #define BIO_CTRL_DGRAM_MTU_DISCOVER       39 /* set DF bit on egress packets */
@@ -232,7 +232,7 @@ void BIO_clear_flags(BIO *b, int flags);
 
 /* The next three are used in conjunction with the
  * BIO_should_io_special() condition.  After this returns true,
- * BIO *BIO_get_retry_BIO(BIO *bio, int *reason); will walk the BIO 
+ * BIO *BIO_get_retry_BIO(BIO *bio, int *reason); will walk the BIO
  * stack and return the 'reason' for the special and the offending BIO.
  * Given a BIO, BIO_get_retry_reason(bio) will return the code. */
 /* Returned from the SSL bio when the certificate retrieval code had an error */
@@ -364,10 +364,6 @@ int BIO_meth_set_callback_ctrl(BIO_METHOD *biom,
 #define BIO_C_GET_WRITE_GUARANTEE		140
 #define BIO_C_GET_READ_REQUEST			141
 #define BIO_C_SHUTDOWN_WR			142
-#define BIO_C_NREAD0				143
-#define BIO_C_NREAD				144
-#define BIO_C_NWRITE0				145
-#define BIO_C_NWRITE				146
 #define BIO_C_RESET_READ_REQUEST		147
 #define BIO_C_SET_MD_CTX			148
 
@@ -384,7 +380,7 @@ int BIO_meth_set_callback_ctrl(BIO_METHOD *biom,
 #define BIO_set_conn_int_port(b,port) BIO_ctrl(b,BIO_C_SET_CONNECT,3,(char *)port)
 #define BIO_get_conn_hostname(b)  BIO_ptr_ctrl(b,BIO_C_GET_CONNECT,0)
 #define BIO_get_conn_port(b)      BIO_ptr_ctrl(b,BIO_C_GET_CONNECT,1)
-#define BIO_get_conn_ip(b) 		 BIO_ptr_ctrl(b,BIO_C_GET_CONNECT,2)
+#define BIO_get_conn_ip(b)		 BIO_ptr_ctrl(b,BIO_C_GET_CONNECT,2)
 #define BIO_get_conn_int_port(b) BIO_int_ctrl(b,BIO_C_GET_CONNECT,3,0)
 
 
@@ -534,7 +530,6 @@ const BIO_METHOD *BIO_s_file(void);
 BIO *BIO_new_file(const char *filename, const char *mode);
 BIO *BIO_new_fp(FILE *stream, int close_flag);
 BIO	*BIO_new(const BIO_METHOD *type);
-int	BIO_set(BIO *a, const BIO_METHOD *type);
 int	BIO_free(BIO *a);
 int	BIO_up_ref(BIO *bio);
 void	*BIO_get_data(BIO *a);
@@ -567,11 +562,6 @@ int	BIO_get_retry_reason(BIO *bio);
 void	BIO_set_retry_reason(BIO *bio, int reason);
 BIO *	BIO_dup_chain(BIO *in);
 
-int BIO_nread0(BIO *bio, char **buf);
-int BIO_nread(BIO *bio, char **buf, int num);
-int BIO_nwrite0(BIO *bio, char **buf);
-int BIO_nwrite(BIO *bio, char **buf, int num);
-
 long BIO_debug_callback(BIO *bio, int cmd, const char *argp, int argi,
     long argl, long ret);
 
@@ -581,7 +571,6 @@ const BIO_METHOD *BIO_s_socket(void);
 const BIO_METHOD *BIO_s_connect(void);
 const BIO_METHOD *BIO_s_accept(void);
 const BIO_METHOD *BIO_s_fd(void);
-const BIO_METHOD *BIO_s_log(void);
 const BIO_METHOD *BIO_s_bio(void);
 const BIO_METHOD *BIO_s_null(void);
 const BIO_METHOD *BIO_f_null(void);
@@ -599,14 +588,10 @@ int BIO_dgram_non_fatal_error(int _error);
 
 int BIO_fd_should_retry(int i);
 int BIO_fd_non_fatal_error(int _error);
-int BIO_dump_cb(int (*cb)(const void *data, size_t len, void *u),
-    void *u, const char *s, int len);
-int BIO_dump_indent_cb(int (*cb)(const void *data, size_t len, void *u),
-    void *u, const char *s, int len, int indent);
+
 int BIO_dump(BIO *b, const char *bytes, int len);
 int BIO_dump_indent(BIO *b, const char *bytes, int len, int indent);
-int BIO_dump_fp(FILE *fp, const char *s, int len);
-int BIO_dump_indent_fp(FILE *fp, const char *s, int len, int indent);
+
 struct hostent *BIO_gethostbyname(const char *name);
 /* We might want a thread-safe interface too:
  * struct hostent *BIO_gethostbyname_r(const char *name,
@@ -648,25 +633,9 @@ void BIO_copy_next_retry(BIO *b);
 #ifndef __MINGW_PRINTF_FORMAT
 int BIO_printf(BIO *bio, const char *format, ...)
 	__attribute__((__format__(__printf__, 2, 3), __nonnull__(2)));
-int BIO_vprintf(BIO *bio, const char *format, va_list args)
-	__attribute__((__format__(__printf__, 2, 0), __nonnull__(2)));
-int BIO_snprintf(char *buf, size_t n, const char *format, ...)
-	__attribute__((__deprecated__, __format__(__printf__, 3, 4),
-	    __nonnull__(3)));
-int BIO_vsnprintf(char *buf, size_t n, const char *format, va_list args)
-	__attribute__((__deprecated__, __format__(__printf__, 3, 0),
-	    __nonnull__(3)));
 #else
 int BIO_printf(BIO *bio, const char *format, ...)
 	__attribute__((__format__(__MINGW_PRINTF_FORMAT, 2, 3), __nonnull__(2)));
-int BIO_vprintf(BIO *bio, const char *format, va_list args)
-	__attribute__((__format__(__MINGW_PRINTF_FORMAT, 2, 0), __nonnull__(2)));
-int BIO_snprintf(char *buf, size_t n, const char *format, ...)
-	__attribute__((__deprecated__, __format__(__MINGW_PRINTF_FORMAT, 3, 4),
-	    __nonnull__(3)));
-int BIO_vsnprintf(char *buf, size_t n, const char *format, va_list args)
-	__attribute__((__deprecated__, __format__(__MINGW_PRINTF_FORMAT, 3, 0),
-	    __nonnull__(3)));
 #endif
 
 void ERR_load_BIO_strings(void);

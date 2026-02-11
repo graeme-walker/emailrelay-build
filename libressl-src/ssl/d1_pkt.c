@@ -1,4 +1,4 @@
-/* $OpenBSD: d1_pkt.c,v 1.128 2023/07/02 20:16:47 tb Exp $ */
+/* $OpenBSD: d1_pkt.c,v 1.130 2025/03/12 14:03:55 jsing Exp $ */
 /*
  * DTLS implementation written by Nagendra Modadugu
  * (nagendra@cs.stanford.edu) for the OpenSSL project 2005.
@@ -592,11 +592,17 @@ dtls1_read_handshake_unexpected(SSL *s)
 		tls_content_clear(s->s3->rcontent);
 		s->s3->rrec.length = 0;
 
+		if ((s->options & SSL_OP_NO_RENEGOTIATION) != 0) {
+			ssl3_send_alert(s, SSL3_AL_WARNING,
+			    SSL_AD_NO_RENEGOTIATION);
+			return 1;
+		}
+
 		/*
 		 * It should be impossible to hit this, but keep the safety
 		 * harness for now...
 		 */
-		if (s->session == NULL || s->session->cipher == NULL)
+		if (s->session == NULL || s->s3->hs.cipher == NULL)
 			return 1;
 
 		/*
@@ -644,13 +650,15 @@ dtls1_read_handshake_unexpected(SSL *s)
 			return -1;
 		}
 
-		if ((s->options & SSL_OP_NO_CLIENT_RENEGOTIATION) != 0) {
+		if ((s->options & SSL_OP_NO_CLIENT_RENEGOTIATION) != 0 ||
+		    ((s->options & SSL_OP_NO_RENEGOTIATION) != 0 &&
+		    (s->options & SSL_OP_ALLOW_CLIENT_RENEGOTIATION) == 0)) {
 			ssl3_send_alert(s, SSL3_AL_FATAL,
 			    SSL_AD_NO_RENEGOTIATION);
 			return -1;
 		}
 
-		if (s->session == NULL || s->session->cipher == NULL) {
+		if (s->session == NULL || s->s3->hs.cipher == NULL) {
 			SSLerror(s, ERR_R_INTERNAL_ERROR);
 			return -1;
 		}

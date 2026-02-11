@@ -1,3 +1,18 @@
+#
+# Copyright (c) 2014 Brent Cook
+#
+# Permission to use, copy, modify, and distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
 AC_DEFUN([CHECK_LIBC_COMPAT], [
 # Check for libc headers
 AC_CHECK_HEADERS([endian.h machine/endian.h err.h readpassphrase.h])
@@ -7,9 +22,9 @@ AC_CHECK_HEADERS([netinet/ip.h], [], [],
 ])
 AC_HEADER_RESOLV
 # Check for general libc functions
-AC_CHECK_FUNCS([asprintf freezero memmem])
+AC_CHECK_FUNCS([asprintf freezero ftruncate getdelim getline memmem])
 AC_CHECK_FUNCS([readpassphrase reallocarray recallocarray])
-AC_CHECK_FUNCS([strlcat strlcpy strndup strnlen strsep strtonum])
+AC_CHECK_FUNCS([strcasecmp strlcat strlcpy strndup strnlen strsep strtonum])
 AC_CHECK_FUNCS([timegm _mkgmtime timespecsub])
 AC_CHECK_FUNCS([getopt getprogname syslog syslog_r])
 AC_CACHE_CHECK([for getpagesize], ac_cv_func_getpagesize, [
@@ -24,19 +39,22 @@ AC_CACHE_CHECK([for getpagesize], ac_cv_func_getpagesize, [
 ])
 AM_CONDITIONAL([HAVE_ASPRINTF], [test "x$ac_cv_func_asprintf" = xyes])
 AM_CONDITIONAL([HAVE_FREEZERO], [test "x$ac_cv_func_freezero" = xyes])
+AM_CONDITIONAL([HAVE_FTRUNCATE], [test "x$ac_cv_func_ftruncate" = xyes])
+AM_CONDITIONAL([HAVE_GETDELIM], [test "x$ac_cv_func_getdelim" = xyes])
+AM_CONDITIONAL([HAVE_GETLINE], [test "x$ac_cv_func_getline" = xyes])
 AM_CONDITIONAL([HAVE_GETPAGESIZE], [test "x$ac_cv_func_getpagesize" = xyes])
 AM_CONDITIONAL([HAVE_GETOPT], [test "x$ac_cv_func_getopt" = xyes])
 AM_CONDITIONAL([HAVE_MEMMEM], [test "x$ac_cv_func_memmem" = xyes])
 AM_CONDITIONAL([HAVE_READPASSPHRASE], [test "x$ac_cv_func_readpassphrase" = xyes])
 AM_CONDITIONAL([HAVE_REALLOCARRAY], [test "x$ac_cv_func_reallocarray" = xyes])
 AM_CONDITIONAL([HAVE_RECALLOCARRAY], [test "x$ac_cv_func_recallocarray" = xyes])
+AM_CONDITIONAL([HAVE_STRCASECMP], [test "x$ac_cv_func_strcasecmp" = xyes])
 AM_CONDITIONAL([HAVE_STRLCAT], [test "x$ac_cv_func_strlcat" = xyes])
 AM_CONDITIONAL([HAVE_STRLCPY], [test "x$ac_cv_func_strlcpy" = xyes])
 AM_CONDITIONAL([HAVE_STRNDUP], [test "x$ac_cv_func_strndup" = xyes])
 AM_CONDITIONAL([HAVE_STRNLEN], [test "x$ac_cv_func_strnlen" = xyes])
 AM_CONDITIONAL([HAVE_STRSEP], [test "x$ac_cv_func_strsep" = xyes])
 AM_CONDITIONAL([HAVE_STRTONUM], [test "x$ac_cv_func_strtonum" = xyes])
-AM_CONDITIONAL([HAVE_TIMEGM], [test "x$ac_cv_func_timegm" = xyes])
 AM_CONDITIONAL([HAVE_GETPROGNAME], [test "x$ac_cv_func_getprogname" = xyes])
 AM_CONDITIONAL([HAVE_SYSLOG], [test "x$ac_cv_func_syslog" = xyes])
 AM_CONDITIONAL([HAVE_SYSLOG_R], [test "x$ac_cv_func_syslog_r" = xyes])

@@ -1,4 +1,4 @@
-/* $OpenBSD: cms_pwri.c,v 1.29 2023/07/08 08:26:26 beck Exp $ */
+/* $OpenBSD: cms_pwri.c,v 1.35 2025/09/30 12:51:16 tb Exp $ */
 /*
  * Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL
  * project.
@@ -52,18 +52,21 @@
  * ====================================================================
  */
 
+#include <sys/types.h>
+
+#include <stdlib.h>
 #include <string.h>
 
-#include "cryptlib.h"
-#include <openssl/asn1t.h>
-#include <openssl/pem.h>
-#include <openssl/x509v3.h>
-#include <openssl/err.h>
+#include <openssl/asn1.h>
+#include <openssl/evp.h>
 #include <openssl/cms.h>
-#include <openssl/rand.h>
-#include <openssl/aes.h>
+#include <openssl/objects.h>
+#include <openssl/x509.h>
+
 #include "cms_local.h"
-#include "asn1/asn1_local.h"
+#include "err_local.h"
+#include "evp_local.h"
+#include "x509_local.h"
 
 int
 CMS_RecipientInfo_set0_password(CMS_RecipientInfo *ri, unsigned char *pass,
@@ -264,7 +267,7 @@ kek_unwrap_key(unsigned char *out, size_t *outlen, const unsigned char *in,
 		/* Check byte failure */
 		goto err;
 	}
-	if (inlen < (size_t)(tmp[0] - 4)) {
+	if (inlen < 4 + (size_t)tmp[0]) {
 		/* Invalid length value */
 		goto err;
 	}
@@ -365,13 +368,13 @@ cms_RecipientInfo_pwri_crypt(CMS_ContentInfo *cms, CMS_RecipientInfo *ri,
 	kekcipher = EVP_get_cipherbyobj(kekalg->algorithm);
 	if (!kekcipher) {
 		CMSerror(CMS_R_UNKNOWN_CIPHER);
-		return 0;
+		goto err;
 	}
 
 	kekctx = EVP_CIPHER_CTX_new();
 	if (kekctx == NULL) {
 		CMSerror(ERR_R_MALLOC_FAILURE);
-		return 0;
+		goto err;
 	}
 	/* Fixup cipher based on AlgorithmIdentifier to set IV etc */
 	if (!EVP_CipherInit_ex(kekctx, kekcipher, NULL, NULL, NULL, en_de))
@@ -386,8 +389,8 @@ cms_RecipientInfo_pwri_crypt(CMS_ContentInfo *cms, CMS_RecipientInfo *ri,
 
 	/* Finish password based key derivation to setup key in "ctx" */
 
-	if (EVP_PBE_CipherInit(algtmp->algorithm, (char *)pwri->pass,
-	    pwri->passlen, algtmp->parameter, kekctx, en_de) < 0) {
+	if (!EVP_PBE_CipherInit(algtmp->algorithm, (char *)pwri->pass,
+	    pwri->passlen, algtmp->parameter, kekctx, en_de)) {
 		CMSerror(ERR_R_EVP_LIB);
 		goto err;
 	}

@@ -1,4 +1,4 @@
-/* $OpenBSD: bss_bio.c,v 1.28 2023/07/28 10:13:50 tb Exp $ */
+/* $OpenBSD: bss_bio.c,v 1.30 2025/05/10 05:54:38 tb Exp $ */
 /* ====================================================================
  * Copyright (c) 1998-2003 The OpenSSL Project.  All rights reserved.
  *
@@ -81,10 +81,10 @@
 #include <sys/types.h>
 
 #include <openssl/bio.h>
-#include <openssl/err.h>
 #include <openssl/crypto.h>
 
 #include "bio_local.h"
+#include "err_local.h"
 
 static int bio_new(BIO *bio);
 static int bio_free(BIO *bio);
@@ -617,6 +617,7 @@ BIO_new_bio_pair(BIO **bio1_p, size_t writebuf1, BIO **bio2_p, size_t writebuf2)
 	*bio2_p = bio2;
 	return ret;
 }
+LCRYPTO_ALIAS(BIO_new_bio_pair);
 
 size_t
 BIO_ctrl_get_write_guarantee(BIO *bio)

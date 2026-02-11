@@ -1,4 +1,4 @@
-/* $OpenBSD: apps.c,v 1.66 2023/07/23 11:39:29 tb Exp $ */
+/* $OpenBSD: apps.c,v 1.72 2025/03/18 13:03:08 tb Exp $ */
 /*
  * Copyright (c) 2014 Joel Sing <jsing@openbsd.org>
  *
@@ -1053,7 +1053,7 @@ load_config(BIO *err, CONF *cnf)
 	if (cnf == NULL)
 		return 1;
 
-	OPENSSL_load_builtin_modules();
+	OPENSSL_config(NULL);
 
 	if (CONF_modules_load(cnf, NULL, 0) <= 0) {
 		BIO_printf(err, "Error configuring OpenSSL\n");
@@ -1377,10 +1377,10 @@ int
 save_index(const char *file, const char *suffix, CA_DB *db)
 {
 	char attrpath[PATH_MAX], dbfile[PATH_MAX];
-	BIO *out = BIO_new(BIO_s_file());
-	int j;
+	BIO *out;
+	int ret = 0;
 
-	if (out == NULL) {
+	if ((out = BIO_new(BIO_s_file())) == NULL) {
 		ERR_print_errors(bio_err);
 		goto err;
 	}
@@ -1400,27 +1400,31 @@ save_index(const char *file, const char *suffix, CA_DB *db)
 		BIO_printf(bio_err, "unable to open '%s'\n", dbfile);
 		goto err;
 	}
-	j = TXT_DB_write(out, db->db);
-	if (j <= 0)
+
+	if (TXT_DB_write(out, db->db) <= 0)
 		goto err;
 
 	BIO_free(out);
-
-	out = BIO_new(BIO_s_file());
+	if ((out = BIO_new(BIO_s_file())) == NULL) {
+		ERR_print_errors(bio_err);
+		goto err;
+	}
 
 	if (BIO_write_filename(out, attrpath) <= 0) {
 		perror(attrpath);
 		BIO_printf(bio_err, "unable to open '%s'\n", attrpath);
 		goto err;
 	}
-	BIO_printf(out, "unique_subject = %s\n",
-	    db->attributes.unique_subject ? "yes" : "no");
-	BIO_free(out);
+	if (BIO_printf(out, "unique_subject = %s\n",
+	    db->attributes.unique_subject ? "yes" : "no") <= 0)
+		goto err;
 
-	return 1;
+	ret = 1;
 
  err:
-	return 0;
+	BIO_free(out);
+
+	return ret;
 }
 
 int
@@ -1716,7 +1720,7 @@ args_verify(char ***pargs, int *pargc, int *badarg, BIO *err,
 		}
 		(*pargs)++;
 	} else if (strcmp(arg, "-purpose") == 0) {
-		X509_PURPOSE *xptmp;
+		const X509_PURPOSE *xptmp;
 		if (!argn)
 			*badarg = 1;
 		else {
@@ -1891,7 +1895,7 @@ pkey_ctrl_string(EVP_PKEY_CTX *ctx, char *value)
  * in a format suitable for passing to SSL_CTX_set_next_protos_advertised.
  *   outlen: (output) set to the length of the resulting buffer on success.
  *   err: (maybe NULL) on failure, an error message line is written to this BIO.
- *   in: a NUL termianted string like "abc,def,ghi"
+ *   in: a NUL terminated string like "abc,def,ghi"
  *
  *   returns: a malloced buffer or NULL on failure.
  */
@@ -2155,32 +2159,4 @@ show_cipher(const OBJ_NAME *name, void *arg)
 		return;
 
 	fprintf(stderr, " -%-24s%s", name->name, (++*n % 3 != 0 ? "" : "\n"));
-}
-
-int
-pkey_check(BIO *out, EVP_PKEY *pkey, int (check_fn)(EVP_PKEY_CTX *),
-    const char *desc)
-{
-	EVP_PKEY_CTX *ctx;
-
-	if ((ctx = EVP_PKEY_CTX_new(pkey, NULL)) == NULL) {
-		ERR_print_errors(bio_err);
-		return 0;
-	}
-
-	if (check_fn(ctx) == 1) {
-		BIO_printf(out, "%s valid\n", desc);
-	} else {
-		unsigned long err;
-
-		BIO_printf(out, "%s invalid\n", desc);
-
-		while ((err = ERR_get_error()) != 0)
-			BIO_printf(out, "Detailed error: %s\n",
-			    ERR_reason_error_string(err));
-	}
-
-	EVP_PKEY_CTX_free(ctx);
-
-	return 1;
 }

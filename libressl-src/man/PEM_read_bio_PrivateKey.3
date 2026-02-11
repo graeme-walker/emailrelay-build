@@ -1,4 +1,4 @@
-.\" $OpenBSD: PEM_read_bio_PrivateKey.3,v 1.21 2023/04/25 18:57:57 tb Exp $
+.\" $OpenBSD: PEM_read_bio_PrivateKey.3,v 1.25 2025/07/16 17:59:10 schwarze Exp $
 .\" full merge up to:
 .\" OpenSSL man3/PEM_read_bio_PrivateKey.pod 18bad535 Apr 9 15:13:55 2019 +0100
 .\" OpenSSL man3/PEM_read_CMS.pod 83cf7abf May 29 13:07:08 2018 +0100
@@ -51,7 +51,7 @@
 .\" ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 .\" OF THE POSSIBILITY OF SUCH DAMAGE.
 .\"
-.Dd $Mdocdate: April 25 2023 $
+.Dd $Mdocdate: July 16 2025 $
 .Dt PEM_READ_BIO_PRIVATEKEY 3
 .Os
 .Sh NAME
@@ -143,6 +143,7 @@
 .Nm PEM_write_bio_CMS
 .Nd PEM routines
 .Sh SYNOPSIS
+.Lb libcrypto
 .In openssl/pem.h
 .Ft EVP_PKEY *
 .Fo PEM_read_bio_PrivateKey
@@ -896,9 +897,6 @@ The
 functions process a trusted X509 certificate using an
 .Vt X509
 structure.
-The
-.Xr X509_check_trust 3
-manual explains how the auxiliary trust information is used.
 .Pp
 The
 .Sy X509_REQ
@@ -1034,7 +1032,7 @@ are used as the passphrase and
 .Fa cb
 is ignored.
 .Ss PEM encryption format
-This old
+These old
 .Sy PrivateKey
 routines use a non-standard technique for encryption.
 .Pp
@@ -1186,7 +1184,7 @@ pass_cb(char *buf, int size, int rwflag, void *u)
 .Xr PEM_read_SSL_SESSION 3 ,
 .Xr PEM_write_bio_CMS_stream 3 ,
 .Xr PEM_write_bio_PKCS7_stream 3 ,
-.Xr PEM_X509_INFO_read 3 ,
+.Xr PEM_X509_INFO_read_bio 3 ,
 .Xr RSA_new 3 ,
 .Xr X509_CRL_new 3 ,
 .Xr X509_REQ_new 3 ,

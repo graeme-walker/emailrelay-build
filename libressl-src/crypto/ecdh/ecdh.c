@@ -1,4 +1,4 @@
-/* $OpenBSD: ecdh.c,v 1.10 2023/07/28 09:31:21 tb Exp $ */
+/* $OpenBSD: ecdh.c,v 1.12 2025/05/10 05:54:38 tb Exp $ */
 /* ====================================================================
  * Copyright 2002 Sun Microsystems, Inc. ALL RIGHTS RESERVED.
  *
@@ -73,10 +73,10 @@
 
 #include <openssl/bn.h>
 #include <openssl/ec.h>
-#include <openssl/err.h>
 #include <openssl/evp.h>
 
 #include "ec_local.h"
+#include "err_local.h"
 
 /*
  * Key derivation function from X9.63/SECG.
@@ -274,8 +274,8 @@ ECDH_compute_key(void *out, size_t out_len, const EC_POINT *pub_key,
 LCRYPTO_ALIAS(ECDH_compute_key);
 
 int
-ECDH_size(const EC_KEY *d)
+ECDH_size(const EC_KEY *eckey)
 {
-	return (EC_GROUP_get_degree(EC_KEY_get0_group(d)) + 7) / 8;
+	return BN_num_bytes(eckey->group->p);
 }
 LCRYPTO_ALIAS(ECDH_size);

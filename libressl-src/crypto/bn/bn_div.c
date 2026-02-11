@@ -1,4 +1,4 @@
-/* $OpenBSD: bn_div.c,v 1.40 2023/03/27 10:21:23 tb Exp $ */
+/* $OpenBSD: bn_div.c,v 1.44 2025/09/07 06:28:03 jsing Exp $ */
 /* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
@@ -62,25 +62,15 @@
 #include <openssl/opensslconf.h>
 
 #include <openssl/bn.h>
-#include <openssl/err.h>
 
 #include "bn_arch.h"
 #include "bn_local.h"
 #include "bn_internal.h"
+#include "err_local.h"
 
 BN_ULONG bn_div_3_words(const BN_ULONG *m, BN_ULONG d1, BN_ULONG d0);
 
 #ifndef HAVE_BN_DIV_WORDS
-#if defined(BN_LLONG) && defined(BN_DIV2W)
-
-BN_ULONG
-bn_div_words(BN_ULONG h, BN_ULONG l, BN_ULONG d)
-{
-	return ((BN_ULONG)(((((BN_ULLONG)h) << BN_BITS2)|l)/(BN_ULLONG)d));
-}
-
-#else
-
 /* Divide h,l by d and return the result. */
 /* I need to test this some more :-( */
 BN_ULONG
@@ -148,7 +138,6 @@ bn_div_words(BN_ULONG h, BN_ULONG l, BN_ULONG d)
 	ret |= q;
 	return (ret);
 }
-#endif /* !defined(BN_LLONG) && defined(BN_DIV2W) */
 #endif
 
 /*
@@ -375,7 +364,7 @@ BN_div_internal(BIGNUM *quotient, BIGNUM *remainder, const BIGNUM *numerator,
 		 *  | wnum - sdiv * q | < sdiv
 		 */
 		q = bn_div_3_words(wnump, d1, d0);
-		l0 = bn_mul_words(tmp->d, sdiv->d, div_n, q);
+		l0 = bn_mulw_words(tmp->d, sdiv->d, div_n, q);
 		tmp->d[div_n] = l0;
 		wnum.d--;
 
@@ -441,6 +430,7 @@ BN_div(BIGNUM *quotient, BIGNUM *remainder, const BIGNUM *numerator,
 
 	return BN_div_internal(quotient, remainder, numerator, divisor, ctx, ct);
 }
+LCRYPTO_ALIAS(BN_div);
 
 int
 BN_div_nonct(BIGNUM *quotient, BIGNUM *remainder, const BIGNUM *numerator,

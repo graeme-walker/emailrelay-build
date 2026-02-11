@@ -1,4 +1,4 @@
-.\" $OpenBSD: ERR_asprintf_error_data.3,v 1.2 2017/02/21 07:15:21 jmc Exp $
+.\" $OpenBSD: ERR_asprintf_error_data.3,v 1.4 2025/06/08 22:40:29 schwarze Exp $
 .\"
 .\" Copyright (c) 2017 Bob Beck <beck@openbsd.org>
 .\"
@@ -13,13 +13,14 @@
 .\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-.Dd $Mdocdate: February 21 2017 $
+.Dd $Mdocdate: June 8 2025 $
 .Dt ERR_ASPRINTF_ERROR_DATA 3
 .Os
 .Sh NAME
 .Nm ERR_asprintf_error_data
 .Nd record a LibreSSL error using a formatted string
 .Sh SYNOPSIS
+.Lb libcrypto
 .In openssl/err.h
 .Ft void
 .Fo ERR_asprintf_error_data
@@ -41,9 +42,9 @@ fails, the string "malloc failed" is associated instead.
 .Pp
 .Nm
 is intended to be used instead of the OpenSSL functions
-.Xr ERR_add_error_data 3
+.Fn ERR_add_error_data
 and
-.Xr ERR_add_error_vdata 3 .
+.Fn ERR_add_error_vdata .
 .Sh SEE ALSO
 .Xr ERR 3 ,
 .Xr ERR_put_error 3 ,

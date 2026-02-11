@@ -899,6 +899,10 @@
 #define NID_id_ct_signedTAL		1024
 #define OBJ_id_ct_signedTAL		OBJ_id_smime_ct,50L
 
+#define SN_id_ct_rpkiSignedPrefixList		"id-ct-rpkiSignedPrefixList"
+#define NID_id_ct_rpkiSignedPrefixList		1054
+#define OBJ_id_ct_rpkiSignedPrefixList		OBJ_id_smime_ct,51L
+
 #define SN_id_smime_aa_receiptRequest		"id-smime-aa-receiptRequest"
 #define NID_id_smime_aa_receiptRequest		212
 #define OBJ_id_smime_aa_receiptRequest		OBJ_id_smime_aa,1L
@@ -1560,6 +1564,11 @@
 #define SN_sbgp_autonomousSysNumv2		"sbgp-autonomousSysNumv2"
 #define NID_sbgp_autonomousSysNumv2		1007
 #define OBJ_sbgp_autonomousSysNumv2		OBJ_id_pe,29L
+
+#define SN_acmeIdentifier		"acmeIdentifier"
+#define LN_acmeIdentifier		"ACME Identifier"
+#define NID_acmeIdentifier		1053
+#define OBJ_acmeIdentifier		OBJ_id_pe,31L
 
 #define SN_id_qt_cps		"id-qt-cps"
 #define LN_id_qt_cps		"Policy Qualifier CPS"
@@ -4398,6 +4407,10 @@
 #define NID_ct_cert_scts		1021
 #define OBJ_ct_cert_scts		1L,3L,6L,1L,4L,1L,11129L,2L,4L,5L
 
+#define SN_tls1_prf		"TLS1-PRF"
+#define LN_tls1_prf		"tls1-prf"
+#define NID_tls1_prf		1055
+
 #define SN_hkdf		"HKDF"
 #define LN_hkdf		"hkdf"
 #define NID_hkdf		1022
@@ -4627,4 +4640,16 @@
 #define SN_auth_null		"AuthNULL"
 #define LN_auth_null		"auth-null"
 #define NID_auth_null		966
+
+#define SN_MLKEM768_X25519		"MLKEM768-X25519"
+#define NID_MLKEM768_X25519		1056
+#define OBJ_MLKEM768_X25519		2L,16L,840L,1L,114027L,80L,5L,2L,33L
+
+#define SN_MLKEM768_ECDH_P256		"MLKEM768-ECDH-P256"
+#define NID_MLKEM768_ECDH_P256		1057
+#define OBJ_MLKEM768_ECDH_P256		2L,16L,840L,1L,114027L,80L,5L,2L,34L
+
+#define SN_MLKEM768_ECDH_P384		"MLKEM768-ECDH-P384"
+#define NID_MLKEM768_ECDH_P384		1058
+#define OBJ_MLKEM768_ECDH_P384		2L,16L,840L,1L,114027L,80L,5L,2L,35L
 

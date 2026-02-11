@@ -1,3 +1,18 @@
+#
+# Copyright (c) 2014 Brent Cook
+#
+# Permission to use, copy, modify, and distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
 AC_DEFUN([CHECK_OS_OPTIONS], [
 
 CFLAGS="$CFLAGS -Wall -std=gnu99 -fno-strict-aliasing"
@@ -22,7 +37,7 @@ case $host_os in
 		# Don't use arc4random on systems before 10.12 because of
 		# weak seed on failure to open /dev/random, based on latest
 		# public source:
-		# http://www.opensource.apple.com/source/Libc/Libc-997.90.3/gen/FreeBSD/arc4random.c
+		# https://www.opensource.apple.com/source/Libc/Libc-997.90.3/gen/FreeBSD/arc4random.c
 		#
 		# We use the presence of getentropy() to detect 10.12. The
 		# following check take into account that:
@@ -109,7 +124,7 @@ char buf[1]; getentropy(buf, 1);
 		)
 		CPPFLAGS="$CPPFLAGS -D_OPENBSD_SOURCE"
 		;;
-	*openbsd* | *bitrig*)
+	*openbsd*)
 		HOST_OS=openbsd
 		HOST_ABI=elf
 		AC_DEFINE([HAVE_ATTRIBUTE__BOUNDED__], [1], [OpenBSD gcc has bounded])
@@ -131,7 +146,10 @@ char buf[1]; getentropy(buf, 1);
 		CPPFLAGS="$CPPFLAGS -D__EXTENSIONS__ -D_XOPEN_SOURCE=600 -DBSD_COMP"
 		AC_SUBST([PLATFORM_LDADD], ['-ldl -lmd -lnsl -lsocket'])
 		;;
-	*) ;;
+	*)
+		HOST_OS=unsupported
+		HOST_ABI=elf
+		;;
 esac
 
 # Check if time_t is sized correctly
@@ -145,7 +163,7 @@ if test "$ac_cv_sizeof_time_t" = "4"; then
     if test "$host_os" = "mingw32" ; then
         echo " **"
         echo " ** You can solve this by adjusting the build flags in your"
-        echo " ** mingw-w64 toolchain. Refer to README.windows for details."
+        echo " ** mingw-w64 toolchain. Refer to README.mingw.md for details."
     fi
 fi
 

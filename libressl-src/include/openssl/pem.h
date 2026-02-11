@@ -1,4 +1,4 @@
-/* $OpenBSD: pem.h,v 1.26 2023/04/25 17:51:36 tb Exp $ */
+/* $OpenBSD: pem.h,v 1.29 2025/07/16 15:59:26 tb Exp $ */
 /* Copyright (C) 1995-1997 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
@@ -69,7 +69,6 @@
 #endif
 #include <openssl/evp.h>
 #include <openssl/x509.h>
-#include <openssl/pem2.h>
 
 #ifdef  __cplusplus
 extern "C" {
@@ -142,55 +141,6 @@ extern "C" {
 #define PEM_TYPE_MIC_ONLY       20
 #define PEM_TYPE_MIC_CLEAR      30
 #define PEM_TYPE_CLEAR		40
-
-typedef struct pem_recip_st {
-	char *name;
-	X509_NAME *dn;
-
-	int cipher;
-	int key_enc;
-	/*	char iv[8]; unused and wrong size */
-} PEM_USER;
-
-typedef struct pem_ctx_st {
-	int type;		/* what type of object */
-
-	struct	{
-		int version;
-		int mode;
-	} proc_type;
-
-	char *domain;
-
-	struct	{
-		int cipher;
-	/* unused, and wrong size
-	   unsigned char iv[8]; */
-	} DEK_info;
-
-	PEM_USER *originator;
-
-	int num_recipient;
-	PEM_USER **recipient;
-
-	/* XXX(ben): don#t think this is used!
-		STACK *x509_chain;	/ * certificate chain */
-	EVP_MD *md;		/* signature type */
-
-	int md_enc;		/* is the md encrypted or not? */
-	int md_len;		/* length of md_data */
-	char *md_data;		/* message digest, could be pkey encrypted */
-
-	EVP_CIPHER *dec;	/* date encryption cipher */
-	int key_len;		/* key length */
-	unsigned char *key;	/* key */
-	/* unused, and wrong size
-	   unsigned char iv[8]; */
-
-	int  data_enc;		/* is the data encrypted */
-	int data_len;
-	unsigned char *data;
-} PEM_CTX;
 
 #ifndef LIBRESSL_INTERNAL
 /* These macros make the PEM_read/PEM_write functions easier to maintain and
@@ -388,8 +338,6 @@ int	PEM_ASN1_write_bio(i2d_of_void *i2d, const char *name, BIO *bp, void *x,
 
 STACK_OF(X509_INFO) *	PEM_X509_INFO_read_bio(BIO *bp,
 	    STACK_OF(X509_INFO) *sk, pem_password_cb *cb, void *u);
-int	PEM_X509_INFO_write_bio(BIO *bp, X509_INFO *xi, EVP_CIPHER *enc,
-	    unsigned char *kstr, int klen, pem_password_cb *cd, void *u);
 #endif
 
 int	PEM_read(FILE *fp, char **name, char **header,
@@ -401,8 +349,6 @@ void *  PEM_ASN1_read(d2i_of_void *d2i, const char *name, FILE *fp, void **x,
 int	PEM_ASN1_write(i2d_of_void *i2d, const char *name, FILE *fp,
 	    void *x, const EVP_CIPHER *enc, unsigned char *kstr,
 	    int klen, pem_password_cb *callback, void *u);
-STACK_OF(X509_INFO) *	PEM_X509_INFO_read(FILE *fp, STACK_OF(X509_INFO) *sk,
-	    pem_password_cb *cb, void *u);
 
 int    PEM_SignInit(EVP_MD_CTX *ctx, EVP_MD *type);
 int    PEM_SignUpdate(EVP_MD_CTX *ctx, unsigned char *d, unsigned int cnt);

@@ -1,4 +1,4 @@
-/* $OpenBSD: bn_gcd.c,v 1.28 2023/06/02 17:15:30 tb Exp $ */
+/* $OpenBSD: bn_gcd.c,v 1.31 2025/06/02 12:40:10 tb Exp $ */
 /* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
@@ -109,9 +109,8 @@
  *
  */
 
-#include <openssl/err.h>
-
 #include "bn_local.h"
+#include "err_local.h"
 
 static BIGNUM *
 euclid(BIGNUM *a, BIGNUM *b)
@@ -195,12 +194,7 @@ BN_gcd(BIGNUM *r, const BIGNUM *in_a, const BIGNUM *in_b, BN_CTX *ctx)
 	BN_CTX_end(ctx);
 	return (ret);
 }
-
-int
-BN_gcd_nonct(BIGNUM *r, const BIGNUM *in_a, const BIGNUM *in_b, BN_CTX *ctx)
-{
-	return BN_gcd(r, in_a, in_b, ctx);
-}
+LCRYPTO_ALIAS(BN_gcd);
 
 /*
  * BN_gcd_no_branch is a special version of BN_mod_inverse_no_branch.
@@ -686,8 +680,10 @@ BN_mod_inverse_internal(BIGNUM *in, const BIGNUM *a, const BIGNUM *n, BN_CTX *ct
 					/* A >= 2*B, so D=2 or D=3 */
 					if (!BN_sub(M, A, T))
 						goto err;
-					if (!BN_add(D,T,B)) goto err; /* use D (:= 3*B) as temp */
-						if (BN_ucmp(A, D) < 0) {
+					/* use D (:= 3*B) as temp */
+					if (!BN_add(D, T, B))
+						goto err;
+					if (BN_ucmp(A, D) < 0) {
 						/* A < 3*B, so D=2 */
 						if (!BN_set_word(D, 2))
 							goto err;
@@ -808,6 +804,7 @@ BN_mod_inverse(BIGNUM *in, const BIGNUM *a, const BIGNUM *n, BN_CTX *ctx)
 	    (BN_get_flags(n, BN_FLG_CONSTTIME) != 0));
 	return BN_mod_inverse_internal(in, a, n, ctx, ct);
 }
+LCRYPTO_ALIAS(BN_mod_inverse);
 
 BIGNUM *
 BN_mod_inverse_nonct(BIGNUM *in, const BIGNUM *a, const BIGNUM *n, BN_CTX *ctx)

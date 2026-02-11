@@ -1,4 +1,4 @@
-.\" $OpenBSD: X509_ATTRIBUTE_new.3,v 1.16 2021/10/26 12:56:48 schwarze Exp $
+.\" $OpenBSD: X509_ATTRIBUTE_new.3,v 1.19 2025/06/08 22:40:30 schwarze Exp $
 .\"
 .\" Copyright (c) 2016, 2021 Ingo Schwarze <schwarze@openbsd.org>
 .\"
@@ -14,7 +14,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .\"
-.Dd $Mdocdate: October 26 2021 $
+.Dd $Mdocdate: June 8 2025 $
 .Dt X509_ATTRIBUTE_NEW 3
 .Os
 .Sh NAME
@@ -27,6 +27,7 @@
 .\" The type is called "Attribute" with capital "A", not "attribute".
 .Nd generic X.501 Attribute
 .Sh SYNOPSIS
+.Lb libcrypto
 .In openssl/x509.h
 .Ft X509_ATTRIBUTE *
 .Fn X509_ATTRIBUTE_new void
@@ -111,7 +112,6 @@ fails on
 .Fa nid .
 .Sh SEE ALSO
 .Xr d2i_X509_ATTRIBUTE 3 ,
-.Xr EVP_PKEY_add1_attr 3 ,
 .Xr OBJ_nid2obj 3 ,
 .Xr PKCS12_SAFEBAG_new 3 ,
 .Xr PKCS7_add_attribute 3 ,
@@ -122,9 +122,7 @@ fails on
 .Xr X509_EXTENSION_new 3 ,
 .Xr X509_new 3 ,
 .Xr X509_REQ_add1_attr 3 ,
-.Xr X509_REQ_new 3 ,
-.Xr X509at_add1_attr 3 ,
-.Xr X509at_get_attr 3
+.Xr X509_REQ_new 3
 .Sh STANDARDS
 .Bl -ohang
 .It Xo

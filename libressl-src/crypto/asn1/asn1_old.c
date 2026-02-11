@@ -1,4 +1,4 @@
-/* $OpenBSD: asn1_old.c,v 1.5 2023/07/07 19:37:52 beck Exp $ */
+/* $OpenBSD: asn1_old.c,v 1.7 2025/05/10 05:54:38 tb Exp $ */
 /* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
@@ -61,9 +61,9 @@
 
 #include <openssl/asn1.h>
 #include <openssl/buffer.h>
-#include <openssl/err.h>
 
 #include "asn1_local.h"
+#include "err_local.h"
 
 #ifndef NO_OLD_ASN1
 
@@ -91,6 +91,7 @@ ASN1_dup(i2d_of_void *i2d, d2i_of_void *d2i, void *x)
 	free(b);
 	return (ret);
 }
+LCRYPTO_ALIAS(ASN1_dup);
 
 void *
 ASN1_d2i_fp(void *(*xnew)(void), d2i_of_void *d2i, FILE *in, void **x)

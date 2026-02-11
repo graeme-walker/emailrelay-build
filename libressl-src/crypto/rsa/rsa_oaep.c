@@ -1,4 +1,4 @@
-/* $OpenBSD: rsa_oaep.c,v 1.37 2023/07/08 12:26:45 beck Exp $ */
+/* $OpenBSD: rsa_oaep.c,v 1.41 2025/08/25 18:47:39 tb Exp $ */
 /*
  * Copyright 1999-2018 The OpenSSL Project Authors. All Rights Reserved.
  *
@@ -7,7 +7,7 @@
  * are met:
  *
  * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer. 
+ *    notice, this list of conditions and the following disclaimer.
  *
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in
@@ -74,12 +74,12 @@
 #include <string.h>
 
 #include <openssl/bn.h>
-#include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
 #include <openssl/sha.h>
 
 #include "constant_time.h"
+#include "err_local.h"
 #include "evp_local.h"
 #include "rsa_local.h"
 
@@ -326,12 +326,14 @@ PKCS1_MGF1(unsigned char *mask, long len, const unsigned char *seed,
 {
 	long i, outlen = 0;
 	unsigned char cnt[4];
-	EVP_MD_CTX c;
+	EVP_MD_CTX *md_ctx;
 	unsigned char md[EVP_MAX_MD_SIZE];
 	int mdlen;
 	int rv = -1;
 
-	EVP_MD_CTX_init(&c);
+	if ((md_ctx = EVP_MD_CTX_new()) == NULL)
+		goto err;
+
 	mdlen = EVP_MD_size(dgst);
 	if (mdlen < 0)
 		goto err;
@@ -340,24 +342,27 @@ PKCS1_MGF1(unsigned char *mask, long len, const unsigned char *seed,
 		cnt[1] = (unsigned char)((i >> 16) & 255);
 		cnt[2] = (unsigned char)((i >> 8)) & 255;
 		cnt[3] = (unsigned char)(i & 255);
-		if (!EVP_DigestInit_ex(&c, dgst, NULL) ||
-		    !EVP_DigestUpdate(&c, seed, seedlen) ||
-		    !EVP_DigestUpdate(&c, cnt, 4))
+		if (!EVP_DigestInit_ex(md_ctx, dgst, NULL) ||
+		    !EVP_DigestUpdate(md_ctx, seed, seedlen) ||
+		    !EVP_DigestUpdate(md_ctx, cnt, 4))
 			goto err;
 		if (outlen + mdlen <= len) {
-			if (!EVP_DigestFinal_ex(&c, mask + outlen, NULL))
+			if (!EVP_DigestFinal_ex(md_ctx, mask + outlen, NULL))
 				goto err;
 			outlen += mdlen;
 		} else {
-			if (!EVP_DigestFinal_ex(&c, md, NULL))
+			if (!EVP_DigestFinal_ex(md_ctx, md, NULL))
 				goto err;
 			memcpy(mask + outlen, md, len - outlen);
 			outlen = len;
 		}
 	}
+
 	rv = 0;
+
  err:
-	EVP_MD_CTX_cleanup(&c);
+	EVP_MD_CTX_free(md_ctx);
+
 	return rv;
 }
 LCRYPTO_ALIAS(PKCS1_MGF1);
