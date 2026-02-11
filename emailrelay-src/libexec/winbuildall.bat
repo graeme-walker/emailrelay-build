@@ -254,7 +254,7 @@ if not exist "%thisdir%%arch%\emailrelay-build-%arch%-%config%\src\gui\%config%\
 
 rem assembly
 rem
-cd %thisdir% && "%perl%" "%emailrelaysrc%/libexec/winbuild-assembly.pl" --static --arch=%arch% --config=%config% --src-dir "%emailrelaysrc%" --dst-dir emailrelay-%arch%-%config% --build-dir %arch%/emailrelay-build-%arch%-%config% --qt-dir %arch%/qt-bin-%arch% --qt-build-dir %arch%/qt-build-%arch%-%config%
+cd %thisdir% && "%perl%" "%emailrelaysrc%/libexec/winbuild-assembly.pl" --static --arch=%arch% --config=%config% --src-dir "%emailrelaysrc%" --dst-dir emailrelay-windows-%arch%-%config% --build-dir %arch%/emailrelay-build-%arch%-%config% --qt-dir %arch%/qt-bin-%arch% --qt-build-dir %arch%/qt-build-%arch%-%config%
 if errorlevel 1 goto error
 
 echo winbuildall: done
