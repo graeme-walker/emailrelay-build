@@ -337,7 +337,7 @@ sub copy_files
 {
 	my ( $glob , $dst_dir , $opt ) = @_ ;
 	$opt ||= {} ;
-	$opt->{at_least} ||= 9999 ;
+	$opt->{at_least} ||= 0 ;
 	$opt->{not_match} = undef if !exists($opt->{not_match}) ;
 	my @files = _glob( $glob ) ;
 	if( $opt->{not_match} ) { @files = grep { $_ !~ m/$$opt{not_match}/ } @files }
