@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qstackedlayout.h"
 #include "qlayout_p.h"
@@ -43,6 +7,10 @@
 #include <qlist.h>
 #include "private/qwidget_p.h"
 #include "private/qlayoutengine_p.h"
+
+#include <QtCore/qpointer.h>
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -200,7 +168,7 @@ QStackedLayout::~QStackedLayout()
 int QStackedLayout::addWidget(QWidget *widget)
 {
     Q_D(QStackedLayout);
-    return insertWidget(d->list.count(), widget);
+    return insertWidget(d->list.size(), widget);
 }
 
 /*!
@@ -221,9 +189,9 @@ int QStackedLayout::insertWidget(int index, QWidget *widget)
 {
     Q_D(QStackedLayout);
     addChildWidget(widget);
-    index = qMin(index, d->list.count());
+    index = qMin(index, d->list.size());
     if (index < 0)
-        index = d->list.count();
+        index = d->list.size();
     QWidgetItem *wi = QLayoutPrivate::createWidgetItem(this, widget);
     d->list.insert(index, wi);
     invalidate();
@@ -268,8 +236,8 @@ QLayoutItem *QStackedLayout::takeAt(int index)
     QLayoutItem *item = d->list.takeAt(index);
     if (index == d->index) {
         d->index = -1;
-        if ( d->list.count() > 0 ) {
-            int newIndex = (index == d->list.count()) ? index-1 : index;
+        if ( d->list.size() > 0 ) {
+            int newIndex = (index == d->list.size()) ? index-1 : index;
             setCurrentIndex(newIndex);
         } else {
             emit currentChanged(-1);
@@ -421,13 +389,13 @@ int QStackedLayout::count() const
 */
 void QStackedLayout::addItem(QLayoutItem *item)
 {
+    std::unique_ptr<QLayoutItem> guard(item);
     QWidget *widget = item->widget();
     if (Q_UNLIKELY(!widget)) {
         qWarning("QStackedLayout::addItem: Only widgets can be added");
         return;
     }
     addWidget(widget);
-    delete item;
 }
 
 /*!
@@ -437,7 +405,7 @@ QSize QStackedLayout::sizeHint() const
 {
     Q_D(const QStackedLayout);
     QSize s(0, 0);
-    int n = d->list.count();
+    int n = d->list.size();
 
     for (int i = 0; i < n; ++i)
         if (QWidget *widget = d->list.at(i)->widget()) {
@@ -458,7 +426,7 @@ QSize QStackedLayout::minimumSize() const
 {
     Q_D(const QStackedLayout);
     QSize s(0, 0);
-    int n = d->list.count();
+    int n = d->list.size();
 
     for (int i = 0; i < n; ++i)
         if (QWidget *widget = d->list.at(i)->widget())
@@ -478,7 +446,7 @@ void QStackedLayout::setGeometry(const QRect &rect)
             widget->setGeometry(rect);
         break;
     case StackAll:
-        if (const int n = d->list.count())
+        if (const int n = d->list.size())
             for (int i = 0; i < n; ++i)
                 if (QWidget *widget = d->list.at(i)->widget())
                     widget->setGeometry(rect);
@@ -565,7 +533,7 @@ void QStackedLayout::setStackingMode(StackingMode stackingMode)
         return;
     d->stackingMode = stackingMode;
 
-    const int n = d->list.count();
+    const int n = d->list.size();
     if (n == 0)
         return;
 

@@ -1,34 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <QCalendar>
+#include <private/qgregoriancalendar_p.h>
 Q_DECLARE_METATYPE(QCalendar::System)
 
 class tst_QCalendar : public QObject
@@ -47,7 +23,56 @@ private slots:
     void specific();
     void daily_data() { basic_data(); }
     void daily();
+    void testYearMonthDate();
+    void properties_data();
+    void properties();
+    void aliases();
+
+    void gregory();
 };
+
+static void checkCenturyResolution(const QCalendar &cal, const QCalendar::YearMonthDay &base)
+{
+    quint8 weekDayMask = 0;
+    for (int offset = -7; offset < 8; ++offset) {
+        const auto probe = QDate(base.year, base.month, base.day, cal).addYears(100 * offset, cal);
+        const int dow = cal.dayOfWeek(probe);
+        if (probe.isValid() && dow > 0 && dow < 8)
+            weekDayMask |= 1 << quint8(dow - 1);
+    }
+    for (int j = 1; j < 8; ++j) {
+        const bool seen = weekDayMask & (1 << quint8(j - 1));
+        const QDate check = cal.matchCenturyToWeekday(base, j);
+        if (check.isValid()) {
+            const auto parts = cal.partsFromDate(check);
+            const int dow = cal.dayOfWeek(check);
+            QCOMPARE(dow, j);
+            QCOMPARE(parts.day, base.day);
+            QCOMPARE(parts.month, base.month);
+            int gap = parts.year - base.year;
+            if (!cal.hasYearZero() && (parts.year > 0) != (base.year > 0))
+                gap += parts.year > 0 ? -1 : +1;
+            auto report = qScopeGuard([parts, base]() {
+                qDebug("Wrongly matched year: %d replaced %d", parts.year, base.year);
+            });
+            QCOMPARE(gap % 100, 0);
+            // We searched 7 centuries each side of base.
+            if (seen) {
+                QCOMPARE_LT(gap / 100, 8);
+                QCOMPARE_GT(gap / 100, -8);
+            } else {
+                QVERIFY(gap / 100 >= 8 || gap / 100 <= -8);
+            }
+            report.dismiss();
+        } else {
+            auto report = qScopeGuard([j, base]() {
+                qDebug("Missed dow[%d] for %d/%d/%d", j, base.year, base.month, base.day);
+            });
+            QVERIFY(!seen);
+            report.dismiss();
+        }
+    }
+}
 
 // Support for basic():
 void tst_QCalendar::checkYear(const QCalendar &cal, int year, bool normal)
@@ -57,14 +82,17 @@ void tst_QCalendar::checkYear(const QCalendar &cal, int year, bool normal)
     QVERIFY(moons > 0);
     QVERIFY(!cal.isDateValid(year, moons + 1, 1));
     QVERIFY(!cal.isDateValid(year, 0, 1));
+    QVERIFY(!QDate(year, 0, 1, cal).isValid());
     QVERIFY(moons <= cal.maximumMonthsInYear());
+    QCOMPARE(cal.standaloneMonthName(QLocale::c(), moons + 1, year), QString());
+    QCOMPARE(cal.monthName(QLocale::c(), 0, year), QString());
 
     const int days = cal.daysInYear(year);
     QVERIFY(days > 0);
 
     int sum = 0;
     const int longest = cal.maximumDaysInMonth();
-    for (int i = moons; i > 0; i--) {
+    for (int i = moons; i > 0; --i) {
         const int last = cal.daysInMonth(i, year);
         sum += last;
         // Valid month has some days and no more than max:
@@ -77,6 +105,10 @@ void tst_QCalendar::checkYear(const QCalendar &cal, int year, bool normal)
         QVERIFY(!cal.isDateValid(year, i, last + 1));
         if (normal) // Unspecified year gets same daysInMonth():
             QCOMPARE(cal.daysInMonth(i), last);
+
+        checkCenturyResolution(cal, {year, i, (last + 1) / 2});
+        if (QTest::currentTestFailed())
+            return;
     }
     // Months add up to the whole year:
     QCOMPARE(sum, days);
@@ -118,6 +150,7 @@ void tst_QCalendar::basic()
         QCOMPARE(cal.monthsInYear(0), 0);
         QCOMPARE(cal.daysInYear(0), 0);
         QVERIFY(!cal.isDateValid(0, 1, 1));
+        QVERIFY(!QDate(0, 1, 1, cal).isValid());
     }
 
     if (cal.isProleptic()) {
@@ -177,6 +210,7 @@ void tst_QCalendar::specific_data()
 {
     QTest::addColumn<QCalendar::System>("system");
     // Date in that system:
+    QTest::addColumn<QString>("monthName");
     QTest::addColumn<int>("sysyear");
     QTest::addColumn<int>("sysmonth");
     QTest::addColumn<int>("sysday");
@@ -185,26 +219,27 @@ void tst_QCalendar::specific_data()
     QTest::addColumn<int>("gregmonth");
     QTest::addColumn<int>("gregday");
 
-#define ADDROW(cal, year, month, day, gy, gm, gd) \
-    QTest::newRow(#cal) << QCalendar::System::cal << year << month << day << gy << gm << gd
+#define ADDROW(cal, monthName, year, month, day, gy, gm, gd) \
+    QTest::newRow(#cal) << QCalendar::System::cal << QStringLiteral(monthName) \
+                        << year << month << day << gy << gm << gd
 
-    ADDROW(Gregorian, 1970, 1, 1, 1970, 1, 1);
+    ADDROW(Gregorian, "January", 1970, 1, 1, 1970, 1, 1);
 
     // One known specific date, for each calendar
 #ifndef QT_BOOTSTRAPPED
     // Julian 1582-10-4 was followed by Gregorian 1582-10-15
-    ADDROW(Julian, 1582, 10, 4, 1582, 10, 14);
+    ADDROW(Julian, "October", 1582, 10, 4, 1582, 10, 14);
     // Milankovic matches Gregorian for a few centuries
-    ADDROW(Milankovic, 1923, 3, 20, 1923, 3, 20);
+    ADDROW(Milankovic, "March", 1923, 3, 20, 1923, 3, 20);
 #endif
 
 #if QT_CONFIG(jalalicalendar)
     // Jalali year 1355 started on Gregorian 1976-3-21:
-    ADDROW(Jalali, 1355, 1, 1, 1976, 3, 21);
+    ADDROW(Jalali, "Farvardin", 1355, 1, 1, 1976, 3, 21);
 #endif // jalali
 #if QT_CONFIG(islamiccivilcalendar)
     // TODO: confirm this is correct
-    ADDROW(IslamicCivil, 1, 1, 1, 622, 7, 19);
+    ADDROW(IslamicCivil, "Muharram", 1, 1, 1, 622, 7, 19);
 #endif
 
 #undef ADDROW
@@ -213,6 +248,7 @@ void tst_QCalendar::specific_data()
 void tst_QCalendar::specific()
 {
     QFETCH(QCalendar::System, system);
+    QFETCH(const QString, monthName);
     QFETCH(int, sysyear);
     QFETCH(int, sysmonth);
     QFETCH(int, sysday);
@@ -221,6 +257,7 @@ void tst_QCalendar::specific()
     QFETCH(int, gregday);
 
     const QCalendar cal(system);
+    QCOMPARE(cal.monthName(QLocale::c(), sysmonth), monthName);
     const QDate date(sysyear, sysmonth, sysday, cal), gregory(gregyear, gregmonth, gregday);
     QCOMPARE(date, gregory);
     QCOMPARE(gregory.year(cal), sysyear);
@@ -252,6 +289,164 @@ void tst_QCalendar::daily()
         QCOMPARE(day, parts.day);
         const quint64 actual = QDate(year, month, day, calendar).toJulianDay();
         QCOMPARE(actual, expect);
+    }
+}
+
+void tst_QCalendar::testYearMonthDate()
+{
+    QCalendar::YearMonthDay defYMD;
+    QCOMPARE(defYMD.year, QCalendar::Unspecified);
+    QCOMPARE(defYMD.month, QCalendar::Unspecified);
+    QCOMPARE(defYMD.day, QCalendar::Unspecified);
+
+    QCalendar::YearMonthDay ymd2020(2020);
+    QCOMPARE(ymd2020.year, 2020);
+    QCOMPARE(ymd2020.month, 1);
+    QCOMPARE(ymd2020.day, 1);
+
+    QVERIFY(!QCalendar::YearMonthDay(
+            QCalendar::Unspecified, QCalendar::Unspecified, QCalendar::Unspecified).isValid());
+    QVERIFY(!QCalendar::YearMonthDay(
+            QCalendar::Unspecified, QCalendar::Unspecified, 1).isValid());
+    QVERIFY(!QCalendar::YearMonthDay(
+            QCalendar::Unspecified, 1, QCalendar::Unspecified).isValid());
+    QVERIFY(QCalendar::YearMonthDay(
+            QCalendar::Unspecified, 1, 1).isValid());
+    QVERIFY(!QCalendar::YearMonthDay(
+            2020, QCalendar::Unspecified, QCalendar::Unspecified).isValid());
+    QVERIFY(!QCalendar::YearMonthDay(
+            2020, QCalendar::Unspecified, 1).isValid());
+    QVERIFY(!QCalendar::YearMonthDay(
+            2020, 1, QCalendar::Unspecified).isValid());
+    QVERIFY(QCalendar::YearMonthDay(
+            2020, 1, 1).isValid());
+}
+
+void tst_QCalendar::properties_data()
+{
+    QTest::addColumn<QCalendar::System>("system");
+    QTest::addColumn<bool>("gregory");
+    QTest::addColumn<bool>("lunar");
+    QTest::addColumn<bool>("luniSolar");
+    QTest::addColumn<bool>("solar");
+    QTest::addColumn<bool>("proleptic");
+    QTest::addColumn<bool>("yearZero");
+    QTest::addColumn<int>("monthMax");
+    QTest::addColumn<int>("monthMin");
+    QTest::addColumn<int>("yearMax");
+    QTest::addColumn<QString>("name");
+
+    QTest::addRow("Gregorian")
+        << QCalendar::System::Gregorian << true << false << false << true << true << false
+        << 31 << 28 << 12 << QStringLiteral("Gregorian");
+#ifndef QT_BOOTSTRAPPED
+    QTest::addRow("Julian")
+        << QCalendar::System::Julian << false << false << false << true << true << false
+        << 31 << 28 << 12 << QStringLiteral("Julian");
+    QTest::addRow("Milankovic")
+        << QCalendar::System::Milankovic << false << false << false << true << true << false
+        << 31 << 28 << 12 << QStringLiteral("Milankovic");
+#endif
+
+#if QT_CONFIG(jalalicalendar)
+    QTest::addRow("Jalali")
+        << QCalendar::System::Jalali << false << false << false << true << true << false
+        << 31 << 29 << 12 << QStringLiteral("Jalali");
+#endif
+#if QT_CONFIG(islamiccivilcalendar)
+    QTest::addRow("IslamicCivil")
+        << QCalendar::System::IslamicCivil << false << true << false << false << true << false
+        << 30 << 29 << 12 << QStringLiteral("Islamic Civil");
+#endif
+}
+
+void tst_QCalendar::properties()
+{
+    QFETCH(const QCalendar::System, system);
+    QFETCH(const bool, gregory);
+    QFETCH(const bool, lunar);
+    QFETCH(const bool, luniSolar);
+    QFETCH(const bool, solar);
+    QFETCH(const bool, proleptic);
+    QFETCH(const bool, yearZero);
+    QFETCH(const int, monthMax);
+    QFETCH(const int, monthMin);
+    QFETCH(const int, yearMax);
+    QFETCH(const QString, name);
+
+    const QCalendar cal(system);
+    QCOMPARE(cal.isGregorian(), gregory);
+    QCOMPARE(cal.isLunar(), lunar);
+    QCOMPARE(cal.isLuniSolar(), luniSolar);
+    QCOMPARE(cal.isSolar(), solar);
+    QCOMPARE(cal.isProleptic(), proleptic);
+    QCOMPARE(cal.hasYearZero(), yearZero);
+    QCOMPARE(cal.maximumDaysInMonth(), monthMax);
+    QCOMPARE(cal.minimumDaysInMonth(), monthMin);
+    QCOMPARE(cal.maximumMonthsInYear(), yearMax);
+    QCOMPARE(cal.name(), name);
+}
+
+void tst_QCalendar::aliases()
+{
+    QCOMPARE(QCalendar(u"gregory").name(), u"Gregorian");
+#if QT_CONFIG(jalalicalendar)
+    QCOMPARE(QCalendar(u"Persian").name(), u"Jalali");
+#endif
+#if QT_CONFIG(islamiccivilcalendar)
+    // Exercise all constructors from name, while we're at it:
+    QCOMPARE(QCalendar(u"islamic-civil").name(), u"Islamic Civil");
+    QCOMPARE(QCalendar(QLatin1String("islamic")).name(), u"Islamic Civil");
+    QCOMPARE(QCalendar(QStringLiteral("Islamic")).name(), u"Islamic Civil");
+#endif
+
+    // Invalid is handled gracefully:
+    QCOMPARE(QCalendar(u"").name(), QString());
+    QCOMPARE(QCalendar(QCalendar::System::User).name(), QString());
+}
+
+void tst_QCalendar::gregory()
+{
+    // Test QGregorianCalendar's internal-use methods.
+
+    // Julian day number 0 is in 4713; and reach past the end of four-digit years:
+    for (int year = -4720; year < 12345; ++year) {
+        // Test yearStartWeekDay() and yearSharingWeekDays() are consistent with
+        // dateToJulianDay() and weekDayOfJulian():
+        if (!year) // No year zero.
+            continue;
+        const auto first = QGregorianCalendar::julianFromParts(year, 1, 1);
+        QVERIFY2(first, "Only year zero should lack a first day");
+        QCOMPARE(QGregorianCalendar::yearStartWeekDay(year),
+                 QGregorianCalendar::weekDayOfJulian(*first));
+        const auto last = QGregorianCalendar::julianFromParts(year, 12, 31);
+        QVERIFY2(last, "Only year zero should lack a last day");
+
+        const int lastTwo = (year + (year < 0 ? 1 : 0)) % 100 + (year < -1 ? 100 : 0);
+        const QDate probe(year, lastTwo && lastTwo <= 12 ? lastTwo : 8,
+                          lastTwo <= 31 && lastTwo > 12 ? lastTwo : 17);
+        const int match = QGregorianCalendar::yearSharingWeekDays(probe);
+        // A post-epoch year, no later than 2400 (implies four-digit):
+        QVERIFY(match >= 1970);
+        QVERIFY(match <= 2400);
+        // Either that's the year we started with or:
+        if (match != year) {
+            // Its last two digits can't be mistaken for month or day:
+            QVERIFY(match % 100 != probe.month());
+            QVERIFY(match % 100 != probe.day());
+            // If that wasn't in danger of happening, with year positive, they match lastTwo:
+            if (year > 0 && lastTwo > 31)
+                QCOMPARE(match % 100, lastTwo);
+            // Its first and last days of the year match those of year:
+            auto day = QGregorianCalendar::julianFromParts(match, 1, 1);
+            QVERIFY(day);
+            QCOMPARE(QGregorianCalendar::weekDayOfJulian(*day),
+                     QGregorianCalendar::weekDayOfJulian(*first));
+            day = QGregorianCalendar::julianFromParts(match, 12, 31);
+            QVERIFY(day);
+            QCOMPARE(QGregorianCalendar::weekDayOfJulian(*day),
+                     QGregorianCalendar::weekDayOfJulian(*last));
+        }
     }
 }
 

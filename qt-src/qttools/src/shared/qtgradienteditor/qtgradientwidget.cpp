@@ -1,43 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qtgradientwidget.h"
+#include "qtgradientwidget_p.h"
 #include <QtCore/QMap>
 #include <QtGui/QImage>
 #include <QtGui/QPainter>
@@ -58,17 +22,17 @@ class QtGradientWidgetPrivate
     QtGradientWidget *q_ptr;
     Q_DECLARE_PUBLIC(QtGradientWidget)
 public:
-    QPointF fromViewport(const QPointF &point) const;
-    QPointF toViewport(const QPointF &point) const;
+    QPointF fromViewport(QPointF point) const;
+    QPointF toViewport(QPointF point) const;
 //    void setupDrag(QtGradientStop *stop, int x);
 
-    QPointF checkRange(const QPointF &point) const;
-    QRectF pointRect(const QPointF &point, double size) const;
+    QPointF checkRange(QPointF point) const;
+    QRectF pointRect(QPointF point, double size) const;
 
     double correctAngle(double angle) const;
     void setAngleConical(double angle);
 
-    void paintPoint(QPainter *painter, const QPointF &point, double size) const;
+    void paintPoint(QPainter *painter, QPointF point, double size) const;
 
     double m_handleSize;
     bool m_backgroundCheckered;
@@ -123,12 +87,12 @@ void QtGradientWidgetPrivate::setAngleConical(double angle)
     emit q_ptr->angleConicalChanged(m_angleConical);
 }
 
-QRectF QtGradientWidgetPrivate::pointRect(const QPointF &point, double size) const
+QRectF QtGradientWidgetPrivate::pointRect(QPointF point, double size) const
 {
     return QRectF(point.x() - size / 2, point.y() - size / 2, size, size);
 }
 
-QPointF QtGradientWidgetPrivate::checkRange(const QPointF &point) const
+QPointF QtGradientWidgetPrivate::checkRange(QPointF point) const
 {
     QPointF p = point;
     if (p.x() > 1)
@@ -142,19 +106,20 @@ QPointF QtGradientWidgetPrivate::checkRange(const QPointF &point) const
     return p;
 }
 
-QPointF QtGradientWidgetPrivate::fromViewport(const QPointF &point) const
+QPointF QtGradientWidgetPrivate::fromViewport(QPointF point) const
 {
     QSize size = q_ptr->size();
     return QPointF(point.x() / size.width(), point.y() / size.height());
 }
 
-QPointF QtGradientWidgetPrivate::toViewport(const QPointF &point) const
+QPointF QtGradientWidgetPrivate::toViewport(QPointF point) const
 {
     QSize size = q_ptr->size();
     return QPointF(point.x() * size.width(), point.y() * size.height());
 }
 
-void QtGradientWidgetPrivate::paintPoint(QPainter *painter, const QPointF &point, double size) const
+void QtGradientWidgetPrivate::paintPoint(QPainter *painter, QPointF point,
+                                         double size) const
 {
     QPointF pf = toViewport(point);
     QRectF rf = pointRect(pf, size);
@@ -396,7 +361,7 @@ void QtGradientWidget::mouseMoveEvent(QMouseEvent *e)
     if (d_ptr->m_dragHandle == QtGradientWidgetPrivate::NoHandle)
         return;
 
-    const QPointF newPos = e->localPos() - d_ptr->m_dragOffset;
+    const QPointF newPos = e->position() - d_ptr->m_dragOffset;
     QPointF newPoint = d_ptr->fromViewport(newPos);
     if (newPoint.x() < 0)
         newPoint.setX(0);
@@ -496,7 +461,7 @@ void QtGradientWidget::paintEvent(QPaintEvent *e)
         p.setBrushOrigin(0, 0);
     }
 
-    QGradient *gradient = 0;
+    QGradient *gradient = nullptr;
     switch (d_ptr->m_gradientType) {
         case QGradient::LinearGradient:
             gradient = new QLinearGradient(d_ptr->m_startLinear, d_ptr->m_endLinear);
@@ -611,8 +576,8 @@ void QtGradientWidget::paintEvent(QPaintEvent *e)
         int pointCount = 2;
         for (int i = 0; i < pointCount; i++) {
             const qreal angle = qDegreesToRadians(i * 180.0 / pointCount + d_ptr->m_angleConical);
-            const QPointF ray(cos(angle) * size().width() / 2,
-                             -sin(angle) * size().height() / 2);
+            const QPointF ray(qCos(angle) * size().width() / 2,
+                             -qSin(angle) * size().height() / 2);
             const double mod = hypot(ray.x(), ray.y());
             p.drawLine(QPointF(central.x() + ray.x() * (radius - corr) / mod,
                         central.y() + ray.y() * (radius - corr) / mod),
@@ -627,8 +592,8 @@ void QtGradientWidget::paintEvent(QPaintEvent *e)
             p.save();
             p.setPen(dragPen);
             const qreal angle = qDegreesToRadians(d_ptr->m_angleConical - d_ptr->m_angleOffset);
-            const QPointF ray(cos(angle) * size().width() / 2,
-                             -sin(angle) * size().height() / 2);
+            const QPointF ray(qCos(angle) * size().width() / 2,
+                             -qSin(angle) * size().height() / 2);
             const double mod = hypot(ray.x(), ray.y());
             p.drawLine(QPointF(central.x() + ray.x() * (radius - corr) / mod,
                         central.y() + ray.y() * (radius - corr) / mod),
@@ -691,7 +656,7 @@ QGradient::Spread QtGradientWidget::gradientSpread() const
     return d_ptr->m_gradientSpread;
 }
 
-void QtGradientWidget::setStartLinear(const QPointF &point)
+void QtGradientWidget::setStartLinear(QPointF point)
 {
     if (d_ptr->m_startLinear == point)
         return;
@@ -705,7 +670,7 @@ QPointF QtGradientWidget::startLinear() const
     return d_ptr->m_startLinear;
 }
 
-void QtGradientWidget::setEndLinear(const QPointF &point)
+void QtGradientWidget::setEndLinear(QPointF point)
 {
     if (d_ptr->m_endLinear == point)
         return;
@@ -719,7 +684,7 @@ QPointF QtGradientWidget::endLinear() const
     return d_ptr->m_endLinear;
 }
 
-void QtGradientWidget::setCentralRadial(const QPointF &point)
+void QtGradientWidget::setCentralRadial(QPointF point)
 {
     if (d_ptr->m_centralRadial == point)
         return;
@@ -733,7 +698,7 @@ QPointF QtGradientWidget::centralRadial() const
     return d_ptr->m_centralRadial;
 }
 
-void QtGradientWidget::setFocalRadial(const QPointF &point)
+void QtGradientWidget::setFocalRadial(QPointF point)
 {
     if (d_ptr->m_focalRadial == point)
         return;
@@ -761,7 +726,7 @@ qreal QtGradientWidget::radiusRadial() const
     return d_ptr->m_radiusRadial;
 }
 
-void QtGradientWidget::setCentralConical(const QPointF &point)
+void QtGradientWidget::setCentralConical(QPointF point)
 {
     if (d_ptr->m_centralConical == point)
         return;

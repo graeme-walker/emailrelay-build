@@ -1,33 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "bookmarkmodel.h"
 #include "bookmarkitem.h"
 
+#include <QtCore/QIODevice>
 #include <QtCore/QMimeData>
 #include <QtCore/QStack>
 
@@ -35,8 +11,10 @@
 #include <QtWidgets/QStyle>
 #include <QtWidgets/QTreeView>
 
+using namespace Qt::StringLiterals;
+
 const quint32 VERSION = 0xe53798;
-const QLatin1String MIMETYPE("application/bookmarks.assistant");
+const QLatin1StringView MIMETYPE("application/bookmarks.assistant");
 
 BookmarkModel::BookmarkModel()
     : QAbstractItemModel()
@@ -72,7 +50,7 @@ BookmarkModel::setBookmarks(const QByteArray &bookmarks)
 
     delete rootItem;
     folderIcon = QApplication::style()->standardIcon(QStyle::SP_DirClosedIcon);
-    bookmarkIcon = QIcon(QLatin1String(":/qt-project.org/assistant/images/bookmark.png"));
+    bookmarkIcon = QIcon(":/qt-project.org/assistant/images/bookmark.png"_L1);
 
     rootItem = new BookmarkItem(DataVector() << tr("Name") << tr("Address")
         << true);
@@ -84,12 +62,12 @@ BookmarkModel::setBookmarks(const QByteArray &bookmarks)
     stream >> version;
     if (version < VERSION) {
         stream.device()->seek(0);
-        BookmarkItem* toolbar = new BookmarkItem(DataVector() << tr("Bookmarks Toolbar")
-            << QLatin1String("Folder") << true);
+        BookmarkItem *toolbar =
+                new BookmarkItem(DataVector() << tr("Bookmarks Toolbar") << "Folder"_L1 << true);
         rootItem->addChild(toolbar);
 
-        BookmarkItem* menu = new BookmarkItem(DataVector() << tr("Bookmarks Menu")
-            << QLatin1String("Folder") << true);
+        BookmarkItem *menu =
+                new BookmarkItem(DataVector() << tr("Bookmarks Menu") << "Folder"_L1 << true);
         rootItem->addChild(menu);
         parents.push(menu);
     } else {
@@ -101,11 +79,11 @@ BookmarkModel::setBookmarks(const QByteArray &bookmarks)
     QString name, url;
     while (!stream.atEnd()) {
         stream >> depth >> name >> url >> expanded;
-        while ((parents.count() - 1) != depth)
+        while ((parents.size() - 1) != depth)
             parents.pop();
 
         BookmarkItem *item = new BookmarkItem(DataVector() << name << url << expanded);
-        if (url == QLatin1String("Folder")) {
+        if (url == "Folder"_L1) {
             parents.top()->addChild(item);
             parents.push(item);
         } else {
@@ -127,7 +105,7 @@ BookmarkModel::setItemsEditable(bool editable)
 void
 BookmarkModel::expandFoldersIfNeeeded(QTreeView *treeView)
 {
-    for (const QModelIndex &index : qAsConst(cache))
+    for (QModelIndex index : std::as_const(cache))
         treeView->setExpanded(index, index.data(UserRoleExpanded).toBool());
 }
 
@@ -154,7 +132,7 @@ BookmarkModel::removeItem(const QModelIndex &index)
         indexes = collectItems(index);
     indexes.append(index);
 
-    for (const QModelIndex &itemToRemove : qAsConst(indexes)) {
+    for (const QModelIndex &itemToRemove : std::as_const(indexes)) {
         if (!removeRow(itemToRemove.row(), itemToRemove.parent()))
             return false;
         cache.remove(itemFromIndex(itemToRemove));

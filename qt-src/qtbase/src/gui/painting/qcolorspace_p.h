@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2024 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCOLORSPACE_P_H
 #define QCOLORSPACE_P_H
@@ -52,6 +16,7 @@
 //
 
 #include "qcolorspace.h"
+#include "qcolorclut_p.h"
 #include "qcolormatrix_p.h"
 #include "qcolortrc_p.h"
 #include "qcolortrclut_p.h"
@@ -59,6 +24,8 @@
 #include <QtCore/qmutex.h>
 #include <QtCore/qpoint.h>
 #include <QtCore/qshareddata.h>
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -91,51 +58,76 @@ class QColorSpacePrivate : public QSharedData
 public:
     QColorSpacePrivate();
     QColorSpacePrivate(QColorSpace::NamedColorSpace namedColorSpace);
-    QColorSpacePrivate(QColorSpace::Primaries primaries, QColorSpace::TransferFunction fun, float gamma);
-    QColorSpacePrivate(const QColorSpacePrimaries &primaries, QColorSpace::TransferFunction fun, float gamma);
+    QColorSpacePrivate(QColorSpace::Primaries primaries, QColorSpace::TransferFunction transferFunction, float gamma);
+    QColorSpacePrivate(QColorSpace::Primaries primaries, const QList<uint16_t> &transferFunctionTable);
+    QColorSpacePrivate(const QColorSpacePrimaries &primaries, QColorSpace::TransferFunction transferFunction, float gamma);
+    QColorSpacePrivate(const QColorSpacePrimaries &primaries, const QList<uint16_t> &transferFunctionTable);
+    QColorSpacePrivate(const QColorSpacePrimaries &primaries,
+                       const QList<uint16_t> &redTransferFunctionTable,
+                       const QList<uint16_t> &greenTransferFunctionTable,
+                       const QList<uint16_t> &blueRransferFunctionTable);
+    QColorSpacePrivate(QPointF whitePoint, QColorSpace::TransferFunction transferFunction, float gamma);
+    QColorSpacePrivate(QPointF whitePoint, const QList<uint16_t> &transferFunctionTable);
     QColorSpacePrivate(const QColorSpacePrivate &other) = default;
-
-    // named different from get to avoid accidental detachs
-    static QColorSpacePrivate *getWritable(QColorSpace &colorSpace)
-    {
-        if (!colorSpace.d_ptr) {
-            colorSpace.d_ptr = new QColorSpacePrivate;
-            colorSpace.d_ptr->ref.ref();
-        } else if (colorSpace.d_ptr->ref.loadRelaxed() != 1) {
-            colorSpace.d_ptr->ref.deref();
-            colorSpace.d_ptr = new QColorSpacePrivate(*colorSpace.d_ptr);
-            colorSpace.d_ptr->ref.ref();
-        }
-        Q_ASSERT(colorSpace.d_ptr->ref.loadRelaxed() == 1);
-        return colorSpace.d_ptr;
-    }
 
     static const QColorSpacePrivate *get(const QColorSpace &colorSpace)
     {
-        return colorSpace.d_ptr;
+        return colorSpace.d_ptr.get();
     }
+
+    static QColorSpacePrivate *get(QColorSpace &colorSpace)
+    {
+        return colorSpace.d_ptr.get();
+    }
+
+    bool equals(const QColorSpacePrivate *other) const;
+    bool isValid() const noexcept;
 
     void initialize();
     void setToXyzMatrix();
     void setTransferFunction();
     void identifyColorSpace();
+    void setTransferFunctionTable(const QList<uint16_t> &transferFunctionTable);
+    void setTransferFunctionTables(const QList<uint16_t> &redTransferFunctionTable,
+                                   const QList<uint16_t> &greenTransferFunctionTable,
+                                   const QList<uint16_t> &blueTransferFunctionTable);
     QColorTransform transformationToColorSpace(const QColorSpacePrivate *out) const;
+    QColorTransform transformationToXYZ() const;
+
+    bool isThreeComponentMatrix() const;
+    void clearElementListProcessingForEdit();
 
     static constexpr QColorSpace::NamedColorSpace Unknown = QColorSpace::NamedColorSpace(0);
     QColorSpace::NamedColorSpace namedColorSpace = Unknown;
 
     QColorSpace::Primaries primaries = QColorSpace::Primaries::Custom;
     QColorSpace::TransferFunction transferFunction = QColorSpace::TransferFunction::Custom;
+    QColorSpace::TransformModel transformModel = QColorSpace::TransformModel::ThreeComponentMatrix;
+    QColorSpace::ColorModel colorModel = QColorSpace::ColorModel::Undefined;
     float gamma = 0.0f;
     QColorVector whitePoint;
 
+    // Three component matrix data:
     QColorTrc trc[3];
     QColorMatrix toXyz;
+    QColorMatrix chad;
 
+    // Element list processing data:
+    struct TransferElement {
+        QColorTrc trc[4];
+    };
+    using Element = std::variant<TransferElement, QColorMatrix, QColorVector, QColorCLUT>;
+    bool isPcsLab = false;
+    // A = device, B = PCS
+    QList<Element> mAB, mBA;
+
+    // Metadata
     QString description;
+    QString userDescription;
     QByteArray iccProfile;
 
-    static QBasicMutex s_lutWriteLock;
+    // Cached tables for three component matrix transform:
+    Q_CONSTINIT static QBasicMutex s_lutWriteLock;
     struct LUT {
         LUT() = default;
         ~LUT() = default;
@@ -148,9 +140,9 @@ public:
                 generated.storeRelaxed(1);
             }
         }
-        QSharedPointer<QColorTrcLut> &operator[](int i) { return table[i]; }
-        const QSharedPointer<QColorTrcLut> &operator[](int i) const  { return table[i]; }
-        QSharedPointer<QColorTrcLut> table[3];
+        std::shared_ptr<QColorTrcLut> &operator[](int i) { return table[i]; }
+        const std::shared_ptr<QColorTrcLut> &operator[](int i) const  { return table[i]; }
+        std::shared_ptr<QColorTrcLut> table[3];
         QAtomicInt generated;
     } mutable lut;
 };

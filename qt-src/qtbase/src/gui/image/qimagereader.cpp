@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 //#define QIMAGEREADER_DEBUG
 
@@ -47,7 +11,6 @@
     \inmodule QtGui
     \reentrant
     \ingroup painting
-    \ingroup io
 
     The most common way to read images is through QImage and QPixmap's
     constructors, or by calling QImage::load() and
@@ -102,7 +65,7 @@
     \c QT_HIGHDPI_DISABLE_2X_IMAGE_LOADING.
 
     \sa QImageWriter, QImageIOHandler, QImageIOPlugin, QMimeDatabase, QColorSpace
-    \sa QImage::devicePixelRatio(), QPixmap::devicePixelRatio(), QIcon, QPainter::drawPixmap(), QPainter::drawImage(), Qt::AA_UseHighDpiPixmaps
+    \sa QImage::devicePixelRatio(), QPixmap::devicePixelRatio(), QIcon, QPainter::drawPixmap(), QPainter::drawImage()
 */
 
 /*!
@@ -172,6 +135,10 @@
 QT_BEGIN_NAMESPACE
 
 using namespace QImageReaderWriterHelpers;
+using namespace Qt::StringLiterals;
+
+Q_TRACE_POINT(qtgui, QImageReader_read_before_reading, QImageReader *reader, const QString &filename);
+Q_TRACE_POINT(qtgui, QImageReader_read_after_reading, QImageReader *reader, bool result);
 
 static QImageIOHandler *createReadHandlerHelper(QIODevice *device,
                                                 const QByteArray &format,
@@ -186,7 +153,7 @@ static QImageIOHandler *createReadHandlerHelper(QIODevice *device,
     QByteArray suffix;
 
 #ifndef QT_NO_IMAGEFORMATPLUGIN
-    static QBasicMutex mutex;
+    Q_CONSTINIT static QBasicMutex mutex;
     const auto locker = qt_scoped_lock(mutex);
 
     typedef QMultiMap<int, QString> PluginKeyMap;
@@ -271,7 +238,7 @@ static QImageIOHandler *createReadHandlerHelper(QIODevice *device,
                 }
             }
         } else {
-            const int testIndex = keyMap.key(QLatin1String(testFormat), -1);
+            const int testIndex = keyMap.key(QLatin1StringView(testFormat), -1);
             if (testIndex != -1) {
                 QImageIOPlugin *plugin = qobject_cast<QImageIOPlugin *>(l->instance(testIndex));
                 if (plugin && plugin->capabilities(device, testFormat) & QImageIOPlugin::CanRead) {
@@ -492,7 +459,11 @@ public:
     QString errorString;
 
     QImageReader *q;
+
+    static int maxAlloc;
 };
+
+int QImageReaderPrivate::maxAlloc = 256; // 256 MB is enough for an 8K 64bpp image
 
 /*!
     \internal
@@ -515,9 +486,9 @@ QImageReaderPrivate::QImageReaderPrivate(QImageReader *qq)
 */
 QImageReaderPrivate::~QImageReaderPrivate()
 {
+    delete handler;
     if (deleteDevice)
         delete device;
-    delete handler;
 }
 
 /*!
@@ -525,6 +496,9 @@ QImageReaderPrivate::~QImageReaderPrivate()
 */
 bool QImageReaderPrivate::initHandler()
 {
+    if (handler)
+        return true;
+
     // check some preconditions
     if (!device || (!deleteDevice && !device->isOpen() && !device->open(QIODevice::ReadOnly))) {
         imageReaderError = QImageReader::DeviceError;
@@ -534,7 +508,7 @@ bool QImageReaderPrivate::initHandler()
 
     // probe the file extension
     if (deleteDevice && !device->isOpen() && !device->open(QIODevice::ReadOnly) && autoDetectImageFormat) {
-        Q_ASSERT(qobject_cast<QFile*>(device) != 0); // future-proofing; for now this should always be the case, so...
+        Q_ASSERT(qobject_cast<QFile*>(device) != nullptr); // future-proofing; for now this should always be the case, so...
         QFile *file = static_cast<QFile *>(device);
 
         if (file->error() == QFileDevice::ResourceError) {
@@ -555,14 +529,15 @@ bool QImageReaderPrivate::initHandler()
         int currentExtension = 0;
 
         QString fileName = file->fileName();
+        bool fileIsOpen;
 
         do {
-            file->setFileName(fileName + QLatin1Char('.')
-                    + QLatin1String(extensions.at(currentExtension++).constData()));
-            file->open(QIODevice::ReadOnly);
-        } while (!file->isOpen() && currentExtension < extensions.size());
+            file->setFileName(fileName + u'.'
+                    + QLatin1StringView(extensions.at(currentExtension++).constData()));
+            fileIsOpen = file->open(QIODevice::ReadOnly);
+        } while (!fileIsOpen && currentExtension < extensions.size());
 
-        if (!device->isOpen()) {
+        if (!fileIsOpen) {
             imageReaderError = QImageReader::FileNotFoundError;
             errorString = QImageReader::tr("File not found");
             file->setFileName(fileName); // restore the old file name
@@ -571,7 +546,7 @@ bool QImageReaderPrivate::initHandler()
     }
 
     // assign a handler
-    if (!handler && (handler = createReadHandlerHelper(device, format, autoDetectImageFormat, ignoresFormatAndExtension)) == nullptr) {
+    if ((handler = createReadHandlerHelper(device, format, autoDetectImageFormat, ignoresFormatAndExtension)) == nullptr) {
         imageReaderError = QImageReader::UnsupportedFormatError;
         errorString = QImageReader::tr("Unsupported image format");
         return false;
@@ -584,7 +559,7 @@ bool QImageReaderPrivate::initHandler()
 */
 void QImageReaderPrivate::getText()
 {
-    if (text.isEmpty() && (handler || initHandler()) && handler->supportsOption(QImageIOHandler::Description))
+    if (text.isEmpty() && q->supportsOption(QImageIOHandler::Description))
         text = qt_getImageTextFromDescription(handler->option(QImageIOHandler::Description).toString());
 }
 
@@ -765,7 +740,7 @@ bool QImageReader::decideFormatFromContent() const
     otherwise left unchanged.
 
     If the device is not already open, QImageReader will attempt to
-    open the device in \l QIODevice::ReadOnly mode by calling
+    open the device in \l {QIODeviceBase::}{ReadOnly} mode by calling
     open(). Note that this does not work for certain devices, such as
     QProcess, QTcpSocket and QUdpSocket, where more logic is required
     to open the device.
@@ -774,12 +749,12 @@ bool QImageReader::decideFormatFromContent() const
 */
 void QImageReader::setDevice(QIODevice *device)
 {
+    delete d->handler;
+    d->handler = nullptr;
     if (d->device && d->deleteDevice)
         delete d->device;
     d->device = device;
     d->deleteDevice = false;
-    delete d->handler;
-    d->handler = nullptr;
     d->text.clear();
 }
 
@@ -795,7 +770,7 @@ QIODevice *QImageReader::device() const
 /*!
     Sets the file name of QImageReader to \a fileName. Internally,
     QImageReader will create a QFile object and open it in \l
-    QIODevice::ReadOnly mode, and use this when reading images.
+    {QIODeviceBase::}{ReadOnly} mode, and use this when reading images.
 
     If \a fileName does not include a file extension (e.g., .png or .bmp),
     QImageReader will cycle through all supported extensions until it finds
@@ -825,8 +800,6 @@ QString QImageReader::fileName() const
 }
 
 /*!
-    \since 4.2
-
     Sets the quality setting of the image format to \a quality.
 
     Some image formats, in particular lossy ones, entail a tradeoff between a)
@@ -850,8 +823,6 @@ void QImageReader::setQuality(int quality)
 }
 
 /*!
-    \since 4.2
-
     Returns the quality setting of the image format.
 
     \sa setQuality()
@@ -874,18 +845,13 @@ int QImageReader::quality() const
 */
 QSize QImageReader::size() const
 {
-    if (!d->initHandler())
-        return QSize();
-
-    if (d->handler->supportsOption(QImageIOHandler::Size))
+    if (supportsOption(QImageIOHandler::Size))
         return d->handler->option(QImageIOHandler::Size).toSize();
 
     return QSize();
 }
 
 /*!
-    \since 4.5
-
     Returns the format of the image, without actually reading the image
     contents. The format describes the image format \l QImageReader::read()
     returns, not the format of the actual image.
@@ -897,18 +863,13 @@ QSize QImageReader::size() const
 */
 QImage::Format QImageReader::imageFormat() const
 {
-    if (!d->initHandler())
-        return QImage::Format_Invalid;
-
-    if (d->handler->supportsOption(QImageIOHandler::ImageFormat))
+    if (supportsOption(QImageIOHandler::ImageFormat))
         return (QImage::Format)d->handler->option(QImageIOHandler::ImageFormat).toInt();
 
     return QImage::Format_Invalid;
 }
 
 /*!
-    \since 4.1
-
     Returns the text keys for this image. You can use
     these keys with text() to list the image text for
     a certain key.
@@ -925,8 +886,6 @@ QStringList QImageReader::textKeys() const
 }
 
 /*!
-    \since 4.1
-
     Returns the image text associated with \a key.
 
     Support for this option is implemented through
@@ -972,6 +931,10 @@ QRect QImageReader::clipRect() const
     support scaling), QImageReader will use QImage::scale() with
     Qt::SmoothScaling.
 
+    If only one dimension is set in \a size, the other one will be
+    computed from the image's \l {size()} {natural size} so as to
+    maintain the aspect ratio.
+
     \sa scaledSize(), setClipRect(), setScaledClipRect()
 */
 void QImageReader::setScaledSize(const QSize &size)
@@ -1012,8 +975,6 @@ QRect QImageReader::scaledClipRect() const
 }
 
 /*!
-    \since 4.1
-
     Sets the background color to \a color.
     Image formats that support this operation are expected to
     initialize the background to \a color before reading an image.
@@ -1022,15 +983,11 @@ QRect QImageReader::scaledClipRect() const
 */
 void QImageReader::setBackgroundColor(const QColor &color)
 {
-    if (!d->initHandler())
-        return;
-    if (d->handler->supportsOption(QImageIOHandler::BackgroundColor))
+    if (supportsOption(QImageIOHandler::BackgroundColor))
         d->handler->setOption(QImageIOHandler::BackgroundColor, color);
 }
 
 /*!
-    \since 4.1
-
     Returns the background color that's used when reading an image.
     If the image format does not support setting the background color
     an invalid color is returned.
@@ -1039,16 +996,12 @@ void QImageReader::setBackgroundColor(const QColor &color)
 */
 QColor QImageReader::backgroundColor() const
 {
-    if (!d->initHandler())
-        return QColor();
-    if (d->handler->supportsOption(QImageIOHandler::BackgroundColor))
+    if (supportsOption(QImageIOHandler::BackgroundColor))
         return qvariant_cast<QColor>(d->handler->option(QImageIOHandler::BackgroundColor));
     return QColor();
 }
 
 /*!
-    \since 4.1
-
     Returns \c true if the image format supports animation;
     otherwise, false is returned.
 
@@ -1056,9 +1009,7 @@ QColor QImageReader::backgroundColor() const
 */
 bool QImageReader::supportsAnimation() const
 {
-    if (!d->initHandler())
-        return false;
-    if (d->handler->supportsOption(QImageIOHandler::Animation))
+    if (supportsOption(QImageIOHandler::Animation))
         return d->handler->option(QImageIOHandler::Animation).toBool();
     return false;
 }
@@ -1070,10 +1021,7 @@ bool QImageReader::supportsAnimation() const
 */
 QByteArray QImageReader::subType() const
 {
-    if (!d->initHandler())
-        return QByteArray();
-
-    if (d->handler->supportsOption(QImageIOHandler::SubType))
+    if (supportsOption(QImageIOHandler::SubType))
         return d->handler->option(QImageIOHandler::SubType).toByteArray();
     return QByteArray();
 }
@@ -1085,10 +1033,7 @@ QByteArray QImageReader::subType() const
 */
 QList<QByteArray> QImageReader::supportedSubTypes() const
 {
-    if (!d->initHandler())
-        return QList<QByteArray>();
-
-    if (d->handler->supportsOption(QImageIOHandler::SupportedSubTypes))
+    if (supportsOption(QImageIOHandler::SupportedSubTypes))
         return qvariant_cast<QList<QByteArray> >(d->handler->option(QImageIOHandler::SupportedSubTypes));
     return QList<QByteArray>();
 }
@@ -1104,7 +1049,7 @@ QList<QByteArray> QImageReader::supportedSubTypes() const
 QImageIOHandler::Transformations QImageReader::transformation() const
 {
     int option = QImageIOHandler::TransformationNone;
-    if (d->initHandler() && d->handler->supportsOption(QImageIOHandler::ImageTransformation))
+    if (supportsOption(QImageIOHandler::ImageTransformation))
         option = d->handler->option(QImageIOHandler::ImageTransformation).toInt();
     return QImageIOHandler::Transformations(option);
 }
@@ -1138,53 +1083,12 @@ bool QImageReader::autoTransform() const
     case QImageReaderPrivate::DoNotApplyTransform:
         return false;
     case QImageReaderPrivate::UsePluginDefault:
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-        if (d->initHandler())
-            return d->handler->supportsOption(QImageIOHandler::TransformedByDefault);
-#endif
         Q_FALLTHROUGH();
     default:
         break;
     }
     return false;
 }
-
-#if QT_DEPRECATED_SINCE(5, 15)
-/*!
-    \since 5.6
-    \obsolete Use QColorSpace conversion on the QImage instead.
-
-    This is an image format specific function that forces images with
-    gamma information to be gamma corrected to \a gamma. For image formats
-    that do not support gamma correction, this value is ignored.
-
-    To gamma correct to a standard PC color-space, set gamma to \c 1/2.2.
-
-    \sa gamma()
-*/
-void QImageReader::setGamma(float gamma)
-{
-    if (d->initHandler() && d->handler->supportsOption(QImageIOHandler::Gamma))
-        d->handler->setOption(QImageIOHandler::Gamma, gamma);
-}
-
-/*!
-    \since 5.6
-    \obsolete Use QImage::colorSpace() and QColorSpace::gamma() instead.
-
-    Returns the gamma level of the decoded image. If setGamma() has been
-    called and gamma correction is supported it will return the gamma set.
-    If gamma level is not supported by the image format, \c 0.0 is returned.
-
-    \sa setGamma()
-*/
-float QImageReader::gamma() const
-{
-    if (d->initHandler() && d->handler->supportsOption(QImageIOHandler::Gamma))
-        return d->handler->option(QImageIOHandler::Gamma).toFloat();
-    return 0.0;
-}
-#endif
 
 /*!
     Returns \c true if an image can be read for the device (i.e., the
@@ -1260,31 +1164,48 @@ bool QImageReader::read(QImage *image)
         return false;
     }
 
-    if (!d->handler && !d->initHandler())
+    if (!d->initHandler())
         return false;
 
-    // set the handler specific options.
-    if (d->handler->supportsOption(QImageIOHandler::ScaledSize) && d->scaledSize.isValid()) {
-        if ((d->handler->supportsOption(QImageIOHandler::ClipRect) && !d->clipRect.isNull())
-            || d->clipRect.isNull()) {
-            // Only enable the ScaledSize option if there is no clip rect, or
-            // if the handler also supports ClipRect.
-            d->handler->setOption(QImageIOHandler::ScaledSize, d->scaledSize);
+    QSize scaledSize = d->scaledSize;
+    if ((scaledSize.width() <= 0 && scaledSize.height() > 0) ||
+        (scaledSize.height() <= 0 && scaledSize.width() > 0)) {
+        // if only one dimension is given, let's try to calculate the second one
+        // based on the original image size and maintaining the aspect ratio
+        if (const QSize originalSize = size(); !originalSize.isEmpty()) {
+            if (scaledSize.width() <= 0) {
+                const auto ratio = qreal(scaledSize.height()) / originalSize.height();
+                scaledSize.setWidth(qRound(originalSize.width() * ratio));
+            } else {
+                const auto ratio = qreal(scaledSize.width()) / originalSize.width();
+                scaledSize.setHeight(qRound(originalSize.height() * ratio));
+            }
         }
     }
-    if (d->handler->supportsOption(QImageIOHandler::ClipRect) && !d->clipRect.isNull())
+
+    const bool supportScaledSize = supportsOption(QImageIOHandler::ScaledSize) && scaledSize.isValid();
+    const bool supportClipRect = supportsOption(QImageIOHandler::ClipRect) && !d->clipRect.isNull();
+    const bool supportScaledClipRect = supportsOption(QImageIOHandler::ScaledClipRect) && !d->scaledClipRect.isNull();
+
+    // set the handler specific options.
+    if (supportScaledSize) {
+        if (supportClipRect || d->clipRect.isNull()) {
+            // Only enable the ScaledSize option if there is no clip rect, or
+            // if the handler also supports ClipRect.
+            d->handler->setOption(QImageIOHandler::ScaledSize, scaledSize);
+        }
+    }
+    if (supportClipRect)
         d->handler->setOption(QImageIOHandler::ClipRect, d->clipRect);
-    if (d->handler->supportsOption(QImageIOHandler::ScaledClipRect) && !d->scaledClipRect.isNull())
+    if (supportScaledClipRect)
         d->handler->setOption(QImageIOHandler::ScaledClipRect, d->scaledClipRect);
-    if (d->handler->supportsOption(QImageIOHandler::Quality))
+    if (supportsOption(QImageIOHandler::Quality))
         d->handler->setOption(QImageIOHandler::Quality, d->quality);
 
     // read the image
+    QString filename = fileName();
     if (Q_TRACE_ENABLED(QImageReader_read_before_reading)) {
-        QString fileName = QStringLiteral("unknown");
-        if (QFile *file = qobject_cast<QFile *>(d->device))
-            fileName = file->fileName();
-        Q_TRACE(QImageReader_read_before_reading, this, fileName);
+        Q_TRACE(QImageReader_read_before_reading, this, filename.isEmpty() ? u"unknown"_s : filename);
     }
 
     const bool result = d->handler->read(image);
@@ -1299,9 +1220,9 @@ bool QImageReader::read(QImage *image)
 
     // provide default implementations for any unsupported image
     // options
-    if (d->handler->supportsOption(QImageIOHandler::ClipRect) && !d->clipRect.isNull()) {
-        if (d->handler->supportsOption(QImageIOHandler::ScaledSize) && d->scaledSize.isValid()) {
-            if (d->handler->supportsOption(QImageIOHandler::ScaledClipRect) && !d->scaledClipRect.isNull()) {
+    if (supportClipRect) {
+        if (supportScaledSize) {
+            if (supportScaledClipRect) {
                 // all features are supported by the handler; nothing to do.
             } else {
                 // the image is already scaled, so apply scaled clipping.
@@ -1309,12 +1230,12 @@ bool QImageReader::read(QImage *image)
                     *image = image->copy(d->scaledClipRect);
             }
         } else {
-            if (d->handler->supportsOption(QImageIOHandler::ScaledClipRect) && !d->scaledClipRect.isNull()) {
+            if (supportScaledClipRect) {
                 // supports scaled clipping but not scaling, most
                 // likely a broken handler.
             } else {
-                if (d->scaledSize.isValid()) {
-                    *image = image->scaled(d->scaledSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+                if (scaledSize.isValid()) {
+                    *image = image->scaled(scaledSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
                 }
                 if (d->scaledClipRect.isValid()) {
                     *image = image->copy(d->scaledClipRect);
@@ -1322,8 +1243,8 @@ bool QImageReader::read(QImage *image)
             }
         }
     } else {
-        if (d->handler->supportsOption(QImageIOHandler::ScaledSize) && d->scaledSize.isValid() && d->clipRect.isNull()) {
-            if (d->handler->supportsOption(QImageIOHandler::ScaledClipRect) && !d->scaledClipRect.isNull()) {
+        if (supportScaledSize && d->clipRect.isNull()) {
+            if (supportScaledClipRect) {
                 // nothing to do (ClipRect is ignored!)
             } else {
                 // provide all workarounds.
@@ -1332,7 +1253,7 @@ bool QImageReader::read(QImage *image)
                 }
             }
         } else {
-            if (d->handler->supportsOption(QImageIOHandler::ScaledClipRect) && !d->scaledClipRect.isNull()) {
+            if (supportScaledClipRect) {
                 // this makes no sense; a handler that supports
                 // ScaledClipRect but not ScaledSize is broken, and we
                 // can't work around it.
@@ -1340,8 +1261,8 @@ bool QImageReader::read(QImage *image)
                 // provide all workarounds.
                 if (d->clipRect.isValid())
                     *image = image->copy(d->clipRect);
-                if (d->scaledSize.isValid())
-                    *image = image->scaled(d->scaledSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+                if (scaledSize.isValid())
+                    *image = image->scaled(scaledSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
                 if (d->scaledClipRect.isValid())
                     *image = image->copy(d->scaledClipRect);
             }
@@ -1351,8 +1272,8 @@ bool QImageReader::read(QImage *image)
     // successful read; check for "@Nx" file name suffix and set device pixel ratio.
     static bool disableNxImageLoading = !qEnvironmentVariableIsEmpty("QT_HIGHDPI_DISABLE_2X_IMAGE_LOADING");
     if (!disableNxImageLoading) {
-        const QByteArray suffix = QFileInfo(fileName()).baseName().right(3).toLatin1();
-        if (suffix.length() == 3 && suffix[0] == '@' && suffix[1] >= '2' && suffix[1] <= '9' && suffix[2] == 'x')
+        const QByteArray suffix = QFileInfo(filename).baseName().right(3).toLatin1();
+        if (suffix.size() == 3 && suffix[0] == '@' && suffix[1] >= '2' && suffix[1] <= '9' && suffix[2] == 'x')
             image->setDevicePixelRatio(suffix[1] - '0');
     }
     if (autoTransform())
@@ -1495,8 +1416,6 @@ QString QImageReader::errorString() const
 }
 
 /*!
-    \since 4.2
-
     Returns \c true if the reader supports \a option; otherwise returns
     false.
 
@@ -1570,7 +1489,7 @@ QByteArray QImageReader::imageFormat(QIODevice *device)
     Reading and writing SVG files is supported through the \l{Qt SVG} module.
     The \l{Qt Image Formats} module provides support for additional image formats.
 
-    Note that the QApplication instance must be created before this function is
+    Note that the QCoreApplication instance must be created before this function is
     called.
 
     \sa setFormat(), QImageWriter::supportedImageFormats(), QImageIOPlugin
@@ -1610,6 +1529,49 @@ QList<QByteArray> QImageReader::imageFormatsForMimeType(const QByteArray &mimeTy
 {
     return QImageReaderWriterHelpers::imageFormatsForMimeType(mimeType,
                                                               QImageReaderWriterHelpers::CanRead);
+}
+
+/*!
+    \since 6.0
+
+    Returns the current allocation limit, in megabytes.
+
+    \sa setAllocationLimit()
+*/
+int QImageReader::allocationLimit()
+{
+    static int envLimit = []() {
+        bool ok = false;
+        int res = qEnvironmentVariableIntValue("QT_IMAGEIO_MAXALLOC", &ok);
+        return ok ? res : -1;
+    }();
+
+    return envLimit >= 0 ? envLimit : QImageReaderPrivate::maxAlloc;
+}
+
+/*!
+    \since 6.0
+
+    Sets the allocation limit to \a mbLimit megabytes. Images that would
+    require a QImage memory allocation above this limit will be rejected.
+    If \a mbLimit is 0, the allocation size check will be disabled.
+
+    This limit helps applications avoid unexpectedly large memory usage from
+    loading corrupt image files. It is normally not needed to change it. The
+    default limit is large enough for all commonly used image sizes.
+
+    At runtime, this value may be overridden by the environment variable \c QT_IMAGEIO_MAXALLOC.
+
+    \note The memory requirements are calculated for a minimum of 32 bits per pixel, since Qt will
+    typically convert an image to that depth when it is used in GUI. This means that the effective
+    allocation limit is significantly smaller than \a mbLimit when reading 1 bpp and 8 bpp images.
+
+    \sa allocationLimit()
+*/
+void QImageReader::setAllocationLimit(int mbLimit)
+{
+    if (mbLimit >= 0)
+        QImageReaderPrivate::maxAlloc = mbLimit;
 }
 
 QT_END_NAMESPACE

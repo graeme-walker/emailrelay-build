@@ -1,35 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <qcoreapplication.h>
+#include <qmetaobject.h>
 #include <qdebug.h>
 #include <qboxlayout.h>
 #include <qmenubar.h>
@@ -69,6 +45,7 @@ private slots:
     void controlTypes2();
     void adjustSizeShouldMakeSureLayoutIsActivated();
     void testRetainSizeWhenHidden();
+    void removeWidget();
 };
 
 tst_QLayout::tst_QLayout()
@@ -104,8 +81,8 @@ public:
 
 
     void setSizeHint(const QSize &s) { sh = s; }
-    QSize sizeHint() const { return sh; }
-    QSize minimumSizeHint() const { return msh; }
+    QSize sizeHint() const override { return sh; }
+    QSize minimumSizeHint() const override { return msh; }
 
 private:
     QSize sh;
@@ -140,7 +117,7 @@ void tst_QLayout::geometry()
 
 void tst_QLayout::smartMaxSize()
 {
-    QVector<int> expectedWidths;
+    QList<int> expectedWidths;
 
     QFile f(QFINDTESTDATA("baseline/smartmaxsize"));
 
@@ -221,13 +198,13 @@ class MyLayout : public QLayout
 {
     public:
         MyLayout() : invalidated(false) {}
-        virtual void invalidate() {invalidated = true;}
+        virtual void invalidate() override {invalidated = true;}
         bool invalidated;
-        QSize sizeHint() const {return QSize();}
-        void addItem(QLayoutItem*) {}
-        QLayoutItem* itemAt(int) const {return 0;}
-        QLayoutItem* takeAt(int) {return 0;}
-        int count() const {return 0;}
+        QSize sizeHint() const override {return QSize();}
+        void addItem(QLayoutItem*) override {}
+        QLayoutItem* itemAt(int) const override {return 0;}
+        QLayoutItem* takeAt(int) override {return 0;}
+        int count() const override {return 0;}
 };
 
 void tst_QLayout::setContentsMargins()
@@ -248,12 +225,28 @@ void tst_QLayout::setContentsMargins()
 
     layout.setContentsMargins(52, 53, 54, 55);
     QVERIFY(!layout.invalidated);
+
+    MyLayout otherLayout; // with default contents margins
+    QVERIFY(layout.contentsMargins() != otherLayout.contentsMargins());
+    layout.unsetContentsMargins();
+    QCOMPARE(layout.contentsMargins(), otherLayout.contentsMargins());
+
+    layout.setContentsMargins(10, 20, 30, 40);
+    QVERIFY(layout.contentsMargins() != otherLayout.contentsMargins());
+
+    int contentsMarginsPropertyIndex = QLayout::staticMetaObject.indexOfProperty("contentsMargins");
+    QVERIFY(contentsMarginsPropertyIndex >= 0);
+    QMetaProperty contentsMarginsProperty = QLayout::staticMetaObject.property(contentsMarginsPropertyIndex);
+    QVERIFY(contentsMarginsProperty.isValid());
+    QVERIFY(contentsMarginsProperty.isResettable());
+    QVERIFY(contentsMarginsProperty.reset(&layout));
+    QCOMPARE(layout.contentsMargins(), otherLayout.contentsMargins());
 }
 
 class EventReceiver : public QObject
 {
 public:
-    bool eventFilter(QObject *watched, QEvent *event)
+    bool eventFilter(QObject *watched, QEvent *event) override
     {
         if (event->type() == QEvent::Show) {
             geom = static_cast<QWidget*>(watched)->geometry();
@@ -337,7 +330,7 @@ void tst_QLayout::adjustSizeShouldMakeSureLayoutIsActivated()
 
 void tst_QLayout::testRetainSizeWhenHidden()
 {
-#if (defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)) || defined(Q_OS_WINRT)
+#ifdef Q_OS_ANDROID
     QSKIP("Test does not work on platforms which default to showMaximized()");
 #endif
 
@@ -379,6 +372,35 @@ void tst_QLayout::testRetainSizeWhenHidden()
     // e verify that changing back the hidden widget to want the hidden size will ensure that it gets more size
     label1->setSizePolicy(sp_retain);
     QCOMPARE(widget.sizeHint().height(), normalHeight);
+}
+
+void tst_QLayout::removeWidget()
+{
+    QHBoxLayout layout;
+    QCOMPARE(layout.count(), 0);
+    std::unique_ptr<QWidget> w(new QWidget);
+    layout.addWidget(w.get());
+    QCOMPARE(layout.count(), 1);
+    layout.removeWidget(w.get());
+    QCOMPARE(layout.count(), 0);
+
+    QPointer<QLayout> childLayout(new QHBoxLayout);
+    layout.addLayout(childLayout);
+    QCOMPARE(layout.count(), 1);
+
+    layout.removeWidget(nullptr);
+    QCOMPARE(layout.count(), 1);
+
+    layout.removeItem(childLayout);
+    QCOMPARE(layout.count(), 0);
+
+    QVERIFY(!childLayout.isNull());
+
+    // Test inactive layout consumes ChildRemoved event (QTBUG-124151)
+    layout.addWidget(w.get());
+    layout.setEnabled(false);
+    w.reset();
+    layout.setEnabled(true);
 }
 
 QTEST_MAIN(tst_QLayout)

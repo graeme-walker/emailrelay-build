@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qfilesystemengine_p.h"
 #include <QtCore/qdir.h>
@@ -45,6 +9,7 @@
 #ifdef QT_BUILD_CORE_LIB
 #include <QtCore/private/qresource_p.h>
 #endif
+#include <QtCore/private/qduplicatetracker_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -60,20 +25,20 @@ QString QFileSystemEngine::slowCanonicalized(const QString &path)
         return path;
 
     QFileInfo fi;
-    const QChar slash(QLatin1Char('/'));
+    const QChar slash(u'/');
     QString tmpPath = path;
-    int separatorPos = 0;
+    qsizetype separatorPos = 0;
     QSet<QString> nonSymlinks;
-    QSet<QString> known;
+    QDuplicateTracker<QString> known;
 
-    known.insert(path);
+    (void)known.hasSeen(path);
     do {
 #ifdef Q_OS_WIN
         if (separatorPos == 0) {
             if (tmpPath.size() >= 2 && tmpPath.at(0) == slash && tmpPath.at(1) == slash) {
                 // UNC, skip past the first two elements
                 separatorPos = tmpPath.indexOf(slash, 2);
-            } else if (tmpPath.size() >= 3 && tmpPath.at(1) == QLatin1Char(':') && tmpPath.at(2) == slash) {
+            } else if (tmpPath.size() >= 3 && tmpPath.at(1) == u':' && tmpPath.at(2) == slash) {
                 // volume root, skip since it can not be a symlink
                 separatorPos = 2;
             }
@@ -89,14 +54,13 @@ QString QFileSystemEngine::slowCanonicalized(const QString &path)
                 if (separatorPos != -1) {
                     if (fi.isDir() && !target.endsWith(slash))
                         target.append(slash);
-                    target.append(tmpPath.midRef(separatorPos));
+                    target.append(QStringView{tmpPath}.mid(separatorPos));
                 }
                 tmpPath = QDir::cleanPath(target);
                 separatorPos = 0;
 
-                if (known.contains(tmpPath))
+                if (known.hasSeen(tmpPath))
                     return QString();
-                known.insert(tmpPath);
             } else {
                 nonSymlinks.insert(prefix);
             }
@@ -119,12 +83,11 @@ static inline bool _q_checkEntry(QFileSystemEntry &entry, QFileSystemMetaData &d
     return true;
 }
 
-static inline bool _q_checkEntry(QAbstractFileEngine *&engine, bool resolvingEntry)
+static inline bool _q_checkEntry(std::unique_ptr<QAbstractFileEngine> &engine, bool resolvingEntry)
 {
     if (resolvingEntry) {
         if (!(engine->fileFlags(QAbstractFileEngine::FlagsMask) & QAbstractFileEngine::ExistsFlag)) {
-            delete engine;
-            engine = nullptr;
+            engine.reset();
             return false;
         }
     }
@@ -132,22 +95,23 @@ static inline bool _q_checkEntry(QAbstractFileEngine *&engine, bool resolvingEnt
     return true;
 }
 
-static bool _q_resolveEntryAndCreateLegacyEngine_recursive(QFileSystemEntry &entry, QFileSystemMetaData &data,
-        QAbstractFileEngine *&engine, bool resolvingEntry = false)
+static bool _q_createLegacyEngine_recursive(QFileSystemEntry &entry, QFileSystemMetaData &data,
+                                            std::unique_ptr<QAbstractFileEngine> &engine,
+                                            bool resolvingEntry = false)
 {
     QString const &filePath = entry.filePath();
     if ((engine = qt_custom_file_engine_handler_create(filePath)))
         return _q_checkEntry(engine, resolvingEntry);
 
 #if defined(QT_BUILD_CORE_LIB)
-    for (int prefixSeparator = 0; prefixSeparator < filePath.size(); ++prefixSeparator) {
+    for (qsizetype prefixSeparator = 0; prefixSeparator < filePath.size(); ++prefixSeparator) {
         QChar const ch = filePath[prefixSeparator];
-        if (ch == QLatin1Char('/'))
+        if (ch == u'/')
             break;
 
-        if (ch == QLatin1Char(':')) {
+        if (ch == u':') {
             if (prefixSeparator == 0) {
-                engine = new QResourceFileEngine(filePath);
+                engine = std::make_unique<QResourceFileEngine>(filePath);
                 return _q_checkEntry(engine, resolvingEntry);
             }
 
@@ -155,10 +119,11 @@ static bool _q_resolveEntryAndCreateLegacyEngine_recursive(QFileSystemEntry &ent
                 break;
 
             const QStringList &paths = QDir::searchPaths(filePath.left(prefixSeparator));
-            for (int i = 0; i < paths.count(); i++) {
-                entry = QFileSystemEntry(QDir::cleanPath(paths.at(i) % QLatin1Char('/') % filePath.midRef(prefixSeparator + 1)));
+            for (int i = 0; i < paths.size(); i++) {
+                entry = QFileSystemEntry(QDir::cleanPath(
+                        paths.at(i) % u'/' % QStringView{filePath}.mid(prefixSeparator + 1)));
                 // Recurse!
-                if (_q_resolveEntryAndCreateLegacyEngine_recursive(entry, data, engine, true))
+                if (_q_createLegacyEngine_recursive(entry, data, engine, true))
                     return true;
             }
 
@@ -178,6 +143,12 @@ static bool _q_resolveEntryAndCreateLegacyEngine_recursive(QFileSystemEntry &ent
     return _q_checkEntry(entry, data, resolvingEntry);
 }
 
+Q_CORE_EXPORT bool qt_isCaseSensitive(const QFileSystemEntry &entry, QFileSystemMetaData &data)
+{
+    // called from QtGui (QFileSystemModel, QFileInfoGatherer)
+    return QFileSystemEngine::isCaseSensitive(entry, data);
+}
+
 /*!
     \internal
 
@@ -188,12 +159,13 @@ static bool _q_resolveEntryAndCreateLegacyEngine_recursive(QFileSystemEntry &ent
     QFileSystemEngine API should be used to query and interact with the file
     system object.
 */
-QAbstractFileEngine *QFileSystemEngine::resolveEntryAndCreateLegacyEngine(
-        QFileSystemEntry &entry, QFileSystemMetaData &data) {
+std::unique_ptr<QAbstractFileEngine>
+QFileSystemEngine::createLegacyEngine(QFileSystemEntry &entry, QFileSystemMetaData &data)
+{
     QFileSystemEntry copy = entry;
-    QAbstractFileEngine *engine = nullptr;
+    std::unique_ptr<QAbstractFileEngine> engine;
 
-    if (_q_resolveEntryAndCreateLegacyEngine_recursive(copy, data, engine))
+    if (_q_createLegacyEngine_recursive(copy, data, engine))
         // Reset entry to resolved copy.
         entry = copy;
     else
@@ -229,6 +201,19 @@ QString QFileSystemEngine::resolveGroupName(const QFileSystemEntry &entry, QFile
     if (!metaData.exists())
         return QString();
     return resolveGroupName(metaData.groupId());
+#endif
+}
+
+//static
+QFileSystemEntry QFileSystemEngine::getJunctionTarget(const QFileSystemEntry &link,
+                                                      QFileSystemMetaData &data)
+{
+#if defined(Q_OS_WIN)
+    return junctionTarget(link, data);
+#else
+    Q_UNUSED(link);
+    Q_UNUSED(data);
+    return {};
 #endif
 }
 

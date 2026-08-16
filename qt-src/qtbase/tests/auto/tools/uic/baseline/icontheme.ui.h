@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'icontheme.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -25,47 +25,62 @@ public:
     QPushButton *fileicon;
     QPushButton *fileandthemeicon;
     QPushButton *themeicon;
+    QPushButton *themeenum;
+    QPushButton *fileandthemeenum;
 
     void setupUi(QWidget *Form)
     {
         if (Form->objectName().isEmpty())
-            Form->setObjectName(QString::fromUtf8("Form"));
-        Form->resize(122, 117);
+            Form->setObjectName("Form");
+        Form->resize(343, 478);
         verticalLayout = new QVBoxLayout(Form);
-        verticalLayout->setObjectName(QString::fromUtf8("verticalLayout"));
+        verticalLayout->setObjectName("verticalLayout");
         fileicon = new QPushButton(Form);
-        fileicon->setObjectName(QString::fromUtf8("fileicon"));
+        fileicon->setObjectName("fileicon");
         QIcon icon;
-        icon.addFile(QString::fromUtf8("image1.png"), QSize(), QIcon::Normal, QIcon::Off);
+        icon.addFile(QString::fromUtf8("image1.png"), QSize(), QIcon::Mode::Normal, QIcon::State::Off);
         fileicon->setIcon(icon);
 
         verticalLayout->addWidget(fileicon);
 
         fileandthemeicon = new QPushButton(Form);
-        fileandthemeicon->setObjectName(QString::fromUtf8("fileandthemeicon"));
+        fileandthemeicon->setObjectName("fileandthemeicon");
         QIcon icon1;
         QString iconThemeName = QString::fromUtf8("edit-copy");
         if (QIcon::hasThemeIcon(iconThemeName)) {
             icon1 = QIcon::fromTheme(iconThemeName);
         } else {
-            icon1.addFile(QString::fromUtf8("image7.png"), QSize(), QIcon::Normal, QIcon::Off);
+            icon1.addFile(QString::fromUtf8("image7.png"), QSize(), QIcon::Mode::Normal, QIcon::State::Off);
         }
         fileandthemeicon->setIcon(icon1);
 
         verticalLayout->addWidget(fileandthemeicon);
 
         themeicon = new QPushButton(Form);
-        themeicon->setObjectName(QString::fromUtf8("themeicon"));
-        QIcon icon2;
-        iconThemeName = QString::fromUtf8("edit-copy");
-        if (QIcon::hasThemeIcon(iconThemeName)) {
-            icon2 = QIcon::fromTheme(iconThemeName);
-        } else {
-            icon2.addFile(QString::fromUtf8(""), QSize(), QIcon::Normal, QIcon::Off);
-        }
+        themeicon->setObjectName("themeicon");
+        QIcon icon2(QIcon::fromTheme(QString::fromUtf8("edit-copy")));
         themeicon->setIcon(icon2);
 
         verticalLayout->addWidget(themeicon);
+
+        themeenum = new QPushButton(Form);
+        themeenum->setObjectName("themeenum");
+        QIcon icon3(QIcon::fromTheme(QIcon::ThemeIcon::EditCopy));
+        themeenum->setIcon(icon3);
+
+        verticalLayout->addWidget(themeenum);
+
+        fileandthemeenum = new QPushButton(Form);
+        fileandthemeenum->setObjectName("fileandthemeenum");
+        QIcon icon4;
+        if (QIcon::hasThemeIcon(QIcon::ThemeIcon::EditCopy)) {
+            icon4 = QIcon::fromTheme(QIcon::ThemeIcon::EditCopy);
+        } else {
+            icon4.addFile(QString::fromUtf8("image7.png"), QSize(), QIcon::Mode::Normal, QIcon::State::Off);
+        }
+        fileandthemeenum->setIcon(icon4);
+
+        verticalLayout->addWidget(fileandthemeenum);
 
 
         retranslateUi(Form);
@@ -79,6 +94,8 @@ public:
         fileicon->setText(QCoreApplication::translate("Form", "fileicon", nullptr));
         fileandthemeicon->setText(QCoreApplication::translate("Form", "PushButton", nullptr));
         themeicon->setText(QCoreApplication::translate("Form", "PushButton", nullptr));
+        themeenum->setText(QCoreApplication::translate("Form", "PushButton", nullptr));
+        fileandthemeenum->setText(QCoreApplication::translate("Form", "PushButton", nullptr));
     } // retranslateUi
 
 };

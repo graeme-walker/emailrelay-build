@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "bookmarkitem.h"
 
@@ -32,6 +7,8 @@
 #include <QtCore/QDebug>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 BookmarkItem::BookmarkItem(const DataVector &data, BookmarkItem *parent)
     : m_data(data)
@@ -66,14 +43,14 @@ BookmarkItem::addChild(BookmarkItem *child)
 BookmarkItem*
 BookmarkItem::child(int number) const
 {
-    if (number >= 0 && number < m_children.count())
+    if (number >= 0 && number < m_children.size())
         return m_children[number];
     return nullptr;
 }
 
 int BookmarkItem::childCount() const
 {
-    return m_children.count();
+    return m_children.size();
 }
 
 int BookmarkItem::childNumber() const
@@ -93,7 +70,7 @@ BookmarkItem::data(int column) const
         return m_data[1];
 
     if (column == UserRoleFolder)
-        return m_data[1].toString() == QLatin1String("Folder");
+        return m_data[1].toString() == "Folder"_L1;
 
     if (column == UserRoleExpanded)
         return m_data[2];

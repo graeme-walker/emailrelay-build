@@ -1,37 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QHeaderView>
 #include <QLineEdit>
 #include <QMimeData>
+#include <QScrollBar>
 #include <QSignalSpy>
 #include <QTableWidget>
 #include <QTest>
+
+QT_BEGIN_NAMESPACE
+QDebug operator<<(QDebug dbg, const QTableWidgetSelectionRange &range)
+{
+    QDebugStateSaver saver(dbg);
+    dbg.nospace() << "Range(" << range.topRow() << ","  << range.leftColumn() << "->"
+                              << range.bottomRow() << "," << range.rightColumn() << ")";
+    return dbg;
+}
+QT_END_NAMESPACE
 
 class QObjectTableItem : public QObject, public QTableWidgetItem
 {
@@ -49,6 +35,7 @@ private slots:
     void initTestCase();
     void init();
     void getSetCheck();
+    void selectionRange();
     void clear();
     void clearContents();
     void rowCount();
@@ -60,6 +47,8 @@ private slots:
     void takeItem();
     void selectedItems_data();
     void selectedItems();
+    void selectedSpannedCells_data();
+    void selectedSpannedCells();
     void removeRow_data();
     void removeRow();
     void removeColumn_data();
@@ -85,20 +74,27 @@ private slots:
     void task219380_removeLastRow();
     void task262056_sortDuplicate();
     void itemWithHeaderItems();
+    void checkHeaderItemFlagsConflict();
     void mimeData();
     void selectedRowAfterSorting();
     void search();
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     void clearItemData();
 #endif
+    void createPersistentOnLayoutAboutToBeChanged();
+    void createPersistentOnLayoutAboutToBeChangedAutoSort();
+    void moveRows_data();
+    void moveRows();
+    void moveRowsInvalid_data();
+    void moveRowsInvalid();
 
 private:
     std::unique_ptr<QTableWidget> testWidget;
 };
 
 using IntPair = QPair<int, int>;
-using IntList = QVector<int>;
-using IntIntList = QVector<IntPair>;
+using IntList = QList<int>;
+using IntIntList = QList<IntPair>;
 
 Q_DECLARE_METATYPE(QTableWidgetSelectionRange)
 
@@ -153,6 +149,19 @@ void tst_QTableWidget::getSetCheck()
     QCOMPARE(obj1.itemPrototype(), nullptr);
 }
 
+void tst_QTableWidget::selectionRange()
+{
+    QTableWidgetSelectionRange defaultSelection;
+    QTableWidgetSelectionRange selection(1, 2, 3, 4);
+
+    QTableWidgetSelectionRange copy(selection);
+    QCOMPARE(copy, selection);
+    QVERIFY(copy != defaultSelection);
+
+    defaultSelection = copy;
+    QCOMPARE(defaultSelection, copy);
+}
+
 void tst_QTableWidget::initTestCase()
 {
     testWidget.reset(new QTableWidget);
@@ -199,8 +208,8 @@ void tst_QTableWidget::clear()
     QVERIFY(bla.isNull());
 
     QVERIFY(!testWidget->item(0,0));
-    QVERIFY(!testWidget->selectedRanges().count());
-    QVERIFY(!testWidget->selectedItems().count());
+    QVERIFY(!testWidget->selectedRanges().size());
+    QVERIFY(!testWidget->selectedItems().size());
 }
 
 void tst_QTableWidget::rowCount()
@@ -367,7 +376,7 @@ void tst_QTableWidget::takeItem()
         QCOMPARE(item->text(), QString::number(row * column + column));
         delete item;
 
-        QTRY_COMPARE(spy.count(), 1);
+        QTRY_COMPARE(spy.size(), 1);
         const QList<QVariant> arguments = spy.takeFirst();
         QCOMPARE(arguments.size(), 2);
         QCOMPARE(arguments.at(0).toInt(), row);
@@ -532,24 +541,24 @@ void tst_QTableWidget::selectedItems()
         testWidget->setColumnHidden(column, true);
 
     // make sure we don't have any previous selections hanging around
-    QVERIFY(!testWidget->selectedRanges().count());
-    QVERIFY(!testWidget->selectedItems().count());
+    QVERIFY(!testWidget->selectedRanges().size());
+    QVERIFY(!testWidget->selectedItems().size());
 
     // select range and check that it is set correctly
     testWidget->setRangeSelected(selectionRange, true);
     if (selectionRange.topRow() >= 0) {
-        QCOMPARE(testWidget->selectedRanges().count(), 1);
+        QCOMPARE(testWidget->selectedRanges().size(), 1);
         QCOMPARE(testWidget->selectedRanges().at(0).topRow(), selectionRange.topRow());
         QCOMPARE(testWidget->selectedRanges().at(0).bottomRow(), selectionRange.bottomRow());
         QCOMPARE(testWidget->selectedRanges().at(0).leftColumn(), selectionRange.leftColumn());
         QCOMPARE(testWidget->selectedRanges().at(0).rightColumn(), selectionRange.rightColumn());
     } else {
-        QCOMPARE(testWidget->selectedRanges().count(), 0);
+        QCOMPARE(testWidget->selectedRanges().size(), 0);
     }
 
     // check that the correct number of items and the expected items are there
     const QList<QTableWidgetItem *> selectedItems = testWidget->selectedItems();
-    QCOMPARE(selectedItems.count(), expectedItems.count());
+    QCOMPARE(selectedItems.size(), expectedItems.size());
     for (const auto &intPair : expectedItems)
         QVERIFY(selectedItems.contains(testWidget->item(intPair.first, intPair.second)));
 
@@ -567,6 +576,75 @@ void tst_QTableWidget::selectedItems()
                 QVERIFY(selectedItems.contains(item));
         }
     }
+}
+
+void tst_QTableWidget::selectedSpannedCells_data()
+{
+    QTest::addColumn<QRect>("spannedCells"); // in cells, not pixels
+    QTest::addColumn<QPoint>("selectionStartCell");
+    QTest::addColumn<QPoint>("selectionEndCell");
+    QTest::addColumn<int>("expectedSelectionRangeCount");
+    QTest::addColumn<QTableWidgetSelectionRange>("expectedFirstSelectionRange");
+
+    QTest::newRow("merge 2 cells in column, select adjacent left")
+            << QRect(1, 2, 1, 2) << QPoint(0, 1) << QPoint(0, 3)
+            << 1 << QTableWidgetSelectionRange(1, 0, 3, 0);
+
+    QTest::newRow("merge 2 cells in column, select those and one more")
+            << QRect(1, 2, 1, 2) << QPoint(1, 1) << QPoint(1, 3)
+            << 1 << QTableWidgetSelectionRange(1, 1, 3, 1);
+
+    QTest::newRow("merge 2 cells in column, select rows above")
+            << QRect(1, 2, 1, 2) << QPoint(0, 0) << QPoint(3, 1)
+            << 1 << QTableWidgetSelectionRange(0, 0, 1, 3);
+
+    QTest::newRow("merge 4 cells in column, select adjacent right")
+            << QRect(1, 0, 1, 4) << QPoint(2, 0) << QPoint(3, 3)
+            << 1 << QTableWidgetSelectionRange(0, 2, 3, 3);
+
+    QTest::newRow("merge 3 cells in row, select those and one more")
+            << QRect(0, 1, 3, 1) << QPoint(0, 1) << QPoint(3, 1)
+            << 1 << QTableWidgetSelectionRange(1, 0, 1, 3);
+
+    QTest::newRow("merge 3 cells in row, select adjacent to right")
+            << QRect(0, 1, 3, 1) << QPoint(3, 0) << QPoint(3, 2)
+            << 1 << QTableWidgetSelectionRange(0, 3, 2, 3);
+
+    QTest::newRow("merge 3 cells in row, select adjacent above")
+            << QRect(0, 2, 3, 2) << QPoint(0, 1) << QPoint(2, 1)
+            << 1 << QTableWidgetSelectionRange(1, 0, 1, 2);
+}
+
+void tst_QTableWidget::selectedSpannedCells() // QTBUG-255
+{
+    QFETCH(QRect, spannedCells);
+    QFETCH(QPoint, selectionStartCell);
+    QFETCH(QPoint, selectionEndCell);
+    QFETCH(int, expectedSelectionRangeCount);
+    QFETCH(const QTableWidgetSelectionRange, expectedFirstSelectionRange);
+
+    QTableWidget testWidget(4, 4);
+    testWidget.resize(600, 200);
+    testWidget.show();
+
+    // create and set items
+    for (int c = 0; c < 4; ++c) {
+        for (int r = 0; r < 4; ++r)
+            testWidget.setItem(r, c, new QTableWidgetItem(QString("Item %1 %2").arg(c).arg(r)));
+    }
+
+    // merge some cells
+    testWidget.setSpan(spannedCells.top(), spannedCells.left(), spannedCells.height(), spannedCells.width());
+
+    // click one cell and shift-click another, to select a range
+    QTest::mouseClick(testWidget.viewport(), Qt::LeftButton, Qt::NoModifier,
+                      testWidget.visualRect(testWidget.model()->index(selectionStartCell.y(), selectionStartCell.x())).center());
+    QTest::mouseClick(testWidget.viewport(), Qt::LeftButton, Qt::ShiftModifier,
+                      testWidget.visualRect(testWidget.model()->index(selectionEndCell.y(), selectionEndCell.x())).center());
+
+    auto ranges = testWidget.selectedRanges();
+    QCOMPARE(ranges.size(), expectedSelectionRangeCount);
+    QCOMPARE(ranges.first(), expectedFirstSelectionRange);
 }
 
 void tst_QTableWidget::removeRow_data()
@@ -1118,7 +1196,7 @@ void tst_QTableWidget::sortItems()
     testWidget->setColumnCount(columnCount);
 
     QAbstractItemModel *model = testWidget->model();
-    QVector<QPersistentModelIndex> persistent;
+    QList<QPersistentModelIndex> persistent;
 
     int ti = 0;
     for (int r = 0; r < rowCount; ++r) {
@@ -1132,15 +1210,15 @@ void tst_QTableWidget::sortItems()
             persistent << model->index(r, sortColumn, QModelIndex());
     }
 
-    for (int h = 0; h < initialHidden.count(); ++h)
+    for (int h = 0; h < initialHidden.size(); ++h)
         testWidget->hideRow(initialHidden.at(h));
 
-    QCOMPARE(testWidget->verticalHeader()->hiddenSectionCount(), initialHidden.count());
+    QCOMPARE(testWidget->verticalHeader()->hiddenSectionCount(), initialHidden.size());
 
     testWidget->sortItems(sortColumn, sortOrder);
 
     int te = 0;
-    for (int i = 0; i < rows.count(); ++i) {
+    for (int i = 0; i < rows.size(); ++i) {
         for (int j = 0; j < columnCount; ++j) {
             QString value;
             QTableWidgetItem *itm = testWidget->item(i, j);
@@ -1154,7 +1232,7 @@ void tst_QTableWidget::sortItems()
         //         << "expected" << rows.at(i);
     }
 
-    for (int k = 0; k < expectedHidden.count(); ++k)
+    for (int k = 0; k < expectedHidden.size(); ++k)
         QVERIFY(testWidget->isRowHidden(expectedHidden.at(k)));
 }
 
@@ -1300,7 +1378,7 @@ void tst_QTableWidget::setItemWithSorting()
         QTableWidget w(rowCount, columnCount);
 
         QAbstractItemModel *model = w.model();
-        QVector<QPersistentModelIndex> persistent;
+        QList<QPersistentModelIndex> persistent;
 
         int ti = 0;
         for (int r = 0; r < rowCount; ++r) {
@@ -1316,6 +1394,7 @@ void tst_QTableWidget::setItemWithSorting()
 
         QSignalSpy dataChangedSpy(model, &QAbstractItemModel::dataChanged);
         QSignalSpy layoutChangedSpy(model, &QAbstractItemModel::layoutChanged);
+        QSignalSpy rowsMovedSpy(model, &QAbstractItemModel::rowsMoved);
 
         if (i == 0) {
             // set a new item
@@ -1335,18 +1414,20 @@ void tst_QTableWidget::setItemWithSorting()
             }
         }
 
-        for (int k = 0; k < persistent.count(); ++k) {
+        for (int k = 0; k < persistent.size(); ++k) {
             QCOMPARE(persistent.at(k).row(), expectedRows.at(k));
             int i = (persistent.at(k).row() * columnCount) + sortColumn;
             QCOMPARE(persistent.at(k).data().toString(), expectedValues.at(i));
         }
 
-        if (i == 0)
-            QCOMPARE(dataChangedSpy.count(), reorderingExpected ? 0 : 1);
-        else
-            QCOMPARE(dataChangedSpy.count(), 1);
+        if (i == 0) {
+            QCOMPARE(dataChangedSpy.size(), reorderingExpected ? 0 : 1);
+            QCOMPARE(rowsMovedSpy.size(), reorderingExpected ? 1 : 0);
+        } else {
+            QCOMPARE(dataChangedSpy.size(), 1);
+            QCOMPARE(layoutChangedSpy.size(), reorderingExpected ? 1 : 0);
+        }
 
-        QCOMPARE(layoutChangedSpy.count(), reorderingExpected ? 1 : 0);
     }
 }
 
@@ -1356,12 +1437,13 @@ class QTableWidgetDataChanged : public QTableWidget
 public:
     using QTableWidget::QTableWidget;
 
-    void dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight, const QVector<int> &roles) override
+    void dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight,
+                     const QList<int> &roles) override
     {
         QTableWidget::dataChanged(topLeft, bottomRight, roles);
         currentRoles = roles;
     }
-    QVector<int> currentRoles;
+    QList<int> currentRoles;
 };
 
 void tst_QTableWidget::itemData()
@@ -1372,16 +1454,16 @@ void tst_QTableWidget::itemData()
     QVERIFY(item);
     item->setFlags(item->flags() | Qt::ItemIsEditable);
     item->setData(Qt::DisplayRole,  QString("0"));
-    QCOMPARE(widget.currentRoles, QVector<int>({Qt::DisplayRole, Qt::EditRole}));
+    QCOMPARE(widget.currentRoles, QList<int>({ Qt::DisplayRole, Qt::EditRole }));
     item->setData(Qt::CheckStateRole, Qt::PartiallyChecked);
-    QCOMPARE(widget.currentRoles, QVector<int>{Qt::CheckStateRole});
+    QCOMPARE(widget.currentRoles, QList<int> { Qt::CheckStateRole });
     for (int i = 0; i < 4; ++i)
     {
         item->setData(Qt::UserRole + i, QString::number(i + 1));
-        QCOMPARE(widget.currentRoles, QVector<int>{Qt::UserRole + i});
+        QCOMPARE(widget.currentRoles, QList<int> { Qt::UserRole + i });
     }
     QMap<int, QVariant> flags = widget.model()->itemData(widget.model()->index(0, 0));
-    QCOMPARE(flags.count(), 6);
+    QCOMPARE(flags.size(), 6);
     for (int i = 0; i < 4; ++i)
         QCOMPARE(flags[Qt::UserRole + i].toString(), QString::number(i + 1));
 }
@@ -1394,22 +1476,22 @@ void tst_QTableWidget::setItemData()
 
     QTableWidgetItem *item = new QTableWidgetItem;
     table.setItem(0, 0, item);
-    QCOMPARE(dataChangedSpy.count(), 1);
+    QCOMPARE(dataChangedSpy.size(), 1);
     QModelIndex idx = qvariant_cast<QModelIndex>(dataChangedSpy.takeFirst().at(0));
 
     QMap<int, QVariant> data;
     data.insert(Qt::DisplayRole, QLatin1String("Display"));
     data.insert(Qt::ToolTipRole, QLatin1String("ToolTip"));
     table.model()->setItemData(idx, data);
-    QCOMPARE(table.currentRoles, QVector<int>({Qt::DisplayRole, Qt::EditRole, Qt::ToolTipRole}));
+    QCOMPARE(table.currentRoles, QList<int>({ Qt::DisplayRole, Qt::EditRole, Qt::ToolTipRole }));
 
     QCOMPARE(table.model()->data(idx, Qt::DisplayRole).toString(), QLatin1String("Display"));
     QCOMPARE(table.model()->data(idx, Qt::EditRole).toString(), QLatin1String("Display"));
     QCOMPARE(table.model()->data(idx, Qt::ToolTipRole).toString(), QLatin1String("ToolTip"));
-    QCOMPARE(dataChangedSpy.count(), 1);
+    QCOMPARE(dataChangedSpy.size(), 1);
     QCOMPARE(idx, qvariant_cast<QModelIndex>(dataChangedSpy.first().at(0)));
     QCOMPARE(idx, qvariant_cast<QModelIndex>(dataChangedSpy.first().at(1)));
-    const auto roles = qvariant_cast<QVector<int>>(dataChangedSpy.first().at(2));
+    const auto roles = qvariant_cast<QList<int>>(dataChangedSpy.first().at(2));
     QCOMPARE(roles.size(), 3);
     QVERIFY(roles.contains(Qt::DisplayRole));
     QVERIFY(roles.contains(Qt::EditRole));
@@ -1417,14 +1499,15 @@ void tst_QTableWidget::setItemData()
     dataChangedSpy.clear();
 
     table.model()->setItemData(idx, data);
-    QCOMPARE(dataChangedSpy.count(), 0);
+    QCOMPARE(dataChangedSpy.size(), 0);
 
     data.clear();
     data.insert(Qt::DisplayRole, QLatin1String("dizplaye"));
     table.model()->setItemData(idx, data);
     QCOMPARE(table.model()->data(idx, Qt::DisplayRole).toString(), QLatin1String("dizplaye"));
-    QCOMPARE(dataChangedSpy.count(), 1);
-    QCOMPARE(QVector<int>({Qt::DisplayRole, Qt::EditRole}), qvariant_cast<QVector<int>>(dataChangedSpy.first().at(2)));
+    QCOMPARE(dataChangedSpy.size(), 1);
+    QCOMPARE(QList<int>({ Qt::DisplayRole, Qt::EditRole }),
+             qvariant_cast<QList<int>>(dataChangedSpy.first().at(2)));
 
     item->setBackground(QBrush(Qt::red));
     item->setForeground(QBrush(Qt::green));
@@ -1491,6 +1574,12 @@ void tst_QTableWidget::sizeHint()
     QFETCH(Qt::ScrollBarPolicy, scrollBarPolicy);
     QFETCH(QSize, viewSize);
 
+    const QString defaultStyle = QApplication::style()->name();
+    QApplication::setStyle("windows");
+    const auto resetStyle = qScopeGuard([defaultStyle]{
+        QApplication::setStyle(defaultStyle);
+    });
+
     QTableWidget view(2, 2);
     view.setSizeAdjustPolicy(QAbstractScrollArea::AdjustToContents);
     view.setVerticalScrollBarPolicy(scrollBarPolicy);
@@ -1510,18 +1599,21 @@ void tst_QTableWidget::sizeHint()
         QTRY_COMPARE(view.size(), viewSize);
     }
 
+    QApplication::processEvents(); // execute delayed layouts
     auto sizeHint = view.sizeHint();
     view.hide();
     QCOMPARE(view.sizeHint(), sizeHint);
 
     view.horizontalHeader()->hide();
     view.show();
+    QApplication::processEvents(); // execute delayed layouts
     sizeHint = view.sizeHint();
     view.hide();
     QCOMPARE(view.sizeHint(), sizeHint);
 
     view.verticalHeader()->hide();
     view.show();
+    QApplication::processEvents(); // execute delayed layouts
     sizeHint = view.sizeHint();
     view.hide();
     QCOMPARE(view.sizeHint(), sizeHint);
@@ -1585,7 +1677,7 @@ void tst_QTableWidget::task262056_sortDuplicate()
     QSignalSpy layoutChangedSpy(testWidget->model(), &QAbstractItemModel::layoutChanged);
     testWidget->item(3,0)->setBackground(Qt::red);
 
-    QCOMPARE(layoutChangedSpy.count(),0);
+    QCOMPARE(layoutChangedSpy.size(),0);
 
 }
 
@@ -1603,6 +1695,25 @@ void tst_QTableWidget::itemWithHeaderItems()
     table.setItem(1, 0, item1_0);
 
     QCOMPARE(table.item(0, 1), nullptr);
+}
+
+void tst_QTableWidget::checkHeaderItemFlagsConflict()
+{
+    // QTBUG-113209
+    // Check that setting header item doesn't set Qt::ItemNeverHasChildren
+    // Chech that header items do not emit itemChanged.
+    QTableWidget table(1, 1);
+    QSignalSpy itemChangeSpy(&table, &QTableWidget::itemChanged);
+    QVERIFY(itemChangeSpy.isValid());
+
+    QTableWidgetItem *item = new QTableWidgetItem("Initial");
+    table.setHorizontalHeaderItem(0, item);
+
+    QVERIFY(!(item->flags() & Qt::ItemNeverHasChildren));
+
+    item->setData(Qt::DisplayRole, "updated");
+
+    QCOMPARE(itemChangeSpy.size(), 0);
 }
 
 class TestTableWidget : public QTableWidget
@@ -1682,7 +1793,7 @@ void tst_QTableWidget::selectedRowAfterSorting()
     table.setProperty("sortingEnabled",true);
     table.selectRow(1);
     table.item(1,1)->setText("9");
-    QCOMPARE(table.selectedItems().count(),3);
+    QCOMPARE(table.selectedItems().size(),3);
     const auto selectedItems = table.selectedItems();
     for (QTableWidgetItem *item : selectedItems)
         QCOMPARE(item->row(), 0);
@@ -1697,10 +1808,13 @@ void tst_QTableWidget::search()
         return item;
     };
 
-    auto checkSeries = [](TestTableWidget &tw, const QVector<QPair<QKeyEvent, int>> &series)
-    {
+    struct KeyPress {
+        Qt::Key key;
+        QString text;
+    };
+    auto checkSeries = [](TestTableWidget &tw, const QList<QPair<KeyPress, int>> &series) {
         for (const auto &p : series) {
-            QKeyEvent e = p.first;
+            QKeyEvent e(QEvent::KeyPress, p.first.key, Qt::NoModifier, p.first.text);
             tw.keyPressEvent(&e);
             QVERIFY(tw.selectionModel()->isSelected(tw.model()->index(p.second, 0)));
         }
@@ -1713,12 +1827,12 @@ void tst_QTableWidget::search()
     tw.setItem(4, 0, createItem(" "));
     tw.show();
 
-    QKeyEvent evSpace(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier, " ");
-    QKeyEvent ev1(QEvent::KeyPress, Qt::Key_1, Qt::NoModifier, "1");
-    QKeyEvent ev2(QEvent::KeyPress, Qt::Key_2, Qt::NoModifier, "2");
-    QKeyEvent ev3(QEvent::KeyPress, Qt::Key_3, Qt::NoModifier, "3");
-    QKeyEvent ev4(QEvent::KeyPress, Qt::Key_4, Qt::NoModifier, "4");
-    QKeyEvent ev5(QEvent::KeyPress, Qt::Key_5, Qt::NoModifier, "5");
+    KeyPress evSpace{Qt::Key_Space, " "};
+    KeyPress ev1{Qt::Key_1, "1"};
+    KeyPress ev2{Qt::Key_2, "2"};
+    KeyPress ev3{Qt::Key_3, "3"};
+    KeyPress ev4{Qt::Key_4, "4"};
+    KeyPress ev5{Qt::Key_5, "5"};
 
     checkSeries(tw, {{evSpace, 4}, {ev1, 4}});
     QTest::qWait(QApplication::keyboardInputInterval() * 2);
@@ -1745,11 +1859,193 @@ void tst_QTableWidget::clearItemData()
     const QList<QVariant> dataChangeArgs = dataChangeSpy.takeFirst();
     QCOMPARE(dataChangeArgs.at(0).value<QModelIndex>(), table.model()->index(0, 0));
     QCOMPARE(dataChangeArgs.at(1).value<QModelIndex>(), table.model()->index(0, 0));
-    QVERIFY(dataChangeArgs.at(2).value<QVector<int>>().isEmpty());
+    QVERIFY(dataChangeArgs.at(2).value<QList<int>>().isEmpty());
     QVERIFY(table.model()->clearItemData(table.model()->index(0, 0)));
     QCOMPARE(dataChangeSpy.size(), 0);
 }
 #endif
+
+void tst_QTableWidget::createPersistentOnLayoutAboutToBeChanged() // QTBUG-93466
+{
+    QTableWidget widget;
+    widget.model()->insertColumn(0);
+    QCOMPARE(widget.model()->columnCount(), 1);
+    widget.model()->insertRows(0, 3);
+    for (int row = 0; row < 3; ++row)
+        widget.model()->setData(widget.model()->index(row, 0), row);
+    QList<QPersistentModelIndex> idxList;
+    QSignalSpy layoutAboutToBeChangedSpy(widget.model(), &QAbstractItemModel::layoutAboutToBeChanged);
+    QSignalSpy layoutChangedSpy(widget.model(), &QAbstractItemModel::layoutChanged);
+    connect(widget.model(), &QAbstractItemModel::layoutAboutToBeChanged, this, [&idxList, &widget](){
+        idxList.clear();
+        for (int row = 0; row < 3; ++row)
+            idxList << QPersistentModelIndex(widget.model()->index(row, 0));
+    });
+    connect(widget.model(), &QAbstractItemModel::layoutChanged, this, [&idxList](){
+        QCOMPARE(idxList.size(), 3);
+        QCOMPARE(idxList.at(0).row(), 1);
+        QCOMPARE(idxList.at(0).column(), 0);
+        QCOMPARE(idxList.at(0).data().toInt(), 0);
+        QCOMPARE(idxList.at(1).row(), 0);
+        QCOMPARE(idxList.at(1).column(), 0);
+        QCOMPARE(idxList.at(1).data().toInt(), -1);
+        QCOMPARE(idxList.at(2).row(), 2);
+        QCOMPARE(idxList.at(2).column(), 0);
+        QCOMPARE(idxList.at(2).data().toInt(), 2);
+    });
+    widget.model()->setData(widget.model()->index(1, 0), -1);
+    widget.model()->sort(0);
+    QCOMPARE(layoutAboutToBeChangedSpy.size(), 1);
+    QCOMPARE(layoutChangedSpy.size(), 1);
+}
+
+void tst_QTableWidget::createPersistentOnLayoutAboutToBeChangedAutoSort() // QTBUG-93466
+{
+    QTableWidget widget;
+    widget.model()->insertColumn(0);
+    QCOMPARE(widget.model()->columnCount(), 1);
+    widget.model()->insertRows(0, 3);
+    for (int row = 0; row < 3; ++row)
+        widget.model()->setData(widget.model()->index(row, 0), row);
+    widget.sortByColumn(0, Qt::AscendingOrder);
+    widget.setSortingEnabled(true);
+    QList<QPersistentModelIndex> idxList;
+    QSignalSpy layoutAboutToBeChangedSpy(widget.model(), &QAbstractItemModel::layoutAboutToBeChanged);
+    QSignalSpy layoutChangedSpy(widget.model(), &QAbstractItemModel::layoutChanged);
+    connect(widget.model(), &QAbstractItemModel::layoutAboutToBeChanged, this, [&idxList, &widget](){
+        idxList.clear();
+        for (int row = 0; row < 3; ++row)
+            idxList << QPersistentModelIndex(widget.model()->index(row, 0));
+    });
+    connect(widget.model(), &QAbstractItemModel::layoutChanged, this, [&idxList](){
+        QCOMPARE(idxList.size(), 3);
+        QCOMPARE(idxList.at(0).row(), 1);
+        QCOMPARE(idxList.at(0).column(), 0);
+        QCOMPARE(idxList.at(0).data().toInt(), 0);
+        QCOMPARE(idxList.at(1).row(), 0);
+        QCOMPARE(idxList.at(1).column(), 0);
+        QCOMPARE(idxList.at(1).data().toInt(), -1);
+        QCOMPARE(idxList.at(2).row(), 2);
+        QCOMPARE(idxList.at(2).column(), 0);
+        QCOMPARE(idxList.at(2).data().toInt(), 2);
+    });
+    widget.model()->setData(widget.model()->index(1, 0), -1);
+    QCOMPARE(layoutAboutToBeChangedSpy.size(), 1);
+    QCOMPARE(layoutChangedSpy.size(), 1);
+}
+
+void tst_QTableWidget::moveRows_data()
+{
+    QTest::addColumn<int>("startRow");
+    QTest::addColumn<int>("count");
+    QTest::addColumn<int>("destination");
+    QTest::addColumn<QStringList>("expected");
+    QTest::newRow("1_Item_from_top_to_middle") << 0 << 1 << 3 << QStringList{"B", "C", "A", "D", "E", "F"};
+    QTest::newRow("1_Item_from_top_to_bottom") << 0 << 1 << 6 << QStringList{"B", "C", "D", "E", "F", "A"};
+    QTest::newRow("1_Item_from_middle_to_top") << 2 << 1 << 0 << QStringList{"C", "A", "B", "D", "E", "F"};
+    QTest::newRow("1_Item_from_bottom_to_middle") << 5 << 1 << 2 << QStringList{"A", "B", "F", "C", "D", "E"};
+    QTest::newRow("1_Item_from_bottom to_top") << 5 << 1 << 0 << QStringList{"F", "A", "B", "C", "D", "E"};
+    QTest::newRow("1_Item_from_middle_to_bottom") << 2 << 1 << 6 << QStringList{"A", "B", "D", "E", "F", "C"};
+    QTest::newRow("1_Item_from_middle_to_middle_before") << 2 << 1 << 1 << QStringList{"A", "C", "B", "D", "E", "F"};
+    QTest::newRow("1_Item_from_middle_to_middle_after") << 2 << 1 << 4 << QStringList{"A", "B", "D", "C", "E", "F"};
+
+    QTest::newRow("2_Items_from_top_to_middle") << 0 << 2 << 3 << QStringList{"C", "A", "B", "D", "E", "F"};
+    QTest::newRow("2_Items_from_top_to_bottom") << 0 << 2 << 6 << QStringList{"C", "D", "E", "F", "A", "B"};
+    QTest::newRow("2_Items_from_middle_to_top") << 2 << 2 << 0 << QStringList{"C", "D", "A", "B", "E", "F"};
+    QTest::newRow("2_Items_from_bottom_to_middle") << 4 << 2 << 2 << QStringList{"A", "B", "E", "F", "C", "D"};
+    QTest::newRow("2_Items_from_bottom_to_top") << 4 << 2 << 0 << QStringList{"E", "F", "A", "B", "C", "D"};
+    QTest::newRow("2_Items_from_middle_to_bottom") << 2 << 2 << 6 << QStringList{"A", "B", "E", "F", "C", "D"};
+    QTest::newRow("2_Items_from_middle_to_middle_before") << 3 << 2 << 1 << QStringList{"A", "D", "E", "B", "C", "F"};
+    QTest::newRow("2_Items_from_middle_to_middle_after") << 1 << 2 << 5 << QStringList{"A", "D", "E", "B", "C", "F"};
+}
+
+void tst_QTableWidget::moveRows()
+{
+    QFETCH(const int, startRow);
+    QFETCH(const int, count);
+    QFETCH(const int, destination);
+    QFETCH(const QStringList, expected);
+    QTableWidget baseWidget;
+    baseWidget.setRowCount(6);
+    baseWidget.setColumnCount(2);
+    for (int r = 0; r < 6; ++r) {
+        baseWidget.setItem(r, 0, new QTableWidgetItem(QString(QLatin1Char('A' + r)))); // "A", "B", "C", "D", "E", "F"
+        baseWidget.setItem(r, 1, new QTableWidgetItem(QString(QLatin1Char('a' + r)))); // "a", "b", "c", "d", "e", "f"
+    }
+    QAbstractItemModel *baseModel = baseWidget.model();
+    QSignalSpy rowMovedSpy(baseModel, &QAbstractItemModel::rowsMoved);
+    QSignalSpy rowAboutMovedSpy(baseModel, &QAbstractItemModel::rowsAboutToBeMoved);
+    QVERIFY(baseModel->moveRows(QModelIndex(), startRow, count, QModelIndex(), destination));
+    QCOMPARE(baseModel->rowCount(), expected.size());
+    for (int i = 0; i < expected.size(); ++i) {
+        QCOMPARE(baseModel->index(i, 0).data().toString(), expected.at(i));
+        QCOMPARE(baseModel->index(i, 1).data().toString(), expected.at(i).toLower());
+    }
+    QCOMPARE(rowMovedSpy.size(), 1);
+    QCOMPARE(rowAboutMovedSpy.size(), 1);
+    for (const QList<QVariant> &signalArgs : {rowMovedSpy.first(), rowAboutMovedSpy.first()}){
+        QVERIFY(!signalArgs.at(0).value<QModelIndex>().isValid());
+        QCOMPARE(signalArgs.at(1).toInt(), startRow);
+        QCOMPARE(signalArgs.at(2).toInt(), startRow + count - 1);
+        QVERIFY(!signalArgs.at(3).value<QModelIndex>().isValid());
+        QCOMPARE(signalArgs.at(4).toInt(), destination);
+    }
+}
+
+void tst_QTableWidget::moveRowsInvalid_data()
+{
+    QTest::addColumn<QTableWidget*>("baseWidget");
+    QTest::addColumn<QModelIndex>("startParent");
+    QTest::addColumn<int>("startRow");
+    QTest::addColumn<int>("count");
+    QTest::addColumn<QModelIndex>("destinationParent");
+    QTest::addColumn<int>("destination");
+
+    constexpr int rowCount = 6;
+    const auto createWidget = []() -> QTableWidget* {
+        QTableWidget* result = new QTableWidget;
+        result->setRowCount(rowCount);
+        result->setColumnCount(1);
+        int c = 0;
+        for (int r = 0; r < rowCount; ++r)
+            result->setItem(r, c, new QTableWidgetItem(QString(QLatin1Char('A' + r)))); // "A", "B", "C", "D", "E", "F"
+        return result;
+    };
+
+    QTest::addRow("destination_equal_source") << createWidget() << QModelIndex() << 0 << 1 << QModelIndex() << 0;
+    QTest::addRow("count_equal_0") << createWidget() << QModelIndex() << 0 << 0 << QModelIndex() << 2;
+    QTableWidget* tempWidget = createWidget();
+    QTest::addRow("move_child") << tempWidget << tempWidget->model()->index(0, 0) << 0 << 1 << QModelIndex() << 2;
+    tempWidget = createWidget();
+    QTest::addRow("move_to_child") << tempWidget << QModelIndex() << 0 << 1 << tempWidget->model()->index(0, 0) << 2;
+    QTest::addRow("negative_count") << createWidget() << QModelIndex() << 0 << -1 << QModelIndex() << 2;
+    QTest::addRow("negative_source_row") << createWidget() << QModelIndex() << -1 << 1 << QModelIndex() << 2;
+    QTest::addRow("negative_destination_row") << createWidget() << QModelIndex() << 0 << 1 << QModelIndex() << -1;
+    QTest::addRow("source_row_equal_rowCount") << createWidget() << QModelIndex() << rowCount << 1 << QModelIndex() << 1;
+    QTest::addRow("source_row_equal_destination_row") << createWidget() << QModelIndex() << 2 << 1 << QModelIndex() << 2;
+    QTest::addRow("source_row_equal_destination_row_plus1") << createWidget() << QModelIndex() << 2 << 1 << QModelIndex() << 3;
+    QTest::addRow("destination_row_greater_rowCount") << createWidget() << QModelIndex() << 0 << 1 << QModelIndex() << rowCount + 1;
+    QTest::addRow("move_row_within_source_range") << createWidget() << QModelIndex() << 0 << 3 << QModelIndex() << 2;
+}
+
+void tst_QTableWidget::moveRowsInvalid()
+{
+    QFETCH(QTableWidget* const, baseWidget);
+    QFETCH(const QModelIndex, startParent);
+    QFETCH(const int, startRow);
+    QFETCH(const int, count);
+    QFETCH(const QModelIndex, destinationParent);
+    QFETCH(const int, destination);
+    QAbstractItemModel *baseModel = baseWidget->model();
+    QSignalSpy rowMovedSpy(baseModel, &QAbstractItemModel::rowsMoved);
+    QSignalSpy rowAboutMovedSpy(baseModel, &QAbstractItemModel::rowsAboutToBeMoved);
+    QVERIFY(rowMovedSpy.isValid());
+    QVERIFY(rowAboutMovedSpy.isValid());
+    QVERIFY(!baseModel->moveRows(startParent, startRow, count, destinationParent, destination));
+    QCOMPARE(rowMovedSpy.size(), 0);
+    QCOMPARE(rowAboutMovedSpy.size(), 0);
+    delete baseWidget;
+}
 
 QTEST_MAIN(tst_QTableWidget)
 #include "tst_qtablewidget.moc"

@@ -1,44 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qcomposeplatforminputcontext.h"
 
 #include <QtCore/QCoreApplication>
+#include <QtCore/qvarlengtharray.h>
 #include <QtGui/QKeyEvent>
 #include <QtGui/QGuiApplication>
 
@@ -71,10 +36,16 @@ void QComposeInputContext::ensureInitialized()
     }
 
     m_initialized = true;
-    const char *locale = setlocale(LC_CTYPE, "");
-    if (!locale)
-        locale = setlocale(LC_CTYPE, nullptr);
-    qCDebug(lcXkbCompose) << "detected locale (LC_CTYPE):" << locale;
+    // Get locale from user env settings, see also
+    // https://xkbcommon.org/doc/current/group__compose.html#compose-locale
+    const char *locale = getenv("LC_ALL");
+    if (!locale || !*locale)
+        locale = getenv("LC_CTYPE");
+    if (!locale || !*locale)
+        locale = getenv("LANG");
+    if (!locale || !*locale)
+         locale = "C";
+    qCDebug(lcXkbCompose) << "detected locale:" << locale;
 
     m_composeTable = xkb_compose_table_new_from_locale(m_XkbContext, locale, XKB_COMPOSE_COMPILE_NO_FLAGS);
     if (m_composeTable)
@@ -137,8 +108,7 @@ bool QComposeInputContext::filterEvent(const QEvent *event)
     case XKB_COMPOSE_NOTHING:
         return false;
     default:
-        Q_UNREACHABLE();
-        return false;
+        Q_UNREACHABLE_RETURN(false);
     }
 }
 
@@ -164,3 +134,5 @@ void QComposeInputContext::update(Qt::InputMethodQueries q)
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qcomposeplatforminputcontext.cpp"

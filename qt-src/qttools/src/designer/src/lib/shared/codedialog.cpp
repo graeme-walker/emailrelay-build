@@ -1,51 +1,29 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "codedialog_p.h"
 #include "qdesigner_utils_p.h"
 #include "iconloader_p.h"
 
-#include <texteditfindwidget.h>
+#include <texteditfindwidget_p.h>
 
-#include <QtWidgets/qaction.h>
 #include <QtWidgets/qapplication.h>
 #if QT_CONFIG(clipboard)
 #include <QtGui/qclipboard.h>
 #endif
 #include <QtWidgets/qdialogbuttonbox.h>
 #include <QtWidgets/qfiledialog.h>
-#include <QtGui/qicon.h>
-#include <QtGui/qevent.h>
 #include <QtWidgets/qmessagebox.h>
 #include <QtWidgets/qpushbutton.h>
 #include <QtWidgets/qtextedit.h>
 #include <QtWidgets/qtoolbar.h>
 #include <QtWidgets/qboxlayout.h>
+
+#include <QtGui/qaction.h>
+#include <QtGui/qevent.h>
+#include <QtGui/qfontdatabase.h>
+#include <QtGui/qfontmetrics.h>
+#include <QtGui/qicon.h>
 
 #include <QtCore/qdebug.h>
 #include <QtCore/qdir.h>
@@ -53,6 +31,8 @@
 #include <QtCore/qtemporaryfile.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace qdesigner_internal {
 // ----------------- CodeDialogPrivate
@@ -76,18 +56,19 @@ CodeDialog::CodeDialog(QWidget *parent) :
     QDialog(parent),
     m_impl(new CodeDialogPrivate)
 {
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     QVBoxLayout *vBoxLayout = new QVBoxLayout;
 
     // Edit tool bar
     QToolBar *toolBar = new QToolBar;
 
-    const QIcon saveIcon = createIconSet(QStringLiteral("filesave.png"));
+    const QIcon saveIcon = createIconSet(QIcon::ThemeIcon::DocumentSave,
+                                         "filesave.png"_L1);
     QAction *saveAction = toolBar->addAction(saveIcon, tr("Save..."));
     connect(saveAction, &QAction::triggered, this, &CodeDialog::slotSaveAs);
 
 #if QT_CONFIG(clipboard)
-    const QIcon copyIcon = createIconSet(QStringLiteral("editcopy.png"));
+    const QIcon copyIcon = createIconSet(QIcon::ThemeIcon::EditCopy,
+                                         "editcopy.png"_L1);
     QAction *copyAction = toolBar->addAction(copyIcon, tr("Copy All"));
     connect(copyAction, &QAction::triggered, this, &CodeDialog::copyAll);
 #endif
@@ -98,8 +79,11 @@ CodeDialog::CodeDialog(QWidget *parent) :
 
     // Edit
     m_impl->m_textEdit->setReadOnly(true);
+    const auto font = QFontDatabase::systemFont(QFontDatabase::SystemFont::FixedFont);
+    const int editorWidth = QFontMetrics(font, this).averageCharWidth() * 100;
+    m_impl->m_textEdit->setFont(font);
     m_impl->m_textEdit->setMinimumSize(QSize(
-                m_impl->m_findWidget->minimumSize().width(),
+                qMax(editorWidth, m_impl->m_findWidget->minimumSize().width()),
                 500));
     vBoxLayout->addWidget(m_impl->m_textEdit);
 
@@ -161,11 +145,11 @@ bool CodeDialog::generateCode(const QDesignerFormWindowInterface *fw,
         tempPattern += QDir::separator();
     const QString fileName = fw->fileName();
     if (fileName.isEmpty()) {
-        tempPattern += QStringLiteral("designer");
+        tempPattern += "designer"_L1;
     } else {
         tempPattern += QFileInfo(fileName).baseName();
     }
-    tempPattern += QStringLiteral("XXXXXX.ui");
+    tempPattern += "XXXXXX.ui"_L1;
     // Write to temp file
     QTemporaryFile tempFormFile(tempPattern);
 
@@ -203,15 +187,15 @@ bool CodeDialog::showCodeDialog(const QDesignerFormWindowInterface *fw,
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->setCode(code);
     dialog->setFormFileName(fw->fileName());
-    QString languageName;
+    QLatin1StringView languageName;
     switch (language) {
     case UicLanguage::Cpp:
-        languageName = QLatin1String("C++");
-        dialog->setMimeType(QLatin1String("text/x-chdr"));
+        languageName = "C++"_L1;
+        dialog->setMimeType(u"text/x-chdr"_s);
         break;
     case UicLanguage::Python:
-        languageName = QLatin1String("Python");
-        dialog->setMimeType(QLatin1String("text/x-python"));
+        languageName = "Python"_L1;
+        dialog->setMimeType(u"text/x-python"_s);
         break;
     }
     dialog->setWindowTitle(tr("%1 - [%2 Code]").
@@ -235,8 +219,8 @@ void CodeDialog::slotSaveAs()
     if (!uiFile.isEmpty()) {
         QFileInfo uiFi(uiFile);
         fileDialog.setDirectory(uiFi.absolutePath());
-        fileDialog.selectFile(QLatin1String("ui_") + uiFi.baseName()
-                              + QLatin1Char('.') + suffix);
+        fileDialog.selectFile("ui_"_L1 + uiFi.baseName()
+                              + '.'_L1 + suffix);
     }
 
     while (true) {

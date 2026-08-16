@@ -582,7 +582,7 @@
     </message>
     <message>
         <source>Edit...</source>
-        <translation>Düzenle...</translation>
+        <translation>Düzen...</translation>
     </message>
     <message>
         <source>Show signals and slots inherited from QWidget</source>
@@ -641,8 +641,8 @@
         <translation>Yükseltilen Widget&apos;lar</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>This file cannot be read because the extra info extension failed to load.</source>
@@ -1075,7 +1075,7 @@
     </message>
     <message>
         <source>Edit</source>
-        <translation>Düzenle</translation>
+        <translation>Düzen</translation>
     </message>
     <message>
         <source>Tools</source>
@@ -1086,8 +1086,8 @@
         <translation>Form</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
 </context>
 <context>
@@ -1448,8 +1448,8 @@ Bu, arayüz dosyasında bir tutarsızlık olduğunu gösterir.</translation>
         <translation>CTRL+M</translation>
     </message>
     <message>
-        <source>Qt Designer &amp;Help</source>
-        <translation>Qt Designer &amp;Yardımı</translation>
+        <source>Qt Widgets Designer &amp;Help</source>
+        <translation>Qt Widgets Designer &amp;Yardımı</translation>
     </message>
     <message>
         <source>Current Widget Help</source>
@@ -1460,8 +1460,8 @@ Bu, arayüz dosyasında bir tutarsızlık olduğunu gösterir.</translation>
         <translation>Eklentiler Hakkında</translation>
     </message>
     <message>
-        <source>About Qt Designer</source>
-        <translation>Qt Designer Hakkında</translation>
+        <source>About Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer Hakkında</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -1510,8 +1510,8 @@ Dosya konumunu güncellemek veya yeni bir form oluşturmak istiyor musunuz?</tra
         <translation>Ye&amp;ni Form</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Save Form?</source>
@@ -1837,7 +1837,7 @@ Kapsayıcı sayfaları, yalnızca özel widget&apos;ın domXml() yöntemi taraf�
     </message>
     <message>
         <source>&amp;Edit</source>
-        <translation>&amp;Düzenle</translation>
+        <translation>&amp;Düzen</translation>
     </message>
     <message>
         <source>F&amp;orm</source>
@@ -3244,12 +3244,12 @@ Do you want overwrite the template?</source>
         <translation>&lt;h3&gt;%1&lt;/h3&gt;&lt;br/&gt;&lt;br/&gt;Sürüm %2</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
-        <source>&lt;br/&gt;Qt Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
-        <translation>&lt;br/&gt;Qt Designer, Qt uygulamaları için bir grafik kullanıcı arayüzü tasarımcısıdır.&lt;br/&gt;</translation>
+        <source>&lt;br/&gt;Qt Widgets Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
+        <translation>&lt;br/&gt;Qt Widgets Designer, Qt uygulamaları için bir grafik kullanıcı arayüzü tasarımcısıdır.&lt;br/&gt;</translation>
     </message>
     <message>
         <source>%1&lt;br/&gt;Copyright (C) %2 The Qt Company Ltd.</source>
@@ -4678,12 +4678,12 @@ Başka bir ad seçin lütfen.</translation>
         <translation>Başarısız Eklentiler</translation>
     </message>
     <message>
-        <source>Qt Designer couldn&apos;t find any plugins</source>
-        <translation>Qt Designer hiçbir eklenti bulamadı</translation>
+        <source>Qt Widgets Designer couldn&apos;t find any plugins</source>
+        <translation>Qt Widgets Designer hiçbir eklenti bulamadı</translation>
     </message>
     <message>
-        <source>Qt Designer found the following plugins</source>
-        <translation>Qt Designer aşağıdaki eklentileri buldu</translation>
+        <source>Qt Widgets Designer found the following plugins</source>
+        <translation>Qt Widgets Designer aşağıdaki eklentileri buldu</translation>
     </message>
     <message>
         <source>New custom widget plugins have been found.</source>

@@ -1,53 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qiosglobal.h"
 #import "qiosviewcontroller.h"
 
 #include <QtCore/qscopedvaluerollback.h>
 #include <QtCore/private/qcore_mac_p.h>
+#include <QtGui/private/qapplekeymapper_p.h>
 
 #include <QtGui/QGuiApplication>
 #include <QtGui/QWindow>
 #include <QtGui/QScreen>
 
 #include <QtGui/private/qwindow_p.h>
+#include <QtGui/private/qguiapplication_p.h>
 
 #include "qiosintegration.h"
 #include "qiosscreen.h"
@@ -55,9 +21,12 @@
 #include "qioswindow.h"
 #include "quiview.h"
 
+#include <QtCore/qpointer.h>
+
 // -------------------------------------------------------------------------
 
 @interface QIOSViewController ()
+@property (nonatomic, assign) UIWindow *window;
 @property (nonatomic, assign) QPointer<QT_PREPEND_NAMESPACE(QIOSScreen)> platformScreen;
 @property (nonatomic, assign) BOOL changingOrientation;
 @end
@@ -122,34 +91,41 @@
 {
     Q_UNUSED(subview);
 
-    QT_PREPEND_NAMESPACE(QIOSScreen) *screen = self.qtViewController.platformScreen;
-
-    // The 'window' property of our view is not valid until the window
-    // has been shown, so we have to access it through the QIOSScreen.
-    UIWindow *uiWindow = screen->uiWindow();
+    // Track UIWindow via explicit property on QIOSViewController,
+    // as the window property of our own view is not valid until
+    // the window has been shown (below).
+    UIWindow *uiWindow = self.qtViewController.window;
 
     if (uiWindow.hidden) {
-        // Associate UIWindow to screen and show it the first time a QWindow
-        // is mapped to the screen. For external screens this means disabling
-        // mirroring mode and presenting alternate content on the screen.
-        uiWindow.screen = screen->uiScreen();
+        // Show the UIWindow the first time a QWindow is mapped to the screen.
+        // For the main screen this hides the launch screen, while for external
+        // screens this disables mirroring of the main screen, so the external
+        // screen can be used for alternate content.
         uiWindow.hidden = NO;
     }
 }
 
+#if !defined(Q_OS_VISIONOS)
 - (void)willRemoveSubview:(UIView *)subview
 {
     Q_UNUSED(subview);
 
-    Q_ASSERT(self.window);
     UIWindow *uiWindow = self.window;
+    // uiWindow can be null when closing from the ios "app manager" and the app is
+    // showing a native window like UIDocumentBrowserViewController
+    if (!uiWindow)
+        return;
 
     if (uiWindow.screen != [UIScreen mainScreen] && self.subviews.count == 1) {
-        // Removing the last view of an external screen, go back to mirror mode
-        uiWindow.screen = [UIScreen mainScreen];
-        uiWindow.hidden = YES;
+        // We're about to remove the last view of an external screen, so go back
+        // to mirror mode, but defer it until after the view has been removed,
+        // to ensure that we don't try to layout the view that's being removed.
+        dispatch_async(dispatch_get_main_queue(), ^{
+            uiWindow.hidden = YES;
+        });
     }
 }
+#endif
 
 - (void)layoutSubviews
 {
@@ -235,7 +211,7 @@
 {
     // The initial frame computed during startup may happen before the view has
     // a window, meaning our calculations above will be wrong. We ensure that the
-    // frame is set correctly once we have a window to base our calulations on.
+    // frame is set correctly once we have a window to base our calculations on.
     [self setFrame:self.window.bounds];
 }
 
@@ -246,6 +222,7 @@
 @implementation QIOSViewController {
     BOOL m_updatingProperties;
     QMetaObject::Connection m_focusWindowChangeConnection;
+    QMetaObject::Connection m_appStateChangedConnection;
 }
 
 #ifndef Q_OS_TVOS
@@ -254,15 +231,14 @@
 @synthesize preferredStatusBarStyle;
 #endif
 
-- (instancetype)initWithQIOSScreen:(QT_PREPEND_NAMESPACE(QIOSScreen) *)screen
+- (instancetype)initWithWindow:(UIWindow*)window andScreen:(QT_PREPEND_NAMESPACE(QIOSScreen) *)screen
 {
     if (self = [self init]) {
+        self.window = window;
         self.platformScreen = screen;
 
         self.changingOrientation = NO;
 #ifndef Q_OS_TVOS
-        self.lockedOrientation = UIInterfaceOrientationUnknown;
-
         // Status bar may be initially hidden at startup through Info.plist
         self.prefersStatusBarHidden = infoPlistValue(@"UIStatusBarHidden", false);
         self.preferredStatusBarUpdateAnimation = UIStatusBarAnimationNone;
@@ -274,7 +250,7 @@
         });
 
         QIOSApplicationState *applicationState = &QIOSIntegration::instance()->applicationState;
-        QObject::connect(applicationState, &QIOSApplicationState::applicationStateDidChange,
+        m_appStateChangedConnection = QObject::connect(applicationState, &QIOSApplicationState::applicationStateDidChange,
             [self](Qt::ApplicationState oldState, Qt::ApplicationState newState) {
                 if (oldState == Qt::ApplicationSuspended && newState != Qt::ApplicationSuspended) {
                     // We may have ignored an earlier layout because the application was suspended,
@@ -294,6 +270,7 @@
 - (void)dealloc
 {
     QObject::disconnect(m_focusWindowChangeConnection);
+    QObject::disconnect(m_appStateChangedConnection);
     [super dealloc];
 }
 
@@ -308,7 +285,7 @@
 
     Q_ASSERT(!qt_apple_isApplicationExtension());
 
-#ifndef Q_OS_TVOS
+#if !defined(Q_OS_TVOS) && !defined(Q_OS_VISIONOS)
     NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
     [center addObserver:self selector:@selector(willChangeStatusBarFrame:)
             name:UIApplicationWillChangeStatusBarFrameNotification
@@ -318,6 +295,15 @@
             name:UIApplicationDidChangeStatusBarOrientationNotification
             object:qt_apple_sharedApplication()];
 #endif
+
+    // Make sure any top level windows that have already been created
+    // for this screen are reparented into our desktop manager view.
+    for (auto *window : qGuiApp->topLevelWindows()) {
+        if (window->screen()->handle() != self.platformScreen)
+            continue;
+        if (auto *platformWindow = window->handle())
+            platformWindow->setParent(nullptr);
+    }
 }
 
 - (void)viewDidUnload
@@ -327,26 +313,6 @@
 }
 
 // -------------------------------------------------------------------------
-
-- (BOOL)shouldAutorotate
-{
-#ifndef Q_OS_TVOS
-    return self.platformScreen && self.platformScreen->uiScreen() == [UIScreen mainScreen] && !self.lockedOrientation;
-#else
-    return NO;
-#endif
-}
-
-- (NSUInteger)supportedInterfaceOrientations
-{
-    // As documented by Apple in the iOS 6.0 release notes, setStatusBarOrientation:animated:
-    // only works if the supportedInterfaceOrientations of the view controller is 0, making
-    // us responsible for ensuring that the status bar orientation is consistent. We enter
-    // this mode when auto-rotation is disabled due to an explicit content orientation being
-    // set on the focus window. Note that this is counter to what the documentation for
-    // supportedInterfaceOrientations says, which states that the method should not return 0.
-    return [self shouldAutorotate] ? UIInterfaceOrientationMaskAll : 0;
-}
 
 - (void)willRotateToInterfaceOrientation:(UIInterfaceOrientation)orientation duration:(NSTimeInterval)duration
 {
@@ -362,6 +328,7 @@
     [super didRotateFromInterfaceOrientation:orientation];
 }
 
+#if !defined(Q_OS_VISIONOS)
 - (void)willChangeStatusBarFrame:(NSNotification*)notification
 {
     Q_UNUSED(notification);
@@ -405,6 +372,7 @@
 
     [self.view setNeedsLayout];
 }
+#endif
 
 - (void)viewWillLayoutSubviews
 {
@@ -425,15 +393,17 @@
     if (!self.platformScreen || !self.platformScreen->screen())
         return;
 
+#if !defined(Q_OS_VISIONOS)
     // For now we only care about the main screen, as both the statusbar
     // visibility and orientation is only appropriate for the main screen.
     if (self.platformScreen->uiScreen() != [UIScreen mainScreen])
         return;
+#endif
 
     // Prevent recursion caused by updating the status bar appearance (position
     // or visibility), which in turn may cause a layout of our subviews, and
     // a reset of window-states, which themselves affect the view controller
-    // properties such as the statusbar visibilty.
+    // properties such as the statusbar visibility.
     if (m_updatingProperties)
         return;
 
@@ -455,7 +425,7 @@
     // All decisions are based on the top level window
     focusWindow = qt_window_private(focusWindow)->topLevelWindow();
 
-#ifndef Q_OS_TVOS
+#if !defined(Q_OS_TVOS) && !defined(Q_OS_VISIONOS)
 
     // -------------- Status bar style and visbility ---------------
 
@@ -475,53 +445,39 @@
         [self setNeedsStatusBarAppearanceUpdate];
         [self.view setNeedsLayout];
     }
-
-
-    // -------------- Content orientation ---------------
-
-    UIApplication *uiApplication = qt_apple_sharedApplication();
-
-    static BOOL kAnimateContentOrientationChanges = YES;
-
-    Qt::ScreenOrientation contentOrientation = focusWindow->contentOrientation();
-    if (contentOrientation != Qt::PrimaryOrientation) {
-        // An explicit content orientation has been reported for the focus window,
-        // so we keep the status bar in sync with content orientation. This will ensure
-        // that the task bar (and associated gestures) are also rotated accordingly.
-
-        if (!self.lockedOrientation) {
-            // We are moving from Qt::PrimaryOrientation to an explicit orientation,
-            // so we need to store the current statusbar orientation, as we need it
-            // later when mapping screen coordinates for QScreen and for returning
-            // to Qt::PrimaryOrientation.
-            self.lockedOrientation = uiApplication.statusBarOrientation;
-        }
-
-        [uiApplication setStatusBarOrientation:
-            UIInterfaceOrientation(fromQtScreenOrientation(contentOrientation))
-            animated:kAnimateContentOrientationChanges];
-
-    } else {
-        // The content orientation is set to Qt::PrimaryOrientation, meaning
-        // that auto-rotation should be enabled. But we may be coming out of
-        // a state of locked orientation, which needs some cleanup before we
-        // can enable auto-rotation again.
-        if (self.lockedOrientation) {
-            // First we need to restore the statusbar to what it was at the
-            // time of locking the orientation, otherwise iOS will be very
-            // confused when it starts doing auto-rotation again.
-            [uiApplication setStatusBarOrientation:self.lockedOrientation
-                animated:kAnimateContentOrientationChanges];
-
-            // Then we can re-enable auto-rotation
-            self.lockedOrientation = UIInterfaceOrientationUnknown;
-
-            // And finally let iOS rotate the root view to match the device orientation
-            [UIViewController attemptRotationToDeviceOrientation];
-        }
-    }
 #endif
 }
+
+- (NSArray*)keyCommands
+{
+    // FIXME: If we are on iOS 13.4 or later we can use UIKey instead of doing this
+    // So it should be safe to remove this entire function and handleShortcut() as
+    // a result
+    NSMutableArray<UIKeyCommand *> *keyCommands = nil;
+    QShortcutMap &shortcutMap = QGuiApplicationPrivate::instance()->shortcutMap;
+    keyCommands = [[NSMutableArray<UIKeyCommand *> alloc] init];
+    const QList<QKeySequence> keys = shortcutMap.keySequences();
+    for (const QKeySequence &seq : keys) {
+        const QString keyString = seq.toString();
+        [keyCommands addObject:[UIKeyCommand
+            keyCommandWithInput:QString(keyString[keyString.length() - 1]).toNSString()
+            modifierFlags:QAppleKeyMapper::toUIKitModifiers(seq[0].keyboardModifiers())
+            action:@selector(handleShortcut:)]];
+    }
+    return keyCommands;
+}
+
+- (void)handleShortcut:(UIKeyCommand *)keyCommand
+{
+    const QString str = QString::fromNSString([keyCommand input]);
+    Qt::KeyboardModifiers qtMods = QAppleKeyMapper::fromUIKitModifiers(keyCommand.modifierFlags);
+    QChar ch = str.isEmpty() ? QChar() : str.at(0);
+    QShortcutMap &shortcutMap = QGuiApplicationPrivate::instance()->shortcutMap;
+    QKeyEvent keyEvent(QEvent::ShortcutOverride, Qt::Key(ch.toUpper().unicode()), qtMods, str);
+    shortcutMap.tryShortcut(&keyEvent);
+}
+
+
 
 @end
 

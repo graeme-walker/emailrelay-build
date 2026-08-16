@@ -1,32 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+
+#include <QTest>
+#include <QAbstractItemModelTester>
 #include <QtGui/QtGui>
 #include <QtWidgets/QtWidgets>
 
@@ -40,6 +18,7 @@ private slots:
     void stringListModel();
     void treeWidgetModel();
     void standardItemModel();
+    void standardItemModelZeroColumns();
     void testInsertThroughProxy();
     void moveSourceItems();
     void testResetThroughProxy();
@@ -77,6 +56,7 @@ void tst_QAbstractItemModelTester::treeWidgetModel()
         new QTreeWidgetItem(root, QStringList(QString::number(i)));
     QTreeWidgetItem *remove = root->child(2);
     root->removeChild(remove);
+    delete remove;
     QTreeWidgetItem *parent = new QTreeWidgetItem(&widget, QStringList("parent"));
     new QTreeWidgetItem(parent, QStringList("child"));
     parent->setHidden(true);
@@ -102,6 +82,22 @@ void tst_QAbstractItemModelTester::standardItemModel()
 
     model.insertRows(0, 5, model.index(1, 1));
     model.insertColumns(0, 5, model.index(1, 3));
+}
+
+void tst_QAbstractItemModelTester::standardItemModelZeroColumns()
+{
+    QStandardItemModel model;
+    QAbstractItemModelTester t1(&model);
+    // QTBUG-92220
+    model.insertRows(0, 5);
+    model.removeRows(0, 5);
+    // QTBUG-92886
+    model.insertRows(0, 5);
+    model.removeRows(1, 2);
+
+    const QModelIndex parentIndex = model.index(0, 0);
+    model.insertRows(0, 5, parentIndex);
+    model.removeRows(1, 2, parentIndex);
 }
 
 void tst_QAbstractItemModelTester::testInsertThroughProxy()
@@ -143,35 +139,32 @@ class AccessibleProxyModel : public QSortFilterProxyModel
 {
     Q_OBJECT
 public:
-    AccessibleProxyModel(QObject *parent = 0) : QSortFilterProxyModel(parent)
-    {
-    }
-
-    QModelIndexList persistent()
-    {
-        return persistentIndexList();
-    }
+    using QSortFilterProxyModel::QSortFilterProxyModel;
+    using QSortFilterProxyModel::persistentIndexList;
 };
 
 class ObservingObject : public QObject
 {
     Q_OBJECT
 public:
-    ObservingObject(AccessibleProxyModel *proxy, QObject *parent = 0) :
+    ObservingObject(AccessibleProxyModel *proxy, QObject *parent = nullptr) :
         QObject(parent),
         m_proxy(proxy),
         storePersistentFailureCount(0),
         checkPersistentFailureCount(0)
     {
-        connect(m_proxy, SIGNAL(rowsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)),
-                SLOT(storePersistent()));
-        connect(m_proxy, SIGNAL(rowsMoved(QModelIndex,int,int,QModelIndex,int)),
-                SLOT(checkPersistent()));
+        // moveRows signals can not come through because the proxy might sort/filter
+        // out some of the moved rows. therefore layoutChanged signals are sent from
+        // the QSFPM and we have to listen to them here to get properly notified
+        connect(m_proxy, &QAbstractProxyModel::layoutAboutToBeChanged, this,
+                &ObservingObject::storePersistent);
+        connect(m_proxy, &QAbstractProxyModel::layoutChanged, this,
+                &ObservingObject::checkPersistent);
     }
 
 public slots:
 
-    void storePersistent(const QModelIndex &parent)
+    void storePersistentRecursive(const QModelIndex &parent)
     {
         for (int row = 0; row < m_proxy->rowCount(parent); ++row) {
             QModelIndex proxyIndex = m_proxy->index(row, 0, parent);
@@ -187,26 +180,27 @@ public slots:
             m_persistentSourceIndexes.append(sourceIndex);
             m_persistentProxyIndexes.append(proxyIndex);
             if (m_proxy->hasChildren(proxyIndex))
-                storePersistent(proxyIndex);
+                storePersistentRecursive(proxyIndex);
         }
     }
 
-    void storePersistent()
+    void storePersistent(const QList<QPersistentModelIndex> &parents = {})
     {
-        // This method is called from rowsAboutToBeMoved. Persistent indexes should be valid
+        // This method is called from source model rowsAboutToBeMoved. Persistent indexes should be valid
         foreach (const QModelIndex &idx, m_persistentProxyIndexes)
             if (!idx.isValid()) {
                 qWarning("%s: persistentProxyIndexes contains invalid index", Q_FUNC_INFO);
                 ++storePersistentFailureCount;
             }
-
-        if (!m_proxy->persistent().isEmpty()) {
-            qWarning("%s: proxy should have no persistent indexes when storePersistent called",
+        const auto validCount = std::count_if(parents.begin(), parents.end(),
+                                              [](const auto &idx) { return idx.isValid(); });
+        if (m_proxy->persistentIndexList().size() != validCount) {
+            qWarning("%s: proxy should have no additional persistent indexes when storePersistent called",
                      Q_FUNC_INFO);
             ++storePersistentFailureCount;
         }
-        storePersistent(QModelIndex());
-        if (m_proxy->persistent().isEmpty()) {
+        storePersistentRecursive(QModelIndex());
+        if (m_proxy->persistentIndexList().isEmpty()) {
             qWarning("%s: proxy should have persistent index after storePersistent called",
                      Q_FUNC_INFO);
             ++storePersistentFailureCount;
@@ -215,6 +209,9 @@ public slots:
 
     void checkPersistent()
     {
+        QVERIFY(!m_persistentProxyIndexes.isEmpty());
+        QVERIFY(!m_persistentSourceIndexes.isEmpty());
+
         for (int row = 0; row < m_persistentProxyIndexes.size(); ++row) {
             m_persistentProxyIndexes.at(row);
             m_persistentSourceIndexes.at(row);

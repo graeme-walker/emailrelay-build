@@ -1,0 +1,9 @@
+[scrollUpdate]
+android
+b2qt
+[wheelEventPropagation]
+android
+[forwardTouchEvent]
+android
+[touchEventPropagation]
+android

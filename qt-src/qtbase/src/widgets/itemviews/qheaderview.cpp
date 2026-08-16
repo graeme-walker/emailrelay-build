@@ -1,63 +1,30 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qheaderview.h"
 
+#include <qabstractitemdelegate.h>
+#include <qapplication.h>
 #include <qbitarray.h>
 #include <qbrush.h>
 #include <qdebug.h>
 #include <qevent.h>
+#include <qlist.h>
 #include <qpainter.h>
 #include <qscrollbar.h>
+#include <qstyle.h>
+#include <qstyleoption.h>
+#if QT_CONFIG(tooltip)
 #include <qtooltip.h>
+#endif
+#include <qvarlengtharray.h>
+#include <qvariant.h>
 #if QT_CONFIG(whatsthis)
 #include <qwhatsthis.h>
 #endif
-#include <qstyle.h>
-#include <qstyleoption.h>
-#include <qvector.h>
-#include <qapplication.h>
-#include <qvarlengtharray.h>
-#include <qabstractitemdelegate.h>
-#include <qvariant.h>
 #include <private/qheaderview_p.h>
 #include <private/qabstractitemmodel_p.h>
+#include <private/qabstractitemdelegate_p.h>
 
 #ifndef QT_NO_DATASTREAM
 #include <qdatastream.h>
@@ -328,6 +295,8 @@ QHeaderView::QHeaderView(QHeaderViewPrivate &dd,
 
 QHeaderView::~QHeaderView()
 {
+    Q_D(QHeaderView);
+    d->disconnectModel();
 }
 
 /*!
@@ -355,68 +324,35 @@ void QHeaderView::setModel(QAbstractItemModel *model)
         return;
     Q_D(QHeaderView);
     d->layoutChangePersistentSections.clear();
-    if (d->model && d->model != QAbstractItemModelPrivate::staticEmptyModel()) {
-        if (d->orientation == Qt::Horizontal) {
-            QObject::disconnect(d->model, SIGNAL(columnsInserted(QModelIndex,int,int)),
-                                this, SLOT(sectionsInserted(QModelIndex,int,int)));
-            QObject::disconnect(d->model, SIGNAL(columnsAboutToBeRemoved(QModelIndex,int,int)),
-                                this, SLOT(sectionsAboutToBeRemoved(QModelIndex,int,int)));
-            QObject::disconnect(d->model, SIGNAL(columnsRemoved(QModelIndex,int,int)),
-                                this, SLOT(_q_sectionsRemoved(QModelIndex,int,int)));
-            QObject::disconnect(d->model, SIGNAL(columnsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)),
-                                this, SLOT(_q_sectionsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)));
-            QObject::disconnect(d->model, SIGNAL(columnsMoved(QModelIndex,int,int,QModelIndex,int)),
-                                this, SLOT(_q_sectionsMoved(QModelIndex,int,int,QModelIndex,int)));
-        } else {
-            QObject::disconnect(d->model, SIGNAL(rowsInserted(QModelIndex,int,int)),
-                                this, SLOT(sectionsInserted(QModelIndex,int,int)));
-            QObject::disconnect(d->model, SIGNAL(rowsAboutToBeRemoved(QModelIndex,int,int)),
-                                this, SLOT(sectionsAboutToBeRemoved(QModelIndex,int,int)));
-            QObject::disconnect(d->model, SIGNAL(rowsRemoved(QModelIndex,int,int)),
-                                this, SLOT(_q_sectionsRemoved(QModelIndex,int,int)));
-            QObject::disconnect(d->model, SIGNAL(rowsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)),
-                                this, SLOT(_q_sectionsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)));
-            QObject::disconnect(d->model, SIGNAL(rowsMoved(QModelIndex,int,int,QModelIndex,int)),
-                                this, SLOT(_q_sectionsMoved(QModelIndex,int,int,QModelIndex,int)));
-        }
-        QObject::disconnect(d->model, SIGNAL(headerDataChanged(Qt::Orientation,int,int)),
-                            this, SLOT(headerDataChanged(Qt::Orientation,int,int)));
-        QObject::disconnect(d->model, SIGNAL(layoutAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
-                            this, SLOT(_q_sectionsAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)));
-        QObject::disconnect(d->model, SIGNAL(layoutChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
-                            this, SLOT(_q_sectionsChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)));
-    }
+    if (d->model && d->model != QAbstractItemModelPrivate::staticEmptyModel())
+        d->disconnectModel();
 
     if (model && model != QAbstractItemModelPrivate::staticEmptyModel()) {
-        if (d->orientation == Qt::Horizontal) {
-            QObject::connect(model, SIGNAL(columnsInserted(QModelIndex,int,int)),
-                             this, SLOT(sectionsInserted(QModelIndex,int,int)));
-            QObject::connect(model, SIGNAL(columnsAboutToBeRemoved(QModelIndex,int,int)),
-                             this, SLOT(sectionsAboutToBeRemoved(QModelIndex,int,int)));
-            QObject::connect(model, SIGNAL(columnsRemoved(QModelIndex,int,int)),
-                             this, SLOT(_q_sectionsRemoved(QModelIndex,int,int)));
-            QObject::connect(model, SIGNAL(columnsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)),
-                             this, SLOT(_q_sectionsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)));
-            QObject::connect(model, SIGNAL(columnsMoved(QModelIndex,int,int,QModelIndex,int)),
-                             this, SLOT(_q_sectionsMoved(QModelIndex,int,int,QModelIndex,int)));
-        } else {
-            QObject::connect(model, SIGNAL(rowsInserted(QModelIndex,int,int)),
-                             this, SLOT(sectionsInserted(QModelIndex,int,int)));
-            QObject::connect(model, SIGNAL(rowsAboutToBeRemoved(QModelIndex,int,int)),
-                             this, SLOT(sectionsAboutToBeRemoved(QModelIndex,int,int)));
-            QObject::connect(model, SIGNAL(rowsRemoved(QModelIndex,int,int)),
-                             this, SLOT(_q_sectionsRemoved(QModelIndex,int,int)));
-            QObject::connect(model, SIGNAL(rowsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)),
-                             this, SLOT(_q_sectionsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)));
-            QObject::connect(model, SIGNAL(rowsMoved(QModelIndex,int,int,QModelIndex,int)),
-                             this, SLOT(_q_sectionsMoved(QModelIndex,int,int,QModelIndex,int)));
-        }
-        QObject::connect(model, SIGNAL(headerDataChanged(Qt::Orientation,int,int)),
-                         this, SLOT(headerDataChanged(Qt::Orientation,int,int)));
-        QObject::connect(model, SIGNAL(layoutAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
-                         this, SLOT(_q_sectionsAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)));
-        QObject::connect(model, SIGNAL(layoutChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
-                         this, SLOT(_q_sectionsChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)));
+        const bool hor = d->orientation == Qt::Horizontal;
+        d->modelConnections = {
+            QObject::connect(model, hor ? &QAbstractItemModel::columnsInserted
+                                        : &QAbstractItemModel::rowsInserted,
+                             this, &QHeaderView::sectionsInserted),
+            QObject::connect(model, hor ? &QAbstractItemModel::columnsAboutToBeRemoved
+                                        : &QAbstractItemModel::rowsAboutToBeRemoved,
+                             this, &QHeaderView::sectionsAboutToBeRemoved),
+            QObjectPrivate::connect(model, hor ? &QAbstractItemModel::columnsRemoved
+                                               : &QAbstractItemModel::rowsRemoved,
+                                    d, &QHeaderViewPrivate::sectionsRemoved),
+            QObjectPrivate::connect(model, hor ? &QAbstractItemModel::columnsAboutToBeMoved
+                                               : &QAbstractItemModel::rowsAboutToBeMoved,
+                                    d, &QHeaderViewPrivate::sectionsAboutToBeMoved),
+            QObjectPrivate::connect(model, hor ? &QAbstractItemModel::columnsMoved
+                                               : &QAbstractItemModel::rowsMoved,
+                                    d, &QHeaderViewPrivate::sectionsMoved),
+
+            QObject::connect(model, &QAbstractItemModel::headerDataChanged,
+                             this, &QHeaderView::headerDataChanged),
+            QObjectPrivate::connect(model, &QAbstractItemModel::layoutAboutToBeChanged,
+                                    d, &QHeaderViewPrivate::sectionsAboutToBeChanged),
+            QObjectPrivate::connect(model, &QAbstractItemModel::layoutChanged,
+                                    d, &QHeaderViewPrivate::sectionsChanged)
+        };
     }
 
     d->state = QHeaderViewPrivate::NoClear;
@@ -451,7 +387,7 @@ Qt::Orientation QHeaderView::orientation() const
 int QHeaderView::offset() const
 {
     Q_D(const QHeaderView);
-    return d->offset;
+    return d->headerOffset;
 }
 
 /*!
@@ -465,10 +401,10 @@ int QHeaderView::offset() const
 void QHeaderView::setOffset(int newOffset)
 {
     Q_D(QHeaderView);
-    if (d->offset == (int)newOffset)
+    if (d->headerOffset == newOffset)
         return;
-    int ndelta = d->offset - newOffset;
-    d->offset = newOffset;
+    int ndelta = d->headerOffset - newOffset;
+    d->headerOffset = newOffset;
     if (d->orientation == Qt::Horizontal)
         d->viewport->scroll(isRightToLeft() ? -ndelta : ndelta, 0);
     else
@@ -624,7 +560,7 @@ int QHeaderView::visualIndexAt(int position) const
 
     if (d->reverse())
         vposition = d->viewport->width() - vposition - 1;
-    vposition += d->offset;
+    vposition += d->headerOffset;
 
     if (vposition > d->length)
         return -1;
@@ -714,7 +650,7 @@ int QHeaderView::sectionViewportPosition(int logicalIndex) const
     int position = sectionPosition(logicalIndex);
     if (position < 0)
         return position; // the section was hidden
-    int offsetPosition = position - d->offset;
+    int offsetPosition = position - d->headerOffset;
     if (d->reverse())
         return d->viewport->width() - (offsetPosition + sectionSize(logicalIndex));
     return offsetPosition;
@@ -1013,7 +949,7 @@ bool QHeaderView::isSectionHidden(int logicalIndex) const
 int QHeaderView::hiddenSectionCount() const
 {
     Q_D(const QHeaderView);
-    return d->hiddenSectionSize.count();
+    return d->hiddenSectionSize.size();
 }
 
 /*!
@@ -1094,7 +1030,7 @@ int QHeaderView::visualIndex(int logicalIndex) const
     if (d->visualIndices.isEmpty()) { // nothing has been moved, so we have no mapping
         if (logicalIndex < d->sectionCount())
             return logicalIndex;
-    } else if (logicalIndex < d->visualIndices.count()) {
+    } else if (logicalIndex < d->visualIndices.size()) {
         int visual = d->visualIndices.at(logicalIndex);
         Q_ASSERT(visual < d->sectionCount());
         return visual;
@@ -1120,19 +1056,22 @@ int QHeaderView::logicalIndex(int visualIndex) const
 }
 
 /*!
-    \since 5.0
+    \property QHeaderView::sectionsMovable
 
-    If \a movable is true, the header sections may be moved by the user;
+    If \a sectionsMovable is true, the header sections may be moved by the user;
     otherwise they are fixed in place.
 
     When used in combination with QTreeView, the first column is not
     movable (since it contains the tree structure), by default.
     You can make it movable with setFirstSectionMovable(true).
 
-    \sa sectionsMovable(), sectionMoved()
+    \sa sectionMoved()
     \sa setFirstSectionMovable()
 */
 
+/*!
+    Sets \l sectionsMovable to \a movable.
+ */
 void QHeaderView::setSectionsMovable(bool movable)
 {
     Q_D(QHeaderView);
@@ -1140,17 +1079,8 @@ void QHeaderView::setSectionsMovable(bool movable)
 }
 
 /*!
-    \since 5.0
-
-    Returns \c true if the header can be moved by the user; otherwise returns
-    false.
-
-    By default, sections are movable in QTreeView (except for the first one),
-    and not movable in QTableView.
-
-    \sa setSectionsMovable()
+    Returns \l sectionsMovable.
 */
-
 bool QHeaderView::sectionsMovable() const
 {
     Q_D(const QHeaderView);
@@ -1169,6 +1099,11 @@ bool QHeaderView::sectionsMovable() const
     without a tree structure, by calling this method.
     In such a scenario, it is recommended to call QTreeView::setRootIsDecorated(false)
     as well.
+
+    \code
+    treeView->setRootIsDecorated(false);
+    treeView->header()->setFirstSectionMovable(true);
+    \endcode
 
     Setting it to true has no effect unless setSectionsMovable(true) is called
     as well.
@@ -1189,14 +1124,17 @@ bool QHeaderView::isFirstSectionMovable() const
 }
 
 /*!
-    \since 5.0
+    \property QHeaderView::sectionsClickable
 
-    If \a clickable is true, the header will respond to single clicks.
+    Holds \c true if the header is clickable; otherwise \c false. A
+    clickable header could be set up to allow the user to change the
+    representation of the data in the view related to the header.
 
-    \sa sectionsClickable(), sectionClicked(), sectionPressed(),
-    setSortIndicatorShown()
+    \sa sectionPressed(), setSortIndicatorShown()
 */
-
+/*!
+    Set \l sectionsClickable to \a clickable.
+*/
 void QHeaderView::setSectionsClickable(bool clickable)
 {
     Q_D(QHeaderView);
@@ -1204,15 +1142,8 @@ void QHeaderView::setSectionsClickable(bool clickable)
 }
 
 /*!
-    \since 5.0
-
-    Returns \c true if the header is clickable; otherwise returns \c false. A
-    clickable header could be set up to allow the user to change the
-    representation of the data in the view related to the header.
-
-    \sa setSectionsClickable()
+    Returns \l sectionsClickable.
 */
-
 bool QHeaderView::sectionsClickable() const
 {
     Q_D(const QHeaderView);
@@ -1465,6 +1396,41 @@ Qt::SortOrder QHeaderView::sortIndicatorOrder() const
 }
 
 /*!
+    \property QHeaderView::sortIndicatorClearable
+    \brief Whether the sort indicator can be cleared by clicking on a section multiple times
+    \since 6.1
+
+    This property controls whether the user is able to remove the
+    sorting indicator on a given section by clicking on the section
+    multiple times. Normally, clicking on a section will simply change
+    the sorting order for that section. By setting this property to
+    true, the sorting indicator will be cleared after alternating to
+    ascending and descending; this will typically restore the original
+    sorting of a model.
+
+    Setting this property to true has no effect unless
+    sectionsClickable() is also true (which is the default for certain
+    views, for instance QTableView, or is automatically set when making
+    a view sortable, for instance by calling
+    QTreeView::setSortingEnabled).
+*/
+
+void QHeaderView::setSortIndicatorClearable(bool clearable)
+{
+    Q_D(QHeaderView);
+    if (d->sortIndicatorClearable == clearable)
+        return;
+    d->sortIndicatorClearable = clearable;
+    emit sortIndicatorClearableChanged(clearable);
+}
+
+bool QHeaderView::isSortIndicatorClearable() const
+{
+    Q_D(const QHeaderView);
+    return d->sortIndicatorClearable;
+}
+
+/*!
     \property QHeaderView::stretchLastSection
     \brief whether the last visible section in the header takes up all the
     available space
@@ -1552,6 +1518,7 @@ void QHeaderView::setDefaultSectionSize(int size)
     Q_D(QHeaderView);
     if (size < 0 || size > maxSizeSection)
         return;
+    d->oldDefaultSectionSize = d->defaultSectionSize;
     d->setDefaultSectionSize(size);
 }
 
@@ -1559,7 +1526,9 @@ void QHeaderView::resetDefaultSectionSize()
 {
     Q_D(QHeaderView);
     if (d->customDefaultSectionSize) {
+        d->oldDefaultSectionSize = d->defaultSectionSize;
         d->updateDefaultSectionSizeFromStyle();
+        d->setDefaultSectionSize(d->defaultSectionSize);
         d->customDefaultSectionSize = false;
     }
 }
@@ -1570,8 +1539,7 @@ void QHeaderView::resetDefaultSectionSize()
     \brief the minimum size of the header sections.
 
     The minimum section size is the smallest section size allowed. If the
-    minimum section size is set to -1, QHeaderView will use the maximum of
-    the \l{QApplication::globalStrut()}{global strut} or the
+    minimum section size is set to -1, QHeaderView will use the
     \l{fontMetrics()}{font metrics} size.
 
     This property is honored by all \l{ResizeMode}{resize modes}.
@@ -1582,11 +1550,10 @@ int QHeaderView::minimumSectionSize() const
 {
     Q_D(const QHeaderView);
     if (d->minimumSectionSize == -1) {
-        QSize strut = QApplication::globalStrut();
         int margin = 2 * style()->pixelMetric(QStyle::PM_HeaderMargin, nullptr, this);
         if (d->orientation == Qt::Horizontal)
-            return qMax(strut.width(), (fontMetrics().maxWidth() + margin));
-        return qMax(strut.height(), (fontMetrics().height() + margin));
+            return fontMetrics().maxWidth() + margin;
+        return fontMetrics().height() + margin;
     }
     return d->minimumSectionSize;
 }
@@ -1742,6 +1709,7 @@ QByteArray QHeaderView::saveState() const
     Q_D(const QHeaderView);
     QByteArray data;
     QDataStream stream(&data, QIODevice::WriteOnly);
+    stream.setVersion(QDataStream::Qt_5_0);
     stream << QHeaderViewPrivate::VersionMarker;
     stream << 0; // current version is 0
     d->write(stream);
@@ -1761,21 +1729,27 @@ bool QHeaderView::restoreState(const QByteArray &state)
     Q_D(QHeaderView);
     if (state.isEmpty())
         return false;
-    QByteArray data = state;
-    QDataStream stream(&data, QIODevice::ReadOnly);
-    int marker;
-    int ver;
-    stream >> marker;
-    stream >> ver;
-    if (stream.status() != QDataStream::Ok
-        || marker != QHeaderViewPrivate::VersionMarker
-        || ver != 0) // current version is 0
-        return false;
 
-    if (d->read(stream)) {
-        emit sortIndicatorChanged(d->sortIndicatorSection, d->sortIndicatorOrder );
-        d->viewport->update();
-        return true;
+    for (const auto dataStreamVersion : {QDataStream::Qt_5_0, QDataStream::Qt_6_0}) {
+
+        QByteArray data = state;
+        QDataStream stream(&data, QIODevice::ReadOnly);
+        stream.setVersion(dataStreamVersion);
+        int marker;
+        int ver;
+        stream >> marker;
+        stream >> ver;
+        if (stream.status() != QDataStream::Ok
+        || marker != QHeaderViewPrivate::VersionMarker
+        || ver != 0) { // current version is 0
+            return false;
+        }
+
+        if (d->read(stream)) {
+            emit sortIndicatorChanged(d->sortIndicatorSection, d->sortIndicatorOrder );
+            d->viewport->update();
+            return true;
+        }
     }
     return false;
 }
@@ -1873,8 +1847,9 @@ void QHeaderView::sectionsInserted(const QModelIndex &parent,
                                    int logicalFirst, int logicalLast)
 {
     Q_D(QHeaderView);
-    if (parent != d->root)
-        return; // we only handle changes in the root level
+    // only handle root level changes and return on no-op
+    if (parent != d->root || d->modelSectionCount() == d->sectionCount())
+        return;
     int oldCount = d->sectionCount();
 
     d->invalidateCachedSizeHint();
@@ -1904,10 +1879,10 @@ void QHeaderView::sectionsInserted(const QModelIndex &parent,
     QHeaderViewPrivate::SectionItem section(d->defaultSectionSize, d->globalResizeMode);
     d->sectionStartposRecalc = true;
 
-    if (d->sectionItems.isEmpty() || insertAt >= d->sectionItems.count()) {
+    if (d->sectionItems.isEmpty() || insertAt >= d->sectionItems.size()) {
         int insertLength = d->defaultSectionSize * insertCount;
         d->length += insertLength;
-        d->sectionItems.insert(d->sectionItems.count(), insertCount, section); // append
+        d->sectionItems.insert(d->sectionItems.size(), insertCount, section); // append
     } else {
         // separate them out into their own sections
         int insertLength = d->defaultSectionSize * insertCount;
@@ -1930,8 +1905,8 @@ void QHeaderView::sectionsInserted(const QModelIndex &parent,
 
     // update mapping
     if (!d->visualIndices.isEmpty() && !d->logicalIndices.isEmpty()) {
-        Q_ASSERT(d->visualIndices.count() == d->logicalIndices.count());
-        int mappingCount = d->visualIndices.count();
+        Q_ASSERT(d->visualIndices.size() == d->logicalIndices.size());
+        int mappingCount = d->visualIndices.size();
         for (int i = 0; i < mappingCount; ++i) {
             if (d->visualIndices.at(i) >= logicalFirst)
                d->visualIndices[i] += insertCount;
@@ -1997,8 +1972,8 @@ void QHeaderViewPrivate::updateHiddenSections(int logicalFirst, int logicalLast)
     hiddenSectionSize = newHiddenSectionSize;
 }
 
-void QHeaderViewPrivate::_q_sectionsRemoved(const QModelIndex &parent,
-                                            int logicalFirst, int logicalLast)
+void QHeaderViewPrivate::sectionsRemoved(const QModelIndex &parent,
+                                         int logicalFirst, int logicalLast)
 {
     Q_Q(QHeaderView);
     if (parent != root)
@@ -2021,7 +1996,7 @@ void QHeaderViewPrivate::_q_sectionsRemoved(const QModelIndex &parent,
         if (logicalFirst == logicalLast) { // Remove just one index.
             int l = logicalFirst;
             int visual = visualIndices.at(l);
-            Q_ASSERT(sectionCount() == logicalIndices.count());
+            Q_ASSERT(sectionCount() == logicalIndices.size());
             for (int v = 0; v < sectionCount(); ++v) {
                 if (v > visual) {
                     int logical = logicalIndices.at(v);
@@ -2036,17 +2011,17 @@ void QHeaderViewPrivate::_q_sectionsRemoved(const QModelIndex &parent,
             removeSectionsFromSectionItems(visual, visual);
         } else {
             sectionStartposRecalc = true; // We will need to recalc positions after removing items
-            for (int u = 0; u < sectionItems.count(); ++u)  // Store section info
+            for (int u = 0; u < sectionItems.size(); ++u)  // Store section info
                 sectionItems.at(u).tmpLogIdx = logicalIndices.at(u);
-            for (int v = sectionItems.count() - 1; v >= 0; --v) {  // Remove the sections
+            for (int v = sectionItems.size() - 1; v >= 0; --v) {  // Remove the sections
                 if (logicalFirst <= sectionItems.at(v).tmpLogIdx && sectionItems.at(v).tmpLogIdx <= logicalLast)
                     removeSectionsFromSectionItems(v, v);
             }
-            visualIndices.resize(sectionItems.count());
-            logicalIndices.resize(sectionItems.count());
+            visualIndices.resize(sectionItems.size());
+            logicalIndices.resize(sectionItems.size());
             int* visual_data = visualIndices.data();
             int* logical_data = logicalIndices.data();
-            for (int w = 0; w < sectionItems.count(); ++w) { // Restore visual and logical indexes
+            for (int w = 0; w < sectionItems.size(); ++w) { // Restore visual and logical indexes
                 int logindex = sectionItems.at(w).tmpLogIdx;
                 if (logindex > logicalFirst)
                     logindex -= changeCount;
@@ -2083,28 +2058,32 @@ void QHeaderViewPrivate::_q_sectionsRemoved(const QModelIndex &parent,
     viewport->update();
 }
 
-void QHeaderViewPrivate::_q_sectionsAboutToBeMoved(const QModelIndex &sourceParent, int logicalStart, int logicalEnd, const QModelIndex &destinationParent, int logicalDestination)
+void QHeaderViewPrivate::sectionsAboutToBeMoved(const QModelIndex &sourceParent, int logicalStart,
+                                                int logicalEnd, const QModelIndex &destinationParent,
+                                                int logicalDestination)
 {
     if (sourceParent != root || destinationParent != root)
         return; // we only handle changes in the root level
     Q_UNUSED(logicalStart);
     Q_UNUSED(logicalEnd);
     Q_UNUSED(logicalDestination);
-    _q_sectionsAboutToBeChanged();
+    sectionsAboutToBeChanged();
 }
 
-void QHeaderViewPrivate::_q_sectionsMoved(const QModelIndex &sourceParent, int logicalStart, int logicalEnd, const QModelIndex &destinationParent, int logicalDestination)
+void QHeaderViewPrivate::sectionsMoved(const QModelIndex &sourceParent, int logicalStart,
+                                       int logicalEnd, const QModelIndex &destinationParent,
+                                       int logicalDestination)
 {
     if (sourceParent != root || destinationParent != root)
         return; // we only handle changes in the root level
     Q_UNUSED(logicalStart);
     Q_UNUSED(logicalEnd);
     Q_UNUSED(logicalDestination);
-    _q_sectionsChanged();
+    sectionsChanged();
 }
 
-void QHeaderViewPrivate::_q_sectionsAboutToBeChanged(const QList<QPersistentModelIndex> &,
-                                                     QAbstractItemModel::LayoutChangeHint hint)
+void QHeaderViewPrivate::sectionsAboutToBeChanged(const QList<QPersistentModelIndex> &,
+                                                  QAbstractItemModel::LayoutChangeHint hint)
 {
     if ((hint == QAbstractItemModel::VerticalSortHint && orientation == Qt::Horizontal) ||
         (hint == QAbstractItemModel::HorizontalSortHint && orientation == Qt::Vertical))
@@ -2119,9 +2098,9 @@ void QHeaderViewPrivate::_q_sectionsAboutToBeChanged(const QList<QPersistentMode
         return;
 
     layoutChangePersistentSections.clear();
-    layoutChangePersistentSections.reserve(std::min(10, sectionItems.count()));
+    layoutChangePersistentSections.reserve(std::min(10, int(sectionItems.size())));
     // after layoutChanged another section can be last stretched section
-    if (stretchLastSection && lastSectionLogicalIdx >= 0 && lastSectionLogicalIdx < sectionItems.count()) {
+    if (stretchLastSection && lastSectionLogicalIdx >= 0 && lastSectionLogicalIdx < sectionItems.size()) {
         const int visual = visualIndex(lastSectionLogicalIdx);
         if (visual >= 0 && visual < sectionItems.size()) {
             auto &itemRef = sectionItems[visual];
@@ -2149,8 +2128,8 @@ void QHeaderViewPrivate::_q_sectionsAboutToBeChanged(const QList<QPersistentMode
     }
 }
 
-void QHeaderViewPrivate::_q_sectionsChanged(const QList<QPersistentModelIndex> &,
-                                            QAbstractItemModel::LayoutChangeHint hint)
+void QHeaderViewPrivate::sectionsChanged(const QList<QPersistentModelIndex> &,
+                                         QAbstractItemModel::LayoutChangeHint hint)
 {
     if ((hint == QAbstractItemModel::VerticalSortHint && orientation == Qt::Horizontal) ||
         (hint == QAbstractItemModel::HorizontalSortHint && orientation == Qt::Vertical))
@@ -2180,7 +2159,7 @@ void QHeaderViewPrivate::_q_sectionsChanged(const QList<QPersistentModelIndex> &
     }
 
     // Though far from perfect we here try to retain earlier/existing behavior
-    // ### See QHeaderViewPrivate::_q_layoutAboutToBeChanged()
+    // ### See QHeaderViewPrivate::layoutAboutToBeChanged()
     // When we don't have valid hasPersistantIndexes it can be due to
     // - all sections are default sections
     // - the row/column 0 which is used for persistent indexes is gone
@@ -2216,7 +2195,7 @@ void QHeaderViewPrivate::_q_sectionsChanged(const QList<QPersistentModelIndex> &
                                      : index.row());
         // the new visualIndices are already adjusted / reset by initializeSections()
         const int newVisualIndex = visualIndex(newLogicalIndex);
-        if (newVisualIndex < sectionItems.count()) {
+        if (newVisualIndex < sectionItems.size()) {
             auto &newSection = sectionItems[newVisualIndex];
             newSection = item.section;
 
@@ -2281,7 +2260,7 @@ void QHeaderView::initializeSections(int start, int end)
         int newCount = end + 1;
         d->removeSectionsFromSectionItems(newCount, d->sectionCount() - 1);
         if (!d->hiddenSectionSize.isEmpty()) {
-            if (oldCount - newCount > d->hiddenSectionSize.count()) {
+            if (oldCount - newCount > d->hiddenSectionSize.size()) {
                 for (int i = end + 1; i < d->sectionCount(); ++i)
                     d->hiddenSectionSize.remove(i);
             } else {
@@ -2327,7 +2306,7 @@ void QHeaderView::initializeSections(int start, int end)
          d->contentsSections = newSectionCount;
 
     if (newSectionCount > oldCount)
-        d->createSectionItems(start, end, (end - start + 1) * d->defaultSectionSize, d->globalResizeMode);
+        d->createSectionItems(start, end, d->defaultSectionSize, d->globalResizeMode);
     //Q_ASSERT(d->headerLength() == d->length);
 
     if (d->sectionCount() != oldCount)
@@ -2371,7 +2350,7 @@ bool QHeaderView::event(QEvent *e)
     switch (e->type()) {
     case QEvent::HoverEnter: {
         QHoverEvent *he = static_cast<QHoverEvent*>(e);
-        d->hover = logicalIndexAt(he->pos());
+        d->hover = logicalIndexAt(he->position().toPoint());
         if (d->hover != -1)
             updateSection(d->hover);
         break; }
@@ -2384,7 +2363,7 @@ bool QHeaderView::event(QEvent *e)
     case QEvent::HoverMove: {
         QHoverEvent *he = static_cast<QHoverEvent*>(e);
         int oldHover = d->hover;
-        d->hover = logicalIndexAt(he->pos());
+        d->hover = logicalIndexAt(he->position().toPoint());
         if (d->hover != oldHover) {
             if (oldHover != -1)
                 updateSection(oldHover);
@@ -2400,8 +2379,12 @@ bool QHeaderView::event(QEvent *e)
         }
         break; }
     case QEvent::StyleChange:
-        if (!d->customDefaultSectionSize)
+        if (!d->customDefaultSectionSize) {
+            d->oldDefaultSectionSize = d->defaultSectionSize;
             d->updateDefaultSectionSizeFromStyle();
+            d->setDefaultSectionSize(d->defaultSectionSize);
+            d->customDefaultSectionSize = false;
+        }
         break;
     default:
         break;
@@ -2478,7 +2461,7 @@ void QHeaderView::paintEvent(QPaintEvent *e)
     }
 
     QStyleOption opt;
-    opt.init(this);
+    opt.initFrom(this);
     // Paint the area beyond where there are indexes
     if (d->reverse()) {
         opt.state |= QStyle::State_Horizontal;
@@ -2506,9 +2489,9 @@ void QHeaderView::paintEvent(QPaintEvent *e)
     for (int a = 0, i = 0; i < d->sectionItems.count(); ++i) {
         QColor color((i & 4 ? 255 : 0), (i & 2 ? 255 : 0), (i & 1 ? 255 : 0));
         if (d->orientation == Qt::Horizontal)
-            painter.fillRect(a - d->offset, 0, d->sectionItems.at(i).size, 4, color);
+            painter.fillRect(a - d->headerOffset, 0, d->sectionItems.at(i).size, 4, color);
         else
-            painter.fillRect(0, a - d->offset, 4, d->sectionItems.at(i).size, color);
+            painter.fillRect(0, a - d->headerOffset, 4, d->sectionItems.at(i).size, color);
         a += d->sectionItems.at(i).size;
     }
 
@@ -2524,11 +2507,11 @@ void QHeaderView::mousePressEvent(QMouseEvent *e)
     Q_D(QHeaderView);
     if (d->state != QHeaderViewPrivate::NoState || e->button() != Qt::LeftButton)
         return;
-    int pos = d->orientation == Qt::Horizontal ? e->x() : e->y();
+    int pos = d->orientation == Qt::Horizontal ? e->position().toPoint().x() : e->position().toPoint().y();
     int handle = d->sectionHandleAt(pos);
     d->originalSize = -1; // clear the stored original size
     if (handle == -1) {
-        d->pressed = logicalIndexAt(pos);
+        d->firstPressed = d->pressed = logicalIndexAt(pos);
         if (d->clickableSections)
             emit sectionPressed(d->pressed);
 
@@ -2537,7 +2520,8 @@ void QHeaderView::mousePressEvent(QMouseEvent *e)
             acceptMoveSection = false; // Do not allow moving the tree nod
 
         if (acceptMoveSection) {
-            d->section = d->target = d->pressed;
+            d->target = -1;
+            d->section = d->pressed;
             if (d->section == -1)
                 return;
             d->state = QHeaderViewPrivate::MoveSection;
@@ -2566,7 +2550,7 @@ void QHeaderView::mousePressEvent(QMouseEvent *e)
 void QHeaderView::mouseMoveEvent(QMouseEvent *e)
 {
     Q_D(QHeaderView);
-    int pos = d->orientation == Qt::Horizontal ? e->x() : e->y();
+    const int pos = d->orientation == Qt::Horizontal ? e->position().toPoint().x() : e->position().toPoint().y();
     if (pos < 0 && d->state != QHeaderViewPrivate::SelectSections)
         return;
     if (e->buttons() == Qt::NoButton) {
@@ -2576,7 +2560,7 @@ void QHeaderView::mouseMoveEvent(QMouseEvent *e)
         // just before the mouseReleaseEvent and resets the state. This prevents
         // column dragging from working. So this code is disabled under Cocoa.
         d->state = QHeaderViewPrivate::NoState;
-        d->pressed = -1;
+        d->firstPressed = d->pressed = -1;
     }
     switch (d->state) {
         case QHeaderViewPrivate::ResizeSection: {
@@ -2594,8 +2578,10 @@ void QHeaderView::mouseMoveEvent(QMouseEvent *e)
             return;
         }
         case QHeaderViewPrivate::MoveSection: {
-            if (d->shouldAutoScroll(e->pos()))
+            if (d->shouldAutoScroll(e->position().toPoint())) {
+                d->draggedPosition = e->pos() + d->offset();
                 d->startAutoScroll();
+            }
             if (qAbs(pos - d->firstPos) >= QApplication::startDragDistance()
 #if QT_CONFIG(label)
                 || !d->sectionIndicator->isHidden()
@@ -2607,27 +2593,31 @@ void QHeaderView::mouseMoveEvent(QMouseEvent *e)
                 if (visual == 0 && logicalIndex(0) == 0 && !d->allowUserMoveOfSection0)
                     return;
 
-                int posThreshold = d->headerSectionPosition(visual) - d->offset + d->headerSectionSize(visual) / 2;
+                const int posThreshold = d->headerSectionPosition(visual) - d->headerOffset + d->headerSectionSize(visual) / 2;
+                const int checkPos = d->reverse() ? d->viewport->width() - pos : pos;
                 int moving = visualIndex(d->section);
+                int oldTarget = d->target;
                 if (visual < moving) {
-                    if (pos < posThreshold)
+                    if (checkPos < posThreshold)
                         d->target = d->logicalIndex(visual);
                     else
                         d->target = d->logicalIndex(visual + 1);
                 } else if (visual > moving) {
-                    if (pos > posThreshold)
+                    if (checkPos > posThreshold)
                         d->target = d->logicalIndex(visual);
                     else
                         d->target = d->logicalIndex(visual - 1);
                 } else {
                     d->target = d->section;
                 }
+                if (oldTarget != d->target || oldTarget == -1)
+                    d->updateSectionsBeforeAfter(d->target);
                 d->updateSectionIndicator(d->section, pos);
             }
             return;
         }
         case QHeaderViewPrivate::SelectSections: {
-            int logical = logicalIndexAt(qMax(-d->offset, pos));
+            int logical = logicalIndexAt(qMax(-d->headerOffset, pos));
             if (logical == -1 && pos > 0)
                 logical = logicalIndex(d->lastVisibleVisualIndex());
             if (logical == d->pressed)
@@ -2678,7 +2668,7 @@ void QHeaderView::mouseMoveEvent(QMouseEvent *e)
 void QHeaderView::mouseReleaseEvent(QMouseEvent *e)
 {
     Q_D(QHeaderView);
-    int pos = d->orientation == Qt::Horizontal ? e->x() : e->y();
+    int pos = d->orientation == Qt::Horizontal ? e->position().toPoint().x() : e->position().toPoint().y();
     switch (d->state) {
     case QHeaderViewPrivate::MoveSection:
         if (true
@@ -2693,6 +2683,8 @@ void QHeaderView::mouseReleaseEvent(QMouseEvent *e)
             moveSection(from, to);
             d->section = d->target = -1;
             d->updateSectionIndicator(d->section, pos);
+            if (from == to)
+                d->updateSectionsBeforeAfter(from);
             break;
         } // not moving
         Q_FALLTHROUGH();
@@ -2705,9 +2697,27 @@ void QHeaderView::mouseReleaseEvent(QMouseEvent *e)
     case QHeaderViewPrivate::NoState:
         if (d->clickableSections) {
             int section = logicalIndexAt(pos);
-            if (section != -1 && section == d->pressed) {
-                d->flipSortIndicator(section);
-                emit sectionClicked(section);
+            if (section != -1 && section == d->firstPressed) {
+                QRect firstPressedSectionRect;
+                switch (d->orientation) {
+                case Qt::Horizontal:
+                    firstPressedSectionRect.setRect(sectionViewportPosition(d->firstPressed),
+                                                    0,
+                                                    sectionSize(d->firstPressed),
+                                                    d->viewport->height());
+                    break;
+                case Qt::Vertical:
+                    firstPressedSectionRect.setRect(0,
+                                                    sectionViewportPosition(d->firstPressed),
+                                                    d->viewport->width(),
+                                                    sectionSize(d->firstPressed));
+                    break;
+                };
+
+                if (firstPressedSectionRect.contains(e->position().toPoint())) {
+                    d->flipSortIndicator(section);
+                    emit sectionClicked(section);
+                }
             }
             if (d->pressed != -1)
                 updateSection(d->pressed);
@@ -2721,7 +2731,7 @@ void QHeaderView::mouseReleaseEvent(QMouseEvent *e)
         break;
     }
     d->state = QHeaderViewPrivate::NoState;
-    d->pressed = -1;
+    d->firstPressed = d->pressed = -1;
 }
 
 /*!
@@ -2731,7 +2741,7 @@ void QHeaderView::mouseReleaseEvent(QMouseEvent *e)
 void QHeaderView::mouseDoubleClickEvent(QMouseEvent *e)
 {
     Q_D(QHeaderView);
-    int pos = d->orientation == Qt::Horizontal ? e->x() : e->y();
+    int pos = d->orientation == Qt::Horizontal ? e->position().toPoint().x() : e->position().toPoint().y();
     int handle = d->sectionHandleAt(pos);
     if (handle > -1 && sectionResizeMode(handle) == Interactive) {
         emit sectionHandleDoubleClicked(handle);
@@ -2746,7 +2756,7 @@ void QHeaderView::mouseDoubleClickEvent(QMouseEvent *e)
         }
 #endif
     } else {
-        emit sectionDoubleClicked(logicalIndexAt(e->pos()));
+        emit sectionDoubleClicked(logicalIndexAt(e->position().toPoint()));
     }
 }
 
@@ -2758,7 +2768,7 @@ bool QHeaderView::viewportEvent(QEvent *e)
 {
     Q_D(QHeaderView);
     switch (e->type()) {
-#ifndef QT_NO_TOOLTIP
+#if QT_CONFIG(tooltip)
     case QEvent::ToolTip: {
         QHelpEvent *he = static_cast<QHelpEvent*>(e);
         int logical = logicalIndexAt(he->pos());
@@ -2833,23 +2843,26 @@ bool QHeaderView::viewportEvent(QEvent *e)
 }
 
 /*!
-    Paints the section specified by the given \a logicalIndex, using the given
-    \a painter and \a rect.
+    \fn void QHeaderView::initStyleOptionForIndex(QStyleOptionHeader *option, int logicalIndex) const
+    \since 6.0
 
-    Normally, you do not have to call this function.
+    Initializes the style \a option from the specified \a logicalIndex.
+    This function is called by the default implementation of paintSection after
+    initStyleOption has been called.
+
+    \sa paintSection(), initStyleOption()
 */
 
-void QHeaderView::paintSection(QPainter *painter, const QRect &rect, int logicalIndex) const
+void QHeaderView::initStyleOptionForIndex(QStyleOptionHeader *option, int logicalIndex) const
 {
     Q_D(const QHeaderView);
-    if (!rect.isValid())
+
+    if (!option)
         return;
-    // get the state of the section
-    QStyleOptionHeader opt;
-    initStyleOption(&opt);
+    QStyleOptionHeader &opt = *option;
+    QStyleOptionHeaderV2 *optV2 = qstyleoption_cast<QStyleOptionHeaderV2*>(option);
+
     QStyle::State state = QStyle::State_None;
-    if (isEnabled())
-        state |= QStyle::State_Enabled;
     if (window()->isActiveWindow())
         state |= QStyle::State_Active;
     if (d->clickableSections) {
@@ -2863,7 +2876,6 @@ void QHeaderView::paintSection(QPainter *painter, const QRect &rect, int logical
             if (d->isSectionSelected(logicalIndex))
                 state |= QStyle::State_Sunken;
         }
-
     }
     if (isSortIndicatorShown() && sortIndicatorSection() == logicalIndex)
         opt.sortIndicator = (sortIndicatorOrder() == Qt::AscendingOrder)
@@ -2872,50 +2884,39 @@ void QHeaderView::paintSection(QPainter *painter, const QRect &rect, int logical
     // setup the style options structure
     QVariant textAlignment = d->model->headerData(logicalIndex, d->orientation,
                                                   Qt::TextAlignmentRole);
-    opt.rect = rect;
     opt.section = logicalIndex;
     opt.state |= state;
-    opt.textAlignment = Qt::Alignment(textAlignment.isValid()
-                                      ? Qt::Alignment(textAlignment.toInt())
-                                      : d->defaultAlignment);
+    opt.textAlignment = textAlignment.isValid()
+                        ? QtPrivate::legacyFlagValueFromModelData<Qt::Alignment>(textAlignment)
+                        : d->defaultAlignment;
 
     opt.iconAlignment = Qt::AlignVCenter;
     opt.text = d->model->headerData(logicalIndex, d->orientation,
                                     Qt::DisplayRole).toString();
-
-    int margin = 2 * style()->pixelMetric(QStyle::PM_HeaderMargin, nullptr, this);
-
-    const Qt::Alignment headerArrowAlignment = static_cast<Qt::Alignment>(style()->styleHint(QStyle::SH_Header_ArrowAlignment, nullptr, this));
-    const bool isHeaderArrowOnTheSide = headerArrowAlignment & Qt::AlignVCenter;
-    if (isSortIndicatorShown() && sortIndicatorSection() == logicalIndex && isHeaderArrowOnTheSide)
-        margin += style()->pixelMetric(QStyle::PM_HeaderMarkSize, nullptr, this);
 
     const QVariant variant = d->model->headerData(logicalIndex, d->orientation,
                                                   Qt::DecorationRole);
     opt.icon = qvariant_cast<QIcon>(variant);
     if (opt.icon.isNull())
         opt.icon = qvariant_cast<QPixmap>(variant);
-    if (!opt.icon.isNull()) // see CT_HeaderSection
-        margin += style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, this) +
-                  style()->pixelMetric(QStyle::PM_HeaderMargin, nullptr, this);
 
-    if (d->textElideMode != Qt::ElideNone) {
-        const QRect textRect = style()->subElementRect(QStyle::SE_HeaderLabel, &opt, this);
-        opt.text = opt.fontMetrics.elidedText(opt.text, d->textElideMode, textRect.width() - margin);
-    }
+    QVariant var = d->model->headerData(logicalIndex, d->orientation,
+                                        Qt::FontRole);
+    if (var.isValid() && var.canConvert<QFont>())
+        opt.fontMetrics = QFontMetrics(qvariant_cast<QFont>(var));
+    if (optV2)
+        optV2->textElideMode = d->textElideMode;
 
     QVariant foregroundBrush = d->model->headerData(logicalIndex, d->orientation,
                                                     Qt::ForegroundRole);
     if (foregroundBrush.canConvert<QBrush>())
         opt.palette.setBrush(QPalette::ButtonText, qvariant_cast<QBrush>(foregroundBrush));
 
-    QPointF oldBO = painter->brushOrigin();
     QVariant backgroundBrush = d->model->headerData(logicalIndex, d->orientation,
                                                     Qt::BackgroundRole);
     if (backgroundBrush.canConvert<QBrush>()) {
         opt.palette.setBrush(QPalette::Button, qvariant_cast<QBrush>(backgroundBrush));
         opt.palette.setBrush(QPalette::Window, qvariant_cast<QBrush>(backgroundBrush));
-        painter->setBrushOrigin(opt.rect.topLeft());
     }
 
     // the section position
@@ -2943,9 +2944,44 @@ void QHeaderView::paintSection(QPainter *painter, const QRect &rect, int logical
         opt.selectedPosition = QStyleOptionHeader::NextIsSelected;
     else
         opt.selectedPosition = QStyleOptionHeader::NotAdjacent;
-    // draw the section
-    style()->drawControl(QStyle::CE_Header, &opt, painter, this);
+    if (optV2)
+        optV2->isSectionDragTarget = d->target == logicalIndex;
+}
 
+/*!
+    Paints the section specified by the given \a logicalIndex, using the given
+    \a painter and \a rect.
+
+    Normally, you do not have to call this function.
+*/
+
+void QHeaderView::paintSection(QPainter *painter, const QRect &rect, int logicalIndex) const
+{
+    if (!rect.isValid())
+        return;
+
+    QStyleOptionHeaderV2 opt;
+    QPointF oldBO = painter->brushOrigin();
+
+    initStyleOption(&opt);
+
+    QBrush oBrushButton = opt.palette.brush(QPalette::Button);
+    QBrush oBrushWindow = opt.palette.brush(QPalette::Window);
+
+    initStyleOptionForIndex(&opt, logicalIndex);
+    // We set rect here. If it needs to be changed it can be changed by overriding this function
+    opt.rect = rect;
+
+    QBrush nBrushButton = opt.palette.brush(QPalette::Button);
+    QBrush nBrushWindow = opt.palette.brush(QPalette::Window);
+
+    // If relevant brushes are not the same as from the regular widgets we set the brush origin
+    if (oBrushButton != nBrushButton || oBrushWindow != nBrushWindow) {
+        painter->setBrushOrigin(opt.rect.topLeft());
+    }
+
+    // draw the section.
+    style()->drawControl(QStyle::CE_Header, &opt, painter, this);
     painter->setBrushOrigin(oldBO);
 }
 
@@ -2969,7 +3005,7 @@ QSize QHeaderView::sectionSizeFromContents(int logicalIndex) const
         return qvariant_cast<QSize>(variant);
 
     // otherwise use the contents
-    QStyleOptionHeader opt;
+    QStyleOptionHeaderV2 opt;
     initStyleOption(&opt);
     opt.section = logicalIndex;
     QVariant var = d->model->headerData(logicalIndex, d->orientation,
@@ -3003,7 +3039,7 @@ int QHeaderView::horizontalOffset() const
 {
     Q_D(const QHeaderView);
     if (d->orientation == Qt::Horizontal)
-        return d->offset;
+        return d->headerOffset;
     return 0;
 }
 
@@ -3018,7 +3054,7 @@ int QHeaderView::verticalOffset() const
 {
     Q_D(const QHeaderView);
     if (d->orientation == Qt::Vertical)
-        return d->offset;
+        return d->headerOffset;
     return 0;
 }
 
@@ -3050,7 +3086,8 @@ void QHeaderView::scrollContentsBy(int dx, int dy)
     \reimp
     \internal
 */
-void QHeaderView::dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight, const QVector<int> &roles)
+void QHeaderView::dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight,
+                              const QList<int> &roles)
 {
     Q_D(QHeaderView);
     if (!roles.isEmpty()) {
@@ -3318,7 +3355,7 @@ void QHeaderViewPrivate::setupSectionIndicator(int section, int position)
     sectionIndicator->resize(w, h);
 #endif
 
-    const qreal pixmapDevicePixelRatio = q->devicePixelRatioF();
+    const qreal pixmapDevicePixelRatio = q->devicePixelRatio();
     QPixmap pm(QSize(w, h) * pixmapDevicePixelRatio);
     pm.setDevicePixelRatio(pixmapDevicePixelRatio);
     pm.fill(QColor(0, 0, 0, 45));
@@ -3369,7 +3406,7 @@ void QHeaderViewPrivate::updateSectionIndicator(int section, int position)
     useful for subclasses when they need a QStyleOptionHeader, but do not want
     to fill in all the information themselves.
 
-    \sa QStyleOption::initFrom()
+    \sa QStyleOption::initFrom(), initStyleOptionForIndex()
 */
 void QHeaderView::initStyleOption(QStyleOptionHeader *option) const
 {
@@ -3384,10 +3421,17 @@ void QHeaderView::initStyleOption(QStyleOptionHeader *option) const
     option->section = 0;
 }
 
+void QHeaderView::initStyleOption(QStyleOptionFrame *option) const
+{
+    // The QFrame version is only here to avoid compiler warnings.
+    // If invoked we just pass it on to the base class.
+    QFrame::initStyleOption(option);
+}
+
 bool QHeaderViewPrivate::isSectionSelected(int section) const
 {
     int i = section * 2;
-    if (i < 0 || i >= sectionSelected.count())
+    if (i < 0 || i >= sectionSelected.size())
         return false;
     if (sectionSelected.testBit(i)) // if the value was cached
         return sectionSelected.testBit(i + 1);
@@ -3590,8 +3634,7 @@ void QHeaderViewPrivate::resizeSections(QHeaderView::ResizeMode globalMode, bool
         //Q_ASSERT(newSectionLength > 0);
         if ((previousSectionResizeMode != newSectionResizeMode
             || previousSectionLength != newSectionLength) && i > 0) {
-            int spanLength = (i - spanStartSection) * previousSectionLength;
-            createSectionItems(spanStartSection, i - 1, spanLength, previousSectionResizeMode);
+            createSectionItems(spanStartSection, i - 1, previousSectionLength, previousSectionResizeMode);
             //Q_ASSERT(headerLength() == length);
             spanStartSection = i;
         }
@@ -3604,17 +3647,15 @@ void QHeaderViewPrivate::resizeSections(QHeaderView::ResizeMode globalMode, bool
     }
 
     createSectionItems(spanStartSection, sectionCount() - 1,
-                      (sectionCount() - spanStartSection) * previousSectionLength,
-                      previousSectionResizeMode);
+                       previousSectionLength, previousSectionResizeMode);
     //Q_ASSERT(headerLength() == length);
     resizeRecursionBlock = false;
     viewport->update();
 }
 
-void QHeaderViewPrivate::createSectionItems(int start, int end, int size, QHeaderView::ResizeMode mode)
+void QHeaderViewPrivate::createSectionItems(int start, int end, int sizePerSection, QHeaderView::ResizeMode mode)
 {
-    int sizePerSection = size / (end - start + 1);
-    if (end >= sectionItems.count()) {
+    if (end >= sectionItems.size()) {
         sectionItems.resize(end + 1);
         sectionStartposRecalc = true;
     }
@@ -3630,7 +3671,7 @@ void QHeaderViewPrivate::createSectionItems(int start, int end, int size, QHeade
 void QHeaderViewPrivate::removeSectionsFromSectionItems(int start, int end)
 {
     // remove sections
-    sectionStartposRecalc |= (end != sectionItems.count() - 1);
+    sectionStartposRecalc |= (end != sectionItems.size() - 1);
     int removedlength = 0;
     for (int u = start; u <= end; ++u)
         removedlength += sectionItems.at(u).size;
@@ -3652,20 +3693,45 @@ void QHeaderViewPrivate::clear()
     }
 }
 
+static Qt::SortOrder flipOrder(Qt::SortOrder order)
+{
+    switch (order) {
+    case Qt::AscendingOrder:
+        return Qt::DescendingOrder;
+    case Qt::DescendingOrder:
+        return Qt::AscendingOrder;
+    };
+    Q_UNREACHABLE_RETURN(Qt::AscendingOrder);
+};
+
 void QHeaderViewPrivate::flipSortIndicator(int section)
 {
     Q_Q(QHeaderView);
     Qt::SortOrder sortOrder;
     if (sortIndicatorSection == section) {
-        sortOrder = (sortIndicatorOrder == Qt::DescendingOrder) ? Qt::AscendingOrder : Qt::DescendingOrder;
+        if (sortIndicatorClearable) {
+            const Qt::SortOrder defaultSortOrder = defaultSortOrderForSection(section);
+            if (sortIndicatorOrder == defaultSortOrder) {
+                sortOrder = flipOrder(sortIndicatorOrder);
+            } else {
+                section = -1;
+                sortOrder = Qt::AscendingOrder;
+            }
+        } else {
+            sortOrder = flipOrder(sortIndicatorOrder);
+        }
     } else {
-        const QVariant value = model->headerData(section, orientation, Qt::InitialSortOrderRole);
-        if (value.canConvert(QMetaType::Int))
-            sortOrder = static_cast<Qt::SortOrder>(value.toInt());
-        else
-            sortOrder = Qt::AscendingOrder;
+        sortOrder = defaultSortOrderForSection(section);
     }
     q->setSortIndicator(section, sortOrder);
+}
+
+Qt::SortOrder QHeaderViewPrivate::defaultSortOrderForSection(int section) const
+{
+    const QVariant value = model->headerData(section, orientation, Qt::InitialSortOrderRole);
+    if (value.canConvert<int>())
+        return static_cast<Qt::SortOrder>(value.toInt());
+    return Qt::AscendingOrder;
 }
 
 void QHeaderViewPrivate::cascadingResize(int visual, int newSize)
@@ -3712,12 +3778,9 @@ void QHeaderViewPrivate::cascadingResize(int visual, int newSize)
             if (currentSectionSize <= minimumSize)
                 continue;
             int newSectionSize = qMax(currentSectionSize - delta, minimumSize);
-            //qDebug() << "### cascading to" << i << newSectionSize - currentSectionSize << delta;
             resizeSectionItem(i, currentSectionSize, newSectionSize);
             saveCascadingSectionSize(i, currentSectionSize);
             delta = delta - (currentSectionSize - newSectionSize);
-            //qDebug() << "new delta" << delta;
-            //if (newSectionSize != minimumSize)
             if (delta <= 0)
                 break;
         }
@@ -3735,7 +3798,6 @@ void QHeaderViewPrivate::cascadingResize(int visual, int newSize)
             int newSectionSize = currentSectionSize - delta;
             resizeSectionItem(i, currentSectionSize, newSectionSize);
             if (newSectionSize >= originalSectionSize && false) {
-                //qDebug() << "section" << i << "restored to" << originalSectionSize;
                 cascadingSectionSize.remove(i); // the section is now restored
             }
             sectionResized = true;
@@ -3792,10 +3854,14 @@ void QHeaderViewPrivate::setDefaultSectionSize(int size)
     customDefaultSectionSize = true;
     if (state == QHeaderViewPrivate::ResizeSection)
         preventCursorChangeInSetOffset = true;
-    for (int i = 0; i < sectionItems.count(); ++i) {
+    for (int i = 0; i < sectionItems.size(); ++i) {
         QHeaderViewPrivate::SectionItem &section = sectionItems[i];
         if (hiddenSectionSize.isEmpty() || !isVisualIndexHidden(i)) { // resize on not hidden.
-            const int newSize = size;
+            // Resize to the new default if the current size is the old default,
+            // or 0. Otherwise don't change.
+            const int newSize = (section.size == oldDefaultSectionSize || !section.size)
+                              ? size
+                              : section.size;
             if (newSize != section.size) {
                 length += newSize - section.size; //the whole length is changed
                 const int oldSectionSize = section.sectionSize();
@@ -3861,7 +3927,7 @@ int QHeaderViewPrivate::headerVisualIndexAt(int position) const
     if (sectionStartposRecalc)
         recalcSectionStartPos();
     int startidx = 0;
-    int endidx = sectionItems.count() - 1;
+    int endidx = sectionItems.size() - 1;
     while (startidx <= endidx) {
         int middle = (endidx + startidx) / 2;
         if (sectionItems.at(middle).calculated_startpos > position) {
@@ -3884,7 +3950,7 @@ void QHeaderViewPrivate::setHeaderSectionResizeMode(int visual, QHeaderView::Res
 
 QHeaderView::ResizeMode QHeaderViewPrivate::headerSectionResizeMode(int visual) const
 {
-    if (visual < 0 || visual >= sectionItems.count())
+    if (visual < 0 || visual >= sectionItems.size())
         return globalResizeMode;
     return static_cast<QHeaderView::ResizeMode>(sectionItems.at(visual).resizeMode);
 }
@@ -3892,7 +3958,7 @@ QHeaderView::ResizeMode QHeaderViewPrivate::headerSectionResizeMode(int visual) 
 void QHeaderViewPrivate::setGlobalHeaderResizeMode(QHeaderView::ResizeMode mode)
 {
     globalResizeMode = mode;
-    for (int i = 0; i < sectionItems.count(); ++i)
+    for (int i = 0; i < sectionItems.size(); ++i)
         sectionItems[i].resizeMode = mode;
 }
 
@@ -3911,7 +3977,7 @@ int QHeaderViewPrivate::adjustedVisualIndex(int visualIndex) const
     if (!hiddenSectionSize.isEmpty()) {
         int adjustedVisualIndex = visualIndex;
         int currentVisualIndex = 0;
-        for (int i = 0; i < sectionItems.count(); ++i) {
+        for (int i = 0; i < sectionItems.size(); ++i) {
             if (isVisualIndexHidden(i))
                 ++adjustedVisualIndex;
             else
@@ -3935,6 +4001,25 @@ void QHeaderViewPrivate::setScrollOffset(const QScrollBar *scrollBar, QAbstractI
     } else {
         q->setOffset(scrollBar->value());
     }
+}
+
+void QHeaderViewPrivate::updateSectionsBeforeAfter(int logical)
+{
+    Q_Q(QHeaderView);
+    const int visual = visualIndex(logical);
+    int from = logicalIndex(visual > 1 ? visual - 1 : 0);
+    int to = logicalIndex(visual + 1 >= sectionCount() ? visual : visual + 1);
+    QRect updateRect;
+    if (orientation == Qt::Horizontal) {
+        if (reverse())
+            std::swap(from, to);
+        updateRect = QRect(QPoint(q->sectionViewportPosition(from), 0),
+                           QPoint(q->sectionViewportPosition(to) + headerSectionSize(to), viewport->height()));
+    } else {
+        updateRect = QRect(QPoint(0, q->sectionViewportPosition(from)),
+                           QPoint(viewport->width(), q->sectionViewportPosition(to) + headerSectionSize(to)));
+    }
+    viewport->update(updateRect);
 }
 
 #ifndef QT_NO_DATASTREAM
@@ -3970,6 +4055,7 @@ void QHeaderViewPrivate::write(QDataStream &out) const
     out << resizeContentsPrecision;
     out << customDefaultSectionSize;
     out << lastSectionSize;
+    out << int(sortIndicatorClearable);
 }
 
 bool QHeaderViewPrivate::read(QDataStream &in)
@@ -3979,8 +4065,8 @@ bool QHeaderViewPrivate::read(QDataStream &in)
     int sortIndicatorSectionIn;
     bool sortIndicatorShownIn;
     int lengthIn;
-    QVector<int> visualIndicesIn;
-    QVector<int> logicalIndicesIn;
+    QList<int> visualIndicesIn;
+    QList<int> logicalIndicesIn;
     QHash<int, int> hiddenSectionSizeIn;
     bool movableSectionsIn;
     bool clickableSectionsIn;
@@ -3991,7 +4077,7 @@ bool QHeaderViewPrivate::read(QDataStream &in)
     int contentsSectionsIn;
     int defaultSectionSizeIn;
     int minimumSectionSizeIn;
-    QVector<SectionItem> sectionItemsIn;
+    QList<SectionItem> sectionItemsIn;
 
     in >> orient;
     in >> order;
@@ -4027,12 +4113,21 @@ bool QHeaderViewPrivate::read(QDataStream &in)
 
     in >> global;
 
+    // Check parameter consistency
+    // Global orientation out of bounds?
+    if (global < 0 || global > QHeaderView::ResizeToContents)
+        return false;
+
+    // Alignment out of bounds?
+    if (align < 0 || align > Qt::AlignVertical_Mask)
+        return false;
+
     in >> sectionItemsIn;
     // In Qt4 we had a vector of spans where one span could hold information on more sections.
     // Now we have an itemvector where one items contains information about one section
     // For backward compatibility with Qt4 we do the following
-    QVector<SectionItem> newSectionItems;
-    for (int u = 0; u < sectionItemsIn.count(); ++u) {
+    QList<SectionItem> newSectionItems;
+    for (int u = 0; u < sectionItemsIn.size(); ++u) {
         int count = sectionItemsIn.at(u).tmpDataStreamSectionCount;
         if (count > 1)
             sectionItemsIn[u].size /= count;
@@ -4041,25 +4136,25 @@ bool QHeaderViewPrivate::read(QDataStream &in)
     }
 
     int sectionItemsLengthTotal = 0;
-    for (const SectionItem &section : qAsConst(newSectionItems))
+    for (const SectionItem &section : std::as_const(newSectionItems))
         sectionItemsLengthTotal += section.size;
     if (sectionItemsLengthTotal != lengthIn)
         return false;
 
     const int currentCount = (orient == Qt::Horizontal ? model->columnCount(root) : model->rowCount(root));
-    if (newSectionItems.count() < currentCount) {
+    if (newSectionItems.size() < currentCount) {
         // we have sections not in the saved state, give them default settings
         if (!visualIndicesIn.isEmpty() && !logicalIndicesIn.isEmpty()) {
-            for (int i = newSectionItems.count(); i < currentCount; ++i) {
+            for (int i = newSectionItems.size(); i < currentCount; ++i) {
                 visualIndicesIn.append(i);
                 logicalIndicesIn.append(i);
             }
         }
-        const int insertCount = currentCount - newSectionItems.count();
+        const int insertCount = currentCount - newSectionItems.size();
         const int insertLength = defaultSectionSizeIn * insertCount;
         lengthIn += insertLength;
         SectionItem section(defaultSectionSizeIn, globalResizeMode);
-        newSectionItems.insert(newSectionItems.count(), insertCount, section); // append
+        newSectionItems.insert(newSectionItems.size(), insertCount, section); // append
     }
 
     orientation = static_cast<Qt::Orientation>(orient);
@@ -4112,6 +4207,11 @@ bool QHeaderViewPrivate::read(QDataStream &in)
         lastSectionLogicalIdx = q->logicalIndex(lastVisibleVisualIndex());
         doDelayedResizeSections();
     }
+
+    int inSortIndicatorClearable;
+    in >> inSortIndicatorClearable;
+    if (in.status() == QDataStream::Ok)  // we haven't read past end
+        sortIndicatorClearable = inSortIndicatorClearable;
 
     return true;
 }

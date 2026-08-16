@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
@@ -52,7 +27,10 @@ QT_BEGIN_NAMESPACE
 
 static void openHelp()
 {
-    QDesktopServices::openUrl(QUrl(QLatin1String("http://doc.qt.io/qt-5/qtdistancefieldgenerator-index.html")));
+    const int qtVersion = QT_VERSION;
+    QString url;
+    QTextStream(&url) << "https://doc.qt.io/qt-" << (qtVersion >> 16) << "/qtdistancefieldgenerator-index.html";
+    QDesktopServices::openUrl(QUrl(url));
 }
 
 MainWindow::MainWindow(QWidget *parent)
@@ -313,7 +291,7 @@ void MainWindow::save()
         outBuffer.write(reinterpret_cast<char *>(&fontDirectoryHeader),
                         sizeof(FontDirectoryHeader));
 
-        QVarLengthArray<QPair<quint32, quint32>> offsetLengthPairs;
+        QVarLengthArray<std::pair<quint32, quint32>> offsetLengthPairs;
         offsetLengthPairs.reserve(numTables - 1);
 
         // Copy the offset table, updating offsets
@@ -324,8 +302,8 @@ void MainWindow::save()
 
             quint32 originalOffset = qFromBigEndian(offsetTable->offset);
             quint32 length = qFromBigEndian(offsetTable->length);
-            offsetLengthPairs.append(qMakePair(originalOffset, length));
-            if (offsetTable->tag == qToBigEndian(MAKE_TAG('h', 'e', 'a', 'd')))
+            offsetLengthPairs.append({originalOffset, length});
+            if (offsetTable->tag == qFromBigEndian(QFont::Tag("head").value()))
                 headOffset = currentOffset;
 
             TableRecord newTableRecord;
@@ -354,11 +332,11 @@ void MainWindow::save()
 
             TableRecord qtdfRecord;
             qtdfRecord.offset = qToBigEndian(currentOffset);
-            qtdfRecord.length = qToBigEndian(qtdf.length());
-            qtdfRecord.tag = qToBigEndian(MAKE_TAG('q', 't', 'd', 'f'));
+            qtdfRecord.length = qToBigEndian(qtdf.size());
+            qtdfRecord.tag = qFromBigEndian(QFont::Tag("qtdf").value());
             quint32 checkSum = 0;
             const quint32 *start = reinterpret_cast<const quint32 *>(qtdf.constData());
-            const quint32 *end = reinterpret_cast<const quint32 *>(qtdf.constData() + qtdf.length());
+            const quint32 *end = reinterpret_cast<const quint32 *>(qtdf.constData() + qtdf.size());
             while (start < end)
                 checkSum += *(start++);
             qtdfRecord.checkSum = qToBigEndian(checkSum);
@@ -368,7 +346,7 @@ void MainWindow::save()
         }
 
         // Copy all font tables
-        for (const QPair<quint32, quint32> &offsetLengthPair : offsetLengthPairs) {
+        for (const std::pair<quint32, quint32> &offsetLengthPair : offsetLengthPairs) {
             PAD_BUFFER(outBuffer, output.size())
             outBuffer.write(reinterpret_cast<char *>(inData + offsetLengthPair.first),
                             offsetLengthPair.second);
@@ -384,7 +362,7 @@ void MainWindow::save()
 
     quint32 checkSum = 0;
     const quint32 *start = reinterpret_cast<const quint32 *>(output.constData());
-    const quint32 *end = reinterpret_cast<const quint32 *>(output.constData() + output.length());
+    const quint32 *end = reinterpret_cast<const quint32 *>(output.constData() + output.size());
     while (start < end)
         checkSum += *(start++);
 
@@ -438,7 +416,7 @@ QByteArray MainWindow::createSfntTable()
                      sizeof(QtdfHeader));
 
         // Maximum height allocator to find optimal number of textures
-        QVector<QRect> allocatedAreaPerTexture;
+        QList<QRect> allocatedAreaPerTexture;
 
         struct GlyphData {
             QSGDistanceFieldGlyphCache::TexCoord texCoord;
@@ -446,7 +424,7 @@ QByteArray MainWindow::createSfntTable()
             QSize glyphSize;
             int textureIndex;
         };
-        QVector<GlyphData> glyphDatas;
+        QList<GlyphData> glyphDatas;
         glyphDatas.resize(m_model->rowCount());
 
         int textureCount = 0;
@@ -513,7 +491,7 @@ QByteArray MainWindow::createSfntTable()
             }
         }
 
-        QVector<QDistanceField> textures;
+        QList<QDistanceField> textures;
         textures.resize(textureCount);
 
         for (int textureIndex = 0; textureIndex < textureCount; ++textureIndex) {
@@ -746,7 +724,7 @@ void MainWindow::selectString()
                                       tr("Select glyphs for string"),
                                       tr("String to parse:"));
     if (!s.isEmpty()) {
-        QVector<uint> ucs4String = s.toUcs4();
+        QList<uint> ucs4String = s.toUcs4();
         for (uint ucs4 : ucs4String) {
             glyph_t glyph = m_model->glyphIndexForUcs4(ucs4);
             if (glyph != 0) {
@@ -766,9 +744,8 @@ void MainWindow::about()
                        "<p>Version %1.<br/>"
                        "The Qt Distance Field Generator tool allows "
                        "to prepare a font cache for Qt applications.</p>"
-                       "<p>Copyright (C) %2 The Qt Company Ltd.</p>")
-                    .arg(QLatin1String(QT_VERSION_STR))
-                    .arg(QLatin1String("2019")));
+                       "<p>Copyright (C) The Qt Company Ltd. and other contributors.</p>")
+                    .arg(QLatin1String(QT_VERSION_STR)));
     msgBox->show();
 }
 

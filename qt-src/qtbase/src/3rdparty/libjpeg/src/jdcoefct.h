@@ -5,6 +5,8 @@
  * Copyright (C) 1994-1997, Thomas G. Lane.
  * libjpeg-turbo Modifications:
  * Copyright 2009 Pierre Ossman <ossman@cendio.se> for Cendio AB
+ * Copyright (C) 2020, Google, Inc.
+ * Copyright (C) 2022, D. R. Commander.
  * For conditions of distribution and use, see the accompanying README.ijg
  * file.
  */
@@ -12,6 +14,8 @@
 #define JPEG_INTERNALS
 #include "jpeglib.h"
 
+
+#if BITS_IN_JSAMPLE != 16 || defined(D_LOSSLESS_SUPPORTED)
 
 /* Block smoothing is only applicable for progressive JPEG, so: */
 #ifndef D_PROGRESSIVE_SUPPORTED
@@ -51,7 +55,7 @@ typedef struct {
 #ifdef BLOCK_SMOOTHING_SUPPORTED
   /* When doing block smoothing, we latch coefficient Al values here */
   int *coef_bits_latch;
-#define SAVED_COEFS  6          /* we save coef_bits[0..5] */
+#define SAVED_COEFS  10         /* we save coef_bits[0..9] */
 #endif
 } my_coef_controller;
 
@@ -80,3 +84,5 @@ start_iMCU_row(j_decompress_ptr cinfo)
   coef->MCU_ctr = 0;
   coef->MCU_vert_offset = 0;
 }
+
+#endif /* BITS_IN_JSAMPLE != 16 || defined(D_LOSSLESS_SUPPORTED) */

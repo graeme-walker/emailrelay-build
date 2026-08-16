@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef FORMWINDOW_H
 #define FORMWINDOW_H
@@ -33,12 +8,13 @@
 #include <formwindowbase_p.h>
 
 // Qt
-#include <QtWidgets/qundostack.h>
+#include <QtGui/qundostack.h>
 #include <QtCore/qhash.h>
 #include <QtCore/qlist.h>
-#include <QtCore/qmap.h>
 #include <QtCore/qset.h>
 #include <QtCore/qpointer.h>
+
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -148,12 +124,12 @@ public:
     void raiseSelection(QWidget *w);
 
     inline const QWidgetList& widgets() const { return m_widgets; }
-    inline int widgetCount() const { return m_widgets.count(); }
+    inline int widgetCount() const { return m_widgets.size(); }
     inline QWidget *widgetAt(int index) const { return m_widgets.at(index); }
 
     QWidgetList widgets(QWidget *widget) const;
 
-    QWidget *createWidget(DomUI *ui, const QRect &rect, QWidget *target);
+    QWidget *createWidget(DomUI *ui, QRect rect, QWidget *target);
 
     bool isManaged(QWidget *w) const override;
 
@@ -186,9 +162,9 @@ public:
     void addResourceFile(const QString &path) override;
     void removeResourceFile(const QString &path) override;
 
-    void resizeWidget(QWidget *widget, const QRect &geometry);
+    void resizeWidget(QWidget *widget, QRect geometry);
 
-    bool dropDockWidget(QDesignerDnDItemInterface *item, const QPoint &global_mouse_pos);
+    bool dropDockWidget(QDesignerDnDItemInterface *item, QPoint global_mouse_pos);
     bool dropWidgets(const QList<QDesignerDnDItemInterface*> &item_list, QWidget *target,
                      const QPoint &global_mouse_pos) override;
 
@@ -233,7 +209,7 @@ protected:
     virtual QMenu *createPopupMenu(QWidget *w);
     void resizeEvent(QResizeEvent *e) override;
 
-    void insertWidget(QWidget *w, const QRect &rect, QWidget *target, bool already_in_form = false);
+    void insertWidget(QWidget *w, QRect rect, QWidget *target, bool already_in_form = false);
 
 private slots:
     void selectionChangedTimerDone();
@@ -260,7 +236,7 @@ private:
     void init();
     void initializeCoreTools();
 
-    int getValue(const QRect &rect, int key, bool size) const;
+    int getValue(QRect rect, int key, bool size) const;
     int calcValue(int val, bool forward, bool snap, int snapOffset) const;
     void handleClickSelection(QWidget *managedWidget, unsigned mouseFlags);
 
@@ -268,11 +244,11 @@ private:
 
     enum RectType { Insert, Rubber };
 
-    void startRectDraw(const QPoint &global, QWidget *, RectType t);
-    void continueRectDraw(const QPoint &global, QWidget *, RectType t);
+    void startRectDraw(QPoint global, QWidget *, RectType t);
+    void continueRectDraw(QPoint global, QWidget *, RectType t);
     void endRectDraw();
 
-    QWidget *containerAt(const QPoint &pos, QWidget *notParentOf);
+    QWidget *containerAt(QPoint pos, QWidget *notParentOf);
 
     void checkPreviewGeometry(QRect &r);
 
@@ -289,11 +265,11 @@ private:
     bool setCurrentWidget(QWidget *currentWidget);
     bool trySelectWidget(QWidget *w, bool select);
 
-    void dragWidgetWithinForm(QWidget *widget, const QRect &targetGeometry, QWidget *targetContainer);
+    void dragWidgetWithinForm(QWidget *widget, QRect targetGeometry, QWidget *targetContainer);
 
     void setCursorToAll(const QCursor &c, QWidget *start);
 
-    QPoint mapToForm(const QWidget *w, const QPoint &pos) const;
+    QPoint mapToForm(const QWidget *w, QPoint pos) const;
     bool canBeBuddy(QWidget *w) const;
 
     QWidget *findTargetContainer(QWidget *widget) const;
@@ -340,9 +316,8 @@ private:
 
     QString m_fileName;
 
-    using PaletteAndFill = QPair<QPalette ,bool>;
-    using WidgetPaletteMap = QMap<QWidget*, PaletteAndFill>;
-    WidgetPaletteMap m_palettesBeforeHighlight;
+    using PaletteAndFill = std::pair<QPalette, bool>;
+    QHash<QWidget *, PaletteAndFill> m_palettesBeforeHighlight;
 
     QRubberBand *m_rubberBand = nullptr;
 

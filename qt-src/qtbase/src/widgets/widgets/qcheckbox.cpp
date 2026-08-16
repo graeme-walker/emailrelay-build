@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcheckbox.h"
 #include "qapplication.h"
@@ -45,7 +9,7 @@
 #include "qstyle.h"
 #include "qstyleoption.h"
 #include "qevent.h"
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 #include "qaccessible.h"
 #endif
 
@@ -64,7 +28,7 @@ public:
     uint tristate : 1;
     uint noChange : 1;
     uint hovering : 1;
-    uint publishedState : 2;
+    Qt::CheckState publishedState : 3;
 
     void init();
 };
@@ -76,7 +40,7 @@ public:
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image windows-checkbox.png
+    \image fusion-checkbox.png
 
     A QCheckBox is an option button that can be switched on (checked) or off
     (unchecked). Checkboxes are typically used to represent features in an
@@ -95,7 +59,7 @@ public:
     \endtable
 
     Whenever a checkbox is checked or cleared, it emits the signal
-    stateChanged(). Connect to this signal if you want to trigger an action
+    checkStateChanged(). Connect to this signal if you want to trigger an action
     each time the checkbox changes state. You can use isChecked() to query
     whether or not a checkbox is checked.
 
@@ -116,17 +80,23 @@ public:
     {QShortcut} documentation for details. To display an actual ampersand,
     use '&&'.
 
-    Important inherited functions: text(), setText(), text(), pixmap(),
-    setPixmap(), accel(), setAccel(), isToggleButton(), setDown(), isDown(),
-    isOn(), checkState(), autoRepeat(), isExclusiveToggle(), group(),
-    setAutoRepeat(), toggle(), pressed(), released(), clicked(), toggled(),
-    checkState(), and stateChanged().
-
-    \sa QAbstractButton, QRadioButton, {fowler}{GUI Design Handbook: Check Box}
+    \sa QAbstractButton, QRadioButton
 */
 
 /*!
     \fn void QCheckBox::stateChanged(int state)
+
+    \deprecated [6.9] Use checkStateChanged(Qt::CheckState) instead.
+
+    This signal is emitted whenever the checkbox's state changes, i.e.,
+    whenever the user checks or unchecks it.
+
+    \a state contains the checkbox's new Qt::CheckState.
+*/
+
+/*!
+    \fn void QCheckBox::checkStateChanged(Qt::CheckState state)
+    \since 6.7
 
     This signal is emitted whenever the checkbox's state changes, i.e.,
     whenever the user checks or unchecks it.
@@ -247,7 +217,7 @@ Qt::CheckState QCheckBox::checkState() const
 void QCheckBox::setCheckState(Qt::CheckState state)
 {
     Q_D(QCheckBox);
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     bool noChange = d->noChange;
 #endif
     if (state == Qt::PartiallyChecked) {
@@ -260,12 +230,17 @@ void QCheckBox::setCheckState(Qt::CheckState state)
     setChecked(state != Qt::Unchecked);
     d->blockRefresh = false;
     d->refresh();
-    if ((uint)state != d->publishedState) {
+    if (state != d->publishedState) {
         d->publishedState = state;
+        emit checkStateChanged(state);
+#if QT_DEPRECATED_SINCE(6, 9)
+        QT_IGNORE_DEPRECATIONS(
         emit stateChanged(state);
+        )
+#endif
     }
 
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     if (noChange != d->noChange) {
         QAccessible::State s;
         s.checkStateMixed = true;
@@ -292,8 +267,7 @@ QSize QCheckBox::sizeHint() const
                                      text()).size();
     if (!opt.icon.isNull())
         sz = QSize(sz.width() + opt.iconSize.width() + 4, qMax(sz.height(), opt.iconSize.height()));
-    d->sizeHint = (style()->sizeFromContents(QStyle::CT_CheckBox, &opt, sz, this)
-                  .expandedTo(QApplication::globalStrut()));
+    d->sizeHint = style()->sizeFromContents(QStyle::CT_CheckBox, &opt, sz, this);
     return d->sizeHint;
 }
 
@@ -326,7 +300,7 @@ void QCheckBox::mouseMoveEvent(QMouseEvent *e)
     if (testAttribute(Qt::WA_Hover)) {
         bool hit = false;
         if (underMouse())
-            hit = hitButton(e->pos());
+            hit = hitButton(e->position().toPoint());
 
         if (hit != d->hovering) {
             update(rect());
@@ -356,9 +330,14 @@ void QCheckBox::checkStateSet()
     Q_D(QCheckBox);
     d->noChange = false;
     Qt::CheckState state = checkState();
-    if ((uint)state != d->publishedState) {
+    if (state != d->publishedState) {
         d->publishedState = state;
+        emit checkStateChanged(state);
+#if QT_DEPRECATED_SINCE(6, 9)
+        QT_IGNORE_DEPRECATIONS(
         emit stateChanged(state);
+        )
+#endif
     }
 }
 

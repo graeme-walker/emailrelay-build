@@ -3,22 +3,17 @@
     "Name": "LibJPEG-turbo",
     "QDocModule": "qtgui",
     "QtUsage": "Used in the qjpeg image plugin. Configure with -system-libjpeg or -no-libjpeg to avoid.",
+    "SecurityCritical": true,
 
     "Description": "The Independent JPEG Group's JPEG software",
     "Homepage": "http://libjpeg-turbo.virtualgl.org/",
-    "Version": "2.0.5",
-    "License": "Independent JPEG Group License",
-    "LicenseId": "IJG",
-    "LicenseFile": "LICENSE",
-    "Copyright": "Copyright (C) 2009-2020 D. R. Commander
-Copyright (C) 2011-2016 Siarhei Siamashka
-Copyright (C) 2015-2016, 2018 Matthieu Darbois
-Copyright (C) 2015 Intel Corporation
-Copyright (C) 2015 Google, Inc.
-Copyright (C) 2013-2014 MIPS Technologies, Inc.
-Copyright (C) 2013 Linaro Limited
-Copyright (C) 2009-2011 Nokia Corporation and/or its subsidiary(-ies)
-Copyright (C) 2009 Pierre Ossman for Cendio AB
-Copyright (C) 1999-2006 MIYASAKA Masaru
-Copyright (C) 1991-2016 Thomas G. Lane, Guido Vollbeding"
+    "Version": "3.1.0",
+    "DownloadLocation": "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.1.0/libjpeg-turbo-3.1.0.tar.gz",
+    "PURL": "pkg:github/libjpeg-turbo/libjpeg-turbo@$<VERSION>",
+    "CPE": "cpe:2.3:a:libjpeg-turbo:libjpeg-turbo:$<VERSION>:*:*:*:*:*:*:*",
+
+    "License": "Independent JPEG Group License and BSD 3-Clause \"New\" or \"Revised\" License",
+    "LicenseId": "IJG AND BSD-3-Clause",
+    "LicenseFiles": [ "LICENSE", "ijg-license.txt" ],
+    "CopyrightFile": "COPYRIGHT.txt"
 }

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QDateTime>
 #include <QDebug>
@@ -41,12 +16,14 @@ static const char usage1[] =
 "Usage: ";
 static const char usage2[] =" [KEYWORD] [ARGUMENTS]\n\n"
 "Keywords: ls  FILES             list file information\n"
+"          find FILES            list file information recursively\n"
 "          stat FILES            print detailed file information\n"
 "          mv  SOURCE TARGET     rename files using QFile::rename\n"
 "          cp  SOURCE TARGET     copy files using QFile::copy\n"
 "          rm  FILE              remove file using QFile::remove\n"
 "          rmr DIR               remove directory recursively\n"
-"                                using QDir::removeRecursively\n";
+"                                using QDir::removeRecursively\n"
+"          trash FILES           moves the file or directory to trash\n";
 
 std::ostream &operator<<(std::ostream &o, const QString &str)
 {
@@ -94,7 +71,7 @@ static inline std::string permissions(const QFileInfo &fi)
     return result;
 }
 
-static int ls(int argCount, const char **args, bool recursive = false)
+static int ls(int argCount, const char **args, int depth = 0, int maxDepth = 1)
 {
     for (int i = 0 ; i < argCount; ++i) {
         const QFileInfo fi(QString::fromLocal8Bit(args[i]));
@@ -113,13 +90,13 @@ static int ls(int argCount, const char **args, bool recursive = false)
 
         std::cout << std::endl;
 
-        if (recursive && fi.isDir()) {
-            QDir dir(fi.fileName());
+        if (depth < maxDepth && fi.isDir()) {
+            QDir dir(fi.absoluteFilePath());
             const QStringList entries = dir.entryList(QDir::AllEntries | QDir::NoDotAndDotDot);
             for (const QString &s : entries) {
-                QByteArray encoded = QFile::encodeName(s);
+                QByteArray encoded = QFile::encodeName(dir.filePath(s));
                 const char *ptr = encoded.constData();
-                ls(1, &ptr, false);
+                ls(1, &ptr, depth + 1, maxDepth);
             }
         }
     }
@@ -196,10 +173,6 @@ static int rm(const char *fileName)
 
 static int rmr(const char *dirName)
 {
-#if QT_VERSION < 0x050000
-    Q_UNUSED(dirName)
-    return 1;
-#else
     QDir dir(QString::fromLocal8Bit(dirName));
     if (!dir.removeRecursively()) {
         qWarning().nospace() << "Failed to remove " << dir.absolutePath();
@@ -207,15 +180,28 @@ static int rmr(const char *dirName)
     }
 
     return 0;
-#endif
+}
+
+static int trash(const char *filename)
+{
+    QFile f(QString::fromLocal8Bit(filename));
+    if (!f.moveToTrash()) {
+        qWarning().nospace() << "Failed to trash " << f.fileName()
+                             << ": " << f.errorString();
+        return -1;
+    }
+    return 0;
 }
 
 int main(int argc, char *argv[])
 {
     QCoreApplication a(argc, argv);
-    Q_UNUSED(a)
+    Q_UNUSED(a);
     if (argc >= 3 && !qstrcmp(argv[1], "ls"))
-        return ls(argc -2, const_cast<const char **>(argv + 2), true);
+        return ls(argc -2, const_cast<const char **>(argv + 2));
+
+    if (argc >= 3 && !qstrcmp(argv[1], "find"))
+        return ls(argc -2, const_cast<const char **>(argv + 2), 0, std::numeric_limits<int>::max());
 
     if (argc >= 3 && !qstrcmp(argv[1], "stat"))
         return stat(argc -2, argv + 2);
@@ -231,6 +217,9 @@ int main(int argc, char *argv[])
 
     if (argc == 3 && !qstrcmp(argv[1], "rmr"))
         return rmr(argv[2]);
+
+    if (argc == 3 && !qstrcmp(argv[1], "trash"))
+        return trash(argv[2]);
 
     std::cerr << usage1 << argv[0] << usage2;
     return 0;

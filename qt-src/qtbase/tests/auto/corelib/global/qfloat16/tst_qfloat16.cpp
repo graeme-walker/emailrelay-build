@@ -1,44 +1,33 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Copyright (C) 2016 by Southwest Research Institute (R)
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// Copyright (C) 2016 by Southwest Research Institute (R)
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QFloat16>
+#include <QMetaType>
+#include <QTextStream>
+
+#include <private/qcomparisontesthelper_p.h>
 
 #include <math.h>
+
+//#define DO_FULL_TEST
+
+static_assert(sizeof(float) == sizeof(quint32), "Float not 32-bit");
 
 class tst_qfloat16: public QObject
 {
     Q_OBJECT
 
 private slots:
+    void compareCompiles();
+    void relationalOperatorsAreConstexpr();
+    void ordering_data();
+    void ordering();
     void fuzzyCompare_data();
     void fuzzyCompare();
+    void fuzzyIsNull_data();
+    void fuzzyIsNull();
     void ltgt_data();
     void ltgt();
     void qNaN();
@@ -48,13 +37,208 @@ private slots:
     void promotionTests();
     void arithOps_data();
     void arithOps();
+#if defined DO_FULL_TEST
+    void floatToFloat16Full_data();
+    void floatToFloat16Full();
+    void floatFromFloat16Full();
+#endif
     void floatToFloat16();
     void floatFromFloat16();
     void finite_data();
     void finite();
     void properties();
     void limits();
+    void mantissaOverflow();
+    void dataStream();
+    void textStream();
 };
+
+void tst_qfloat16::compareCompiles()
+{
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, float>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, double>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, long double>();
+#if QFLOAT16_IS_NATIVE
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, qfloat16::NativeType>();
+#endif
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, int>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, qint8>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, quint8>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, qint16>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, quint16>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, char16_t>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, long>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, unsigned long>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, wchar_t>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, qint32>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, quint32>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, qint64>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, quint64>();
+#ifdef QT_SUPPORTS_INT128
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, qint128>();
+    QTestPrivate::testAllComparisonOperatorsCompile<qfloat16, quint128>();
+#endif
+}
+
+void tst_qfloat16::relationalOperatorsAreConstexpr()
+{
+#if QFLOAT16_IS_NATIVE
+
+#define CHECK_CONSTEXPR(Type) \
+    do { \
+        constexpr qfloat16 lhs = qfloat16(0.0f); \
+        constexpr Type rhs = 1; \
+        static_assert(lhs < rhs); \
+        static_assert(rhs >= lhs); \
+    } while (false)
+
+    CHECK_CONSTEXPR(qfloat16);
+    CHECK_CONSTEXPR(float);
+    CHECK_CONSTEXPR(double);
+    CHECK_CONSTEXPR(long double);
+    CHECK_CONSTEXPR(qfloat16::NativeType);
+    CHECK_CONSTEXPR(qint8);
+    CHECK_CONSTEXPR(quint8);
+    CHECK_CONSTEXPR(qint16);
+    CHECK_CONSTEXPR(quint16);
+    CHECK_CONSTEXPR(qint32);
+    CHECK_CONSTEXPR(quint32);
+    CHECK_CONSTEXPR(long);
+    CHECK_CONSTEXPR(unsigned long);
+    CHECK_CONSTEXPR(qint64);
+    CHECK_CONSTEXPR(quint64);
+#ifdef QT_SUPPORTS_INT128
+    CHECK_CONSTEXPR(qint128);
+    CHECK_CONSTEXPR(quint128);
+#endif
+
+#undef CHECK_CONSTEXPR
+
+#else
+    QSKIP("This check is only relevant for native float16 types");
+#endif // QFLOAT16_IS_NATIVE
+}
+
+void tst_qfloat16::ordering_data()
+{
+    QTest::addColumn<float>("left");
+    QTest::addColumn<float>("right");
+
+    auto row = [](float left, float right) {
+        QTest::addRow("%f_vs_%f", left, right) << left << right;
+    };
+
+    row(0.0f, 0.0f);
+    row(0.000001f, 0.0f);
+    row(0.0f, 0.000001f);
+    row(-1.000001f, 1.000001f);
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+    row(nan, nan);
+    row(nan, inf);
+    row(inf, nan);
+    row(-inf, nan);
+    row(nan, -inf);
+    row(-inf, inf);
+    row(inf, -inf);
+    row(-inf, 0.0f);
+    row(0.0f, inf);
+    row(0.0f, nan);
+    row(nan, 0.0f);
+    row(2.0f, 314.159f);
+    row(-314.159f, 2.0f);
+    row(-2.0f, 314.159f);
+    row(nan, 314.159f);
+    row(-314.159f, inf);
+    row(-inf, 314.159f);
+    row(2.0f, -inf);
+    row(-2.0f, nan);
+    row(-inf, -2.0f);
+
+    // testing with values outside qfloat16 range
+    row(0.0f, 13e5f);
+    // generateRow(inf, 13e5f); // fails qfloat16 vs qfloat16 and qfloat16 vs int (QTBUG-118193)
+    row(0.0f, -13e5f);
+    // generateRow(-inf, -13e5f); // fails qfloat16 vs qfloat16 and qfloat16 vs int (QTBUG-118193)
+}
+
+void tst_qfloat16::ordering()
+{
+    QFETCH(float, left);
+    QFETCH(float, right);
+
+    const auto expectedOrder = Qt::compareThreeWay(left, right);
+    const auto lhs = qfloat16(left);
+
+#define POSTCHECK(msg) \
+    if (QTest::currentTestFailed()) { qDebug(msg); return; }
+
+#define CHECK_FP(RHS) \
+    do { \
+        QTestPrivate::testAllComparisonOperators(lhs, static_cast<RHS>(right), expectedOrder); \
+        POSTCHECK("qfloat16 vs " #RHS " comparison failed") \
+    } while (false) \
+    /* END */
+
+    CHECK_FP(qfloat16);
+    CHECK_FP(float);
+    CHECK_FP(double);
+    // Qt built for VxWorks x86_64 fails to link due to undefined reference to
+    // __extendhfxf2 when below check is enabled.
+    // This has been acknowledged by WindRiver as a bug
+    // and is being tracked in ticket 00154117
+#if !(defined(Q_OS_VXWORKS) && defined(Q_PROCESSOR_X86_64))
+    CHECK_FP(long double);
+#endif
+
+#undef CHECK_FP
+
+    auto check_int = [=](auto rhs) {
+        // check that we're in range before converting, otherwise
+        // [conv.fpint]/1 says it would be UB
+        using RHS = decltype(rhs);
+        if (right > double(std::numeric_limits<RHS>::max()))
+            return;
+        if (auto min = std::numeric_limits<RHS>::min(); min != 0 && right < double(min))
+            return;
+        rhs = RHS(right);
+        const auto expectedRes = Qt::compareThreeWay(left, rhs);
+        QTestPrivate::testAllComparisonOperators(lhs, rhs, expectedRes);
+    };
+#define CHECK_INT(RHS) \
+    do { \
+        check_int(static_cast<RHS>(0)); \
+        POSTCHECK("qfloat16 vs " #RHS " comparison failed") \
+    } while (false) \
+    /* END */
+
+    if (qIsFinite(right)) {
+        CHECK_INT(int);
+        CHECK_INT(qint8);
+        CHECK_INT(signed char);
+        CHECK_INT(qint16);
+        CHECK_INT(qint32);
+        CHECK_INT(qint64);
+#ifdef QT_SUPPORTS_INT128
+        CHECK_INT(qint128);
+#endif
+        if (right >= 0) {
+            CHECK_INT(unsigned int);
+            CHECK_INT(quint8);
+            CHECK_INT(unsigned char);
+            CHECK_INT(quint16);
+            CHECK_INT(quint32);
+            CHECK_INT(quint64);
+    #ifdef QT_SUPPORTS_INT128
+            CHECK_INT(quint128);
+    #endif
+        }
+    }
+
+#undef CHECK_INT
+#undef POSTCHECK
+}
 
 void tst_qfloat16::fuzzyCompare_data()
 {
@@ -99,6 +283,33 @@ void tst_qfloat16::fuzzyCompare()
         QVERIFY(!::qFuzzyCompare(-val1, -val2));
         QVERIFY(!::qFuzzyCompare(-val2, -val1));
     }
+}
+
+void tst_qfloat16::fuzzyIsNull_data()
+{
+    QTest::addColumn<qfloat16>("value");
+    QTest::addColumn<bool>("isNull");
+    using Bounds = std::numeric_limits<qfloat16>;
+    const qfloat16 one(1), huge(1000), tiny(0.00976f);
+
+    QTest::newRow("zero") << qfloat16(0.0f) << true;
+    QTest::newRow("min") << Bounds::min() << true;
+    QTest::newRow("denorm_min") << Bounds::denorm_min() << true;
+    QTest::newRow("tiny") << tiny << true;
+
+    QTest::newRow("deci") << qfloat16(.1) << false;
+    QTest::newRow("one") << one << false;
+    QTest::newRow("ten") << qfloat16(10) << false;
+    QTest::newRow("huge") << huge << false;
+}
+
+void tst_qfloat16::fuzzyIsNull()
+{
+    QFETCH(qfloat16, value);
+    QFETCH(bool, isNull);
+
+    QCOMPARE(::qFuzzyIsNull(value), isNull);
+    QCOMPARE(::qFuzzyIsNull(-value), isNull);
 }
 
 void tst_qfloat16::ltgt_data()
@@ -174,13 +385,7 @@ void tst_qfloat16::qNaN()
     QVERIFY(qIsNaN(nan));
     QVERIFY(qIsNaN(nan + one));
     QVERIFY(qIsNaN(-nan));
-#ifdef Q_CC_INTEL
-    QEXPECT_FAIL("", "ICC optimizes zero * anything to zero", Continue);
-#endif
     QVERIFY(qIsNaN(nan * zero));
-#ifdef Q_CC_INTEL
-    QEXPECT_FAIL("", "ICC optimizes zero * anything to zero", Continue);
-#endif
     QVERIFY(qIsNaN(Bounds::infinity() * zero));
 
     QVERIFY(!nan.isNormal());
@@ -200,11 +405,8 @@ void tst_qfloat16::infinity()
     QCOMPARE(huge, huge);
     QCOMPARE(-huge, -huge);
 
-    // QTBUG-75812 - see overOptimized in the limits() test.
-    if (qfloat16(9.785e-4f) == qfloat16(9.794e-4f)) {
-        QCOMPARE(one / huge, zero);
-        QVERIFY(qFuzzyCompare(one / huge, zero)); // (same thing)
-    }
+    QCOMPARE(one / huge, zero);
+    QVERIFY(qFuzzyCompare(one / huge, zero)); // (same thing)
 
     QVERIFY(qIsInf(huge));
     QVERIFY(qIsInf(-huge));
@@ -296,7 +498,7 @@ void tst_qfloat16::promotionTests()
     QCOMPARE(sizeof(double),sizeof(qfloat16(1.f)*1));
     QCOMPARE(sizeof(double),sizeof(qfloat16(1.f)/1));
 
-    QCOMPARE(QString::number(1.f),QString::number(qfloat16(1.f)));
+    QCOMPARE(QString::number(1.f),QString::number(double(qfloat16(1.f))));
 }
 
 void tst_qfloat16::arithOps_data()
@@ -346,22 +548,80 @@ void tst_qfloat16::arithOps()
     QVERIFY(qFuzzyCompare(r4,1.f/val2));
 }
 
+#if defined DO_FULL_TEST
+void tst_qfloat16::floatToFloat16Full_data()
+{
+    QTest::addColumn<quint32>("group");
+    for (quint32 j = 0x00; j < 0x100; ++j)
+        QTest::addRow("%02x", j) << j;
+
+}
+
+void tst_qfloat16::floatToFloat16Full()
+{
+    QFETCH(quint32, group);
+    for (quint32 j = 0x00; j < 0x100; ++j) {
+        quint32 data[1<<16];
+        qfloat16 out[1<<16];
+        qfloat16 expected[1<<16];
+        float in[1<<16];
+
+        for (int i = 0; i < (1<<16); ++i)
+            data[i] = (group << 24) | (j << 16) | i;
+
+        memcpy(in, data, (1<<16)*sizeof(float));
+
+        for (int i = 0; i < (1<<16); ++i)
+            expected[i] = qfloat16(in[i]);
+
+        qFloatToFloat16(out, in, 1<<16);
+
+        for (int i = 0; i < (1<<16); ++i) {
+            if (out[i] != expected[i])
+                QVERIFY(qIsNaN(out[i]) && qIsNaN(expected[i]));
+        }
+    }
+}
+
+void tst_qfloat16::floatFromFloat16Full()
+{
+    quint16 data[1<<16];
+    float out[1<<16];
+    float expected[1<<16];
+
+    for (int i = 0; i < (1<<16); ++i)
+        data[i] = i;
+
+    const qfloat16 *in = reinterpret_cast<const qfloat16 *>(data);
+
+    for (int i = 0; i < (1<<16); ++i)
+        expected[i] = float(in[i]);
+
+    qFloatFromFloat16(out, in, 1<<16);
+
+    for (int i = 0; i < (1<<16); ++i)
+        if (out[i] != expected[i])
+            QVERIFY(qIsNaN(out[i]) && qIsNaN(expected[i]));
+}
+#endif
+
 void tst_qfloat16::floatToFloat16()
 {
-    float in[63];
-    qfloat16 out[63];
-    qfloat16 expected[63];
+    constexpr int count = 10000;
+    float in[count];
+    qfloat16 out[count];
+    qfloat16 expected[count];
 
-    for (int i = 0; i < 63; ++i)
-        in[i] = i * (1/13.f);
+    for (int i = 0; i < count; ++i)
+        in[i] = (i - count/2) * (1/13.f);
 
-    for (int i = 0; i < 63; ++i)
+    for (int i = 0; i < count; ++i)
         expected[i] = qfloat16(in[i]);
 
-    qFloatToFloat16(out, in, 63);
+    qFloatToFloat16(out, in, count);
 
-    for (int i = 0; i < 63; ++i)
-        QVERIFY(qFuzzyCompare(out[i], expected[i]));
+    for (int i = 0; i < count; ++i)
+        QVERIFY(out[i] == expected[i]);
 }
 
 void tst_qfloat16::floatFromFloat16()
@@ -446,14 +706,39 @@ void tst_qfloat16::properties()
     QVERIFY(Bounds::is_signed);
     QVERIFY(!Bounds::is_integer);
     QVERIFY(!Bounds::is_exact);
+
+    // While we'd like to check for __STDC_IEC_559__, as per ISO/IEC 9899:2011
+    // Annex F (C11, normative for C++11), there are a few corner cases regarding
+    // denormals where GHS compiler is relying hardware behavior that is not IEC
+    // 559 compliant.
+
+    // On GHS the compiler reports std::numeric_limits<float>::is_iec559 as false.
+    // and the same supposed to be for qfloat16.
+#if !defined(Q_CC_GHS)
     QVERIFY(Bounds::is_iec559);
+#endif //Q_CC_GHS
+#if QT_CONFIG(signaling_nan)
+    // Technically, presence of NaN and infinities are implied from the above check, but that checkings GHS compiler complies.
+    QVERIFY(Bounds::has_infinity && Bounds::has_quiet_NaN && Bounds::has_signaling_NaN);
+#endif
     QVERIFY(Bounds::is_bounded);
     QVERIFY(!Bounds::is_modulo);
     QVERIFY(!Bounds::traps);
     QVERIFY(Bounds::has_infinity);
     QVERIFY(Bounds::has_quiet_NaN);
+#if QT_CONFIG(signaling_nan)
     QVERIFY(Bounds::has_signaling_NaN);
+#endif
+    QT_WARNING_PUSH
+    QT_WARNING_DISABLE_DEPRECATED // has_denorm is deprecated in C++23
+#if !defined(Q_CC_GHS)
     QCOMPARE(Bounds::has_denorm, std::denorm_present);
+#else
+    // For GHS compiler the "denorm_indeterminite" is the expected return value.
+    QCOMPARE(Bounds::has_denorm, std::denorm_indeterminate);
+#endif // Q_CC_GHS
+    QT_WARNING_POP
+
     QCOMPARE(Bounds::round_style, std::round_to_nearest);
     QCOMPARE(Bounds::radix, 2);
     // Untested: has_denorm_loss
@@ -506,15 +791,8 @@ void tst_qfloat16::limits() // See also: qNaN() and infinity()
     QCOMPARE(qFpClassify(high10), FP_NORMAL);
 
     // How many digits are significant ?  (Casts avoid linker errors ...)
-    QCOMPARE(int(Bounds::digits10), 3); // 9.79e-4 has enough sigificant digits:
-    qfloat16 below(9.785e-4f), above(9.794e-4f);
-#if 0 // Sadly, the QEMU x-compile for arm64 "optimizes" comparisons:
-    const bool overOptimized = false;
-#else
-    const bool overOptimized = (below != above);
-    if (overOptimized)
-        QEXPECT_FAIL("", "Over-optimized on ARM", Continue);
-#endif // (but it did, so should, pass everywhere else, confirming digits10 is indeed 3).
+    QCOMPARE(int(Bounds::digits10), 3); // ~9.88e-4 has enough sigificant digits:
+    qfloat16 below(9.876e-4f), above(9.884e-4f); // both round to ~9.88e-4
     QVERIFY(below == above);
     QCOMPARE(int(Bounds::max_digits10), 5); // we need 5 to distinguish these two:
     QVERIFY(qfloat16(1000.5f) != qfloat16(1001.4f));
@@ -522,9 +800,7 @@ void tst_qfloat16::limits() // See also: qNaN() and infinity()
     // Actual limiting values of the type:
     const qfloat16 rose(one + Bounds::epsilon());
     QVERIFY(rose > one);
-    if (overOptimized)
-        QEXPECT_FAIL("", "Over-optimized on ARM", Continue);
-    QVERIFY(one + Bounds::epsilon() / rose == one);
+    QVERIFY(one + Bounds::epsilon() / two == one);
 
     QVERIFY(Bounds::max() > zero);
     QVERIFY(qIsInf(Bounds::max() * rose));
@@ -536,14 +812,79 @@ void tst_qfloat16::limits() // See also: qNaN() and infinity()
     QVERIFY(!(Bounds::min() / rose).isNormal());
 
     QVERIFY(Bounds::denorm_min() > zero);
-    if (overOptimized)
-        QEXPECT_FAIL("", "Over-optimized on ARM", Continue);
-    QVERIFY(Bounds::denorm_min() / rose == zero);
-    if (overOptimized)
-        QEXPECT_FAIL("", "Over-optimized on ARM", Continue);
-    const qfloat16 under = (-Bounds::denorm_min()) / rose;
+    QVERIFY(Bounds::denorm_min() / two == zero);
+    const qfloat16 under = (-Bounds::denorm_min()) / two;
     QVERIFY(under == -zero);
     QCOMPARE(qfloat16(1).copySign(under), qfloat16(-1));
+}
+
+void tst_qfloat16::mantissaOverflow()
+{
+    // Test we don't change category due to mantissa overflow when rounding.
+    quint32 in = 0x7fffffff;
+    float f;
+    memcpy(&f, &in, 4);
+
+    qfloat16 f16 = qfloat16(f);
+    qfloat16 f16s[1];
+    qFloatToFloat16(f16s, &f, 1);
+    QCOMPARE(f16, f16s[0]);
+    QVERIFY(qIsNaN(f16));
+}
+
+void tst_qfloat16::dataStream()
+{
+    QByteArray ba;
+    QDataStream ds(&ba, QIODevice::ReadWrite);
+    ds << qfloat16(1.5) << qfloat16(-1);
+    QCOMPARE(ba.size(), 4);
+    QCOMPARE(ds.status(), QDataStream::Ok);
+    QCOMPARE(ba, QByteArray("\x3e\0\xbc\0", 4));
+
+    ds.device()->seek(0);
+    ds.resetStatus();
+    ds.setByteOrder(QDataStream::LittleEndian);
+    ds << qfloat16(0) << qfloat16(-1);
+    QCOMPARE(ds.status(), QDataStream::Ok);
+    QCOMPARE(ba, QByteArray("\0\0\0\xbc", 4));
+
+    ds.device()->seek(0);
+    ds.resetStatus();
+    qfloat16 zero = 1;
+    ds >> zero;
+    QCOMPARE(ds.status(), QDataStream::Ok);
+    QCOMPARE(zero, qfloat16(0));
+
+    ds.device()->seek(0);
+    ds.resetStatus();
+    QMetaType mt = QMetaType(QMetaType::Float16);
+    QVERIFY(mt.save(ds, &zero));
+
+    ds.device()->seek(0);
+    ds.resetStatus();
+    zero = -1;
+    QVERIFY(mt.load(ds, &zero));
+    QCOMPARE(zero, qfloat16(0));
+}
+
+void tst_qfloat16::textStream()
+{
+    QString buffer;
+    {
+        QTextStream ts(&buffer);
+        ts << qfloat16(0) << Qt::endl << qfloat16(1.5);
+        QCOMPARE(ts.status(), QTextStream::Ok);
+    }
+    QCOMPARE(buffer, "0\n1.5");
+
+    {
+        QTextStream ts(&buffer);
+        qfloat16 zero = qfloat16(-2.5), threehalves = 1234;
+        ts >> zero >> threehalves;
+        QCOMPARE(ts.status(), QTextStream::Ok);
+        QCOMPARE(zero, qfloat16(0));
+        QCOMPARE(threehalves, 1.5);
+    }
 }
 
 QTEST_APPLESS_MAIN(tst_qfloat16)

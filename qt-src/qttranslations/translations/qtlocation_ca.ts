@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="ca">
+<TS version="2.1" language="ca_ES">
 <context>
     <name>GeoServiceProviderFactoryEsri</name>
     <message>
@@ -74,11 +74,11 @@ Visiteu https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     <name>QDeclarativeNavigator</name>
     <message>
         <source>Plugin does not support navigation.</source>
-        <translation>El connector no admet navegació.</translation>
+        <translation type="vanished">El connector no admet navegació.</translation>
     </message>
     <message>
         <source>Failed to create a navigator object.</source>
-        <translation>Ha fallat en crear un objecte navegador.</translation>
+        <translation type="vanished">Ha fallat en crear un objecte navegador.</translation>
     </message>
 </context>
 <context>
@@ -237,11 +237,11 @@ Visiteu https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     </message>
     <message>
         <source>Head on.</source>
-        <translation>Endavant.</translation>
+        <translation>Cap endavant.</translation>
     </message>
     <message>
         <source>Head onto %1.</source>
-        <translation>Endavant a %1.</translation>
+        <translation>Cap endavant a %1.</translation>
     </message>
     <message>
         <source>Enter the roundabout.</source>
@@ -426,7 +426,7 @@ Visiteu https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     <message>
         <source>twelfth</source>
         <comment>roundabout exit</comment>
-        <translation>dosena</translation>
+        <translation>dotzena</translation>
     </message>
     <message>
         <source>thirteenth</source>
@@ -870,11 +870,11 @@ Visiteu https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     </message>
     <message>
         <source>At the roundabout, turn around</source>
-        <translation>A la rotonda, dóna la volta</translation>
+        <translation>A la rotonda, dona la volta</translation>
     </message>
     <message>
         <source>At the roundabout, turn around onto %1</source>
-        <translation>A la rotonda, dóna la volta a %1</translation>
+        <translation>A la rotonda, dona la volta a %1</translation>
     </message>
     <message>
         <source>At the roundabout, continue</source>
@@ -1058,11 +1058,11 @@ Visiteu https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     </message>
     <message>
         <source>Head on.</source>
-        <translation type="vanished">De front.</translation>
+        <translation type="vanished">Cap endavant.</translation>
     </message>
     <message>
         <source>Head onto %1.</source>
-        <translation type="vanished">De front a %1.</translation>
+        <translation type="vanished">Cap endavant a %1.</translation>
     </message>
     <message>
         <source>Enter the roundabout.</source>
@@ -1150,7 +1150,7 @@ Visiteu https://developers.arcgis.com/authentication/accessing-arcgis-online-ser
     </message>
     <message>
         <source>Stay on the roundabout.</source>
-        <translation type="vanished">Romàn a la rotonda.</translation>
+        <translation type="vanished">Roman a la rotonda.</translation>
     </message>
     <message>
         <source>Start at the end of the street.</source>
@@ -1530,7 +1530,7 @@ Visiteu https://www.mapbox.com</translation>
     </message>
     <message>
         <source>Amenity</source>
-        <translation>Amenitat</translation>
+        <translation>Servei</translation>
     </message>
     <message>
         <source>Building</source>
@@ -1643,24 +1643,30 @@ Visiteu https://www.mapbox.com</translation>
     <message>
         <source>Qt Location requires app_id and token parameters.
 Please register at https://developer.here.com/ to get your personal application credentials.</source>
-        <translation>Qt Location requereix els paràmetres «app_id» i «token».
-Registreu-vos a https://developer.here.com/ per obtenir les vostres credencials personals per a l&apos;aplicació.</translation>
+        <translation type="vanished">Qt Location requereix els paràmetres «app_id» i «token».
+Registreu-vos a https://developer.here.com/ per a obtenir les vostres credencials personals de l&apos;aplicació.</translation>
+    </message>
+    <message>
+        <source>Qt Location requires apiKey parameter.
+Please register at https://developer.here.com/ to get your personal application credentials.</source>
+        <translation>El Qt Location requereix el paràmetre «apiKey».
+Registreu-vos a https://developer.here.com/ per a obtenir les vostres credencials personals d&apos;aplicació.</translation>
     </message>
     <message>
         <source>Saving places is not supported.</source>
-        <translation>El desar els llocs no està admès.</translation>
+        <translation>No s&apos;admet desar els llocs.</translation>
     </message>
     <message>
         <source>Removing places is not supported.</source>
-        <translation>L&apos;eliminar els llocs no està admès.</translation>
+        <translation>No s&apos;admet eliminar els llocs.</translation>
     </message>
     <message>
         <source>Saving categories is not supported.</source>
-        <translation>El desar les categories no està admès.</translation>
+        <translation>No s&apos;admet desar les categories.</translation>
     </message>
     <message>
         <source>Removing categories is not supported.</source>
-        <translation>L&apos;eliminar les categories no està admès.</translation>
+        <translation>No s&apos;admet eliminar les categories.</translation>
     </message>
     <message>
         <source>Error parsing response.</source>

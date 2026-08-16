@@ -1,75 +1,35 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhelpdbreader_p.h"
 #include "qhelp_global.h"
 
-#include <QtCore/QVariant>
-#include <QtCore/QVector>
-#include <QtCore/QFile>
-#include <QtSql/QSqlError>
-#include <QtSql/QSqlQuery>
+#include <QtCore/qfile.h>
+#include <QtCore/qmap.h>
+#include <QtCore/qvariant.h>
+#include <QtSql/qsqldatabase.h>
+#include <QtSql/qsqlerror.h>
+#include <QtSql/qsqlquery.h>
 
 QT_BEGIN_NAMESPACE
 
-QHelpDBReader::QHelpDBReader(const QString &dbName)
-    : QObject(nullptr),
-      m_dbName(dbName),
-      m_uniqueId(QHelpGlobal::uniquifyConnectionName(QLatin1String("QHelpDBReader"),
-                                                     this))
-{
-}
+using namespace Qt::StringLiterals;
 
-QHelpDBReader::QHelpDBReader(const QString &dbName, const QString &uniqueId,
-                           QObject *parent)
-    : QObject(parent),
-      m_dbName(dbName),
-      m_uniqueId(uniqueId)
-{
-}
+QHelpDBReader::QHelpDBReader(const QString &dbName)
+    : m_dbName(dbName)
+    , m_uniqueId(QHelpGlobal::uniquifyConnectionName("QHelpDBReader"_L1, this))
+{}
+
+QHelpDBReader::QHelpDBReader(const QString &dbName, const QString &uniqueId, QObject *parent)
+    : QObject(parent)
+    , m_dbName(dbName)
+    , m_uniqueId(uniqueId)
+{}
 
 QHelpDBReader::~QHelpDBReader()
 {
-    if (m_initDone) {
-        delete m_query;
+    if (m_initDone)
         QSqlDatabase::removeDatabase(m_uniqueId);
-    }
 }
 
 bool QHelpDBReader::init()
@@ -86,15 +46,14 @@ bool QHelpDBReader::init()
     }
 
     m_initDone = true;
-    m_query = new QSqlQuery(QSqlDatabase::database(m_uniqueId));
-
+    m_query.reset(new QSqlQuery(QSqlDatabase::database(m_uniqueId)));
     return true;
 }
 
 bool QHelpDBReader::initDB()
 {
-    QSqlDatabase db = QSqlDatabase::addDatabase(QLatin1String("QSQLITE"), m_uniqueId);
-    db.setConnectOptions(QLatin1String("QSQLITE_OPEN_READONLY"));
+    QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE"_L1, m_uniqueId);
+    db.setConnectOptions("QSQLITE_OPEN_READONLY"_L1);
     db.setDatabaseName(m_dbName);
     if (!db.open()) {
         /*: The placeholders are: %1 - The name of the database which cannot be opened
@@ -111,7 +70,7 @@ QString QHelpDBReader::namespaceName() const
     if (!m_namespace.isEmpty())
         return m_namespace;
     if (m_query) {
-        m_query->exec(QLatin1String("SELECT Name FROM NamespaceTable"));
+        m_query->exec("SELECT Name FROM NamespaceTable"_L1);
         if (m_query->next())
             m_namespace = m_query->value(0).toString();
     }
@@ -121,16 +80,16 @@ QString QHelpDBReader::namespaceName() const
 QString QHelpDBReader::virtualFolder() const
 {
     if (m_query) {
-        m_query->exec(QLatin1String("SELECT Name FROM FolderTable WHERE Id=1"));
+        m_query->exec("SELECT Name FROM FolderTable WHERE Id=1"_L1);
         if (m_query->next())
             return m_query->value(0).toString();
     }
-    return QString();
+    return {};
 }
 
 QString QHelpDBReader::version() const
 {
-    const QString versionString = metaData(QLatin1String("version")).toString();
+    const QString versionString = metaData("version"_L1).toString();
     if (versionString.isEmpty())
         return qtVersionHeuristic();
     return versionString;
@@ -139,14 +98,14 @@ QString QHelpDBReader::version() const
 QString QHelpDBReader::qtVersionHeuristic() const
 {
     const QString nameSpace = namespaceName();
-    if (!nameSpace.startsWith(QLatin1String("org.qt-project.")))
-        return QString();
+    if (!nameSpace.startsWith("org.qt-project."_L1))
+        return {};
 
     // We take the namespace tail, starting from the last letter in namespace name.
     // We drop any non digit characters.
-    const QChar dot(QLatin1Char('.'));
+    const QChar dot(u'.');
     QString tail;
-    for (int i = nameSpace.count(); i > 0; --i) {
+    for (int i = nameSpace.size(); i > 0; --i) {
         const QChar c = nameSpace.at(i - 1);
         if (c.isDigit() || c == dot)
             tail.prepend(c);
@@ -172,30 +131,29 @@ QString QHelpDBReader::qtVersionHeuristic() const
         tail.chop(1);
 
     if (tail.count(dot) == 0) {
-        if (tail.count() > 5)
+        if (tail.size() > 5)
             return tail;
 
         // When we have 3 digits, we split it like: ABC -> A.B.C
         // When we have 4 digits, we split it like: ABCD -> A.BC.D
         // When we have 5 digits, we split it like: ABCDE -> A.BC.DE
         const int major = tail.left(1).toInt();
-        const int minor = tail.count() == 3
+        const int minor = tail.size() == 3
                 ? tail.mid(1, 1).toInt() : tail.mid(1, 2).toInt();
-        const int patch = tail.count() == 5
+        const int patch = tail.size() == 5
                 ? tail.right(2).toInt() : tail.right(1).toInt();
 
         return QString::fromUtf8("%1.%2.%3").arg(major).arg(minor).arg(patch);
     }
-
     return tail;
 }
 
 static bool isAttributeUsed(QSqlQuery *query, const QString &tableName, int attributeId)
 {
     query->prepare(QString::fromLatin1("SELECT FilterAttributeId "
-                     "FROM %1 "
-                     "WHERE FilterAttributeId = ? "
-                     "LIMIT 1").arg(tableName));
+                                       "FROM %1 "
+                                       "WHERE FilterAttributeId = ? "
+                                       "LIMIT 1").arg(tableName));
     query->bindValue(0, attributeId);
     query->exec();
     return query->next(); // if we got a result it means it was used
@@ -204,7 +162,7 @@ static bool isAttributeUsed(QSqlQuery *query, const QString &tableName, int attr
 static int filterDataCount(QSqlQuery *query, const QString &tableName)
 {
     query->exec(QString::fromLatin1("SELECT COUNT(*) FROM"
-              "(SELECT DISTINCT * FROM %1)").arg(tableName));
+                                    "(SELECT DISTINCT * FROM %1)").arg(tableName));
     query->next();
     return query->value(0).toInt();
 }
@@ -216,36 +174,31 @@ QHelpDBReader::IndexTable QHelpDBReader::indexTable() const
         return table;
 
     QMap<int, QString> attributeIds;
-    m_query->exec(QLatin1String("SELECT DISTINCT Id, Name FROM FilterAttributeTable ORDER BY Id"));
+    m_query->exec("SELECT DISTINCT Id, Name FROM FilterAttributeTable ORDER BY Id"_L1);
     while (m_query->next())
         attributeIds.insert(m_query->value(0).toInt(), m_query->value(1).toString());
 
     // Maybe some are unused and specified erroneously in the named filter only,
     // like it was in case of qtlocation.qch <= qt 5.9
-    QVector<int> usedAttributeIds;
+    QList<int> usedAttributeIds;
     for (auto it = attributeIds.cbegin(), end = attributeIds.cend(); it != end; ++it) {
         const int attributeId = it.key();
-        if (isAttributeUsed(m_query, QLatin1String("IndexFilterTable"), attributeId)
-                || isAttributeUsed(m_query, QLatin1String("ContentsFilterTable"), attributeId)
-                || isAttributeUsed(m_query, QLatin1String("FileFilterTable"), attributeId)) {
+        if (isAttributeUsed(m_query.get(), "IndexFilterTable"_L1, attributeId)
+            || isAttributeUsed(m_query.get(), "ContentsFilterTable"_L1, attributeId)
+            || isAttributeUsed(m_query.get(), "FileFilterTable"_L1, attributeId)) {
             usedAttributeIds.append(attributeId);
         }
     }
 
     bool legacy = false;
-    m_query->exec(QLatin1String("SELECT * FROM pragma_table_info('IndexTable') "
-                                "WHERE name='ContextName'"));
+    m_query->exec("SELECT * FROM pragma_table_info('IndexTable') WHERE name='ContextName'"_L1);
     if (m_query->next())
         legacy = true;
 
-    const QString identifierColumnName = legacy
-            ? QLatin1String("ContextName")
-            : QLatin1String("Identifier");
-
-    const int usedAttributeCount = usedAttributeIds.count();
+    const QString identifierColumnName = legacy ? "ContextName"_L1 : "Identifier"_L1;
+    const int usedAttributeCount = usedAttributeIds.size();
 
     QMap<int, IndexItem> idToIndexItem;
-
     m_query->exec(QString::fromLatin1("SELECT Name, %1, FileId, Anchor, Id "
                                       "FROM IndexTable "
                                       "ORDER BY Id").arg(identifierColumnName));
@@ -264,13 +217,14 @@ QHelpDBReader::IndexTable QHelpDBReader::indexTable() const
     QMap<int, int> originalFileIdToNewFileId;
 
     int filesCount = 0;
-    m_query->exec(QLatin1String("SELECT "
-                                    "FileNameTable.FileId, "
-                                    "FileNameTable.Name, "
-                                    "FileNameTable.Title "
-                                "FROM FileNameTable, FolderTable "
-                                "WHERE FileNameTable.FolderId = FolderTable.Id "
-                                "ORDER BY FileId"));
+    m_query->exec(
+        "SELECT "
+            "FileNameTable.FileId, "
+            "FileNameTable.Name, "
+            "FileNameTable.Title "
+        "FROM FileNameTable, FolderTable "
+        "WHERE FileNameTable.FolderId = FolderTable.Id "
+        "ORDER BY FileId"_L1);
     while (m_query->next()) {
         const int fileId = m_query->value(0).toInt();
         FileItem fileItem;
@@ -284,9 +238,7 @@ QHelpDBReader::IndexTable QHelpDBReader::indexTable() const
 
     QMap<int, ContentsItem> idToContentsItem;
 
-    m_query->exec(QLatin1String("SELECT Data, Id "
-                                "FROM ContentsTable "
-                                "ORDER BY Id"));
+    m_query->exec("SELECT Data, Id FROM ContentsTable ORDER BY Id"_L1);
     while (m_query->next()) {
         ContentsItem contentsItem;
         contentsItem.data    = m_query->value(0).toByteArray();
@@ -306,27 +258,25 @@ QHelpDBReader::IndexTable QHelpDBReader::indexTable() const
         // which we want to optimize). The same with FileNameTable and
         // FileFilterTable.
 
-        const bool mayOptimizeIndexTable
-                = filterDataCount(m_query, QLatin1String("IndexFilterTable"))
-                == idToIndexItem.count() * usedAttributeCount;
-        const bool mayOptimizeFileTable
-                = filterDataCount(m_query, QLatin1String("FileFilterTable"))
-                == idToFileItem.count() * usedAttributeCount;
-        const bool mayOptimizeContentsTable
-                = filterDataCount(m_query, QLatin1String("ContentsFilterTable"))
-                == idToContentsItem.count() * usedAttributeCount;
+        const bool mayOptimizeIndexTable = filterDataCount(m_query.get(), "IndexFilterTable"_L1)
+                == idToIndexItem.size() * usedAttributeCount;
+        const bool mayOptimizeFileTable = filterDataCount(m_query.get(), "FileFilterTable"_L1)
+                == idToFileItem.size() * usedAttributeCount;
+        const bool mayOptimizeContentsTable =
+                filterDataCount(m_query.get(), "ContentsFilterTable"_L1)
+                == idToContentsItem.size() * usedAttributeCount;
         optimized = mayOptimizeIndexTable && mayOptimizeFileTable && mayOptimizeContentsTable;
 
         if (!optimized) {
-            m_query->exec(QLatin1String(
-                              "SELECT "
-                                  "IndexFilterTable.IndexId, "
-                                  "FilterAttributeTable.Name "
-                              "FROM "
-                                  "IndexFilterTable, "
-                                  "FilterAttributeTable "
-                              "WHERE "
-                                  "IndexFilterTable.FilterAttributeId = FilterAttributeTable.Id"));
+            m_query->exec(
+                "SELECT "
+                    "IndexFilterTable.IndexId, "
+                    "FilterAttributeTable.Name "
+                "FROM "
+                    "IndexFilterTable, "
+                    "FilterAttributeTable "
+                "WHERE "
+                    "IndexFilterTable.FilterAttributeId = FilterAttributeTable.Id"_L1);
             while (m_query->next()) {
                 const int indexId = m_query->value(0).toInt();
                 auto it = idToIndexItem.find(indexId);
@@ -334,15 +284,15 @@ QHelpDBReader::IndexTable QHelpDBReader::indexTable() const
                     it.value().filterAttributes.append(m_query->value(1).toString());
             }
 
-            m_query->exec(QLatin1String(
-                              "SELECT "
-                                  "FileFilterTable.FileId, "
-                                  "FilterAttributeTable.Name "
-                              "FROM "
-                                  "FileFilterTable, "
-                                  "FilterAttributeTable "
-                              "WHERE "
-                                  "FileFilterTable.FilterAttributeId = FilterAttributeTable.Id"));
+            m_query->exec(
+                "SELECT "
+                    "FileFilterTable.FileId, "
+                    "FilterAttributeTable.Name "
+                "FROM "
+                    "FileFilterTable, "
+                    "FilterAttributeTable "
+                "WHERE "
+                    "FileFilterTable.FilterAttributeId = FilterAttributeTable.Id"_L1);
             while (m_query->next()) {
                 const int fileId = m_query->value(0).toInt();
                 auto it = idToFileItem.find(fileId);
@@ -350,15 +300,15 @@ QHelpDBReader::IndexTable QHelpDBReader::indexTable() const
                     it.value().filterAttributes.append(m_query->value(1).toString());
             }
 
-            m_query->exec(QLatin1String(
-                              "SELECT "
-                                  "ContentsFilterTable.ContentsId, "
-                                  "FilterAttributeTable.Name "
-                              "FROM "
-                                  "ContentsFilterTable, "
-                                  "FilterAttributeTable "
-                              "WHERE "
-                                  "ContentsFilterTable.FilterAttributeId = FilterAttributeTable.Id"));
+            m_query->exec(
+                "SELECT "
+                    "ContentsFilterTable.ContentsId, "
+                    "FilterAttributeTable.Name "
+                "FROM "
+                    "ContentsFilterTable, "
+                    "FilterAttributeTable "
+                "WHERE "
+                    "ContentsFilterTable.FilterAttributeId = FilterAttributeTable.Id"_L1);
             while (m_query->next()) {
                 const int contentsId = m_query->value(0).toInt();
                 auto it = idToContentsItem.find(contentsId);
@@ -382,7 +332,6 @@ QHelpDBReader::IndexTable QHelpDBReader::indexTable() const
         for (int attributeId : usedAttributeIds)
             table.usedFilterAttributes.append(attributeIds.value(attributeId));
     }
-
     return table;
 }
 
@@ -390,15 +339,15 @@ QList<QStringList> QHelpDBReader::filterAttributeSets() const
 {
     QList<QStringList> result;
     if (m_query) {
-        m_query->exec(QLatin1String(
-                  "SELECT "
-                      "FileAttributeSetTable.Id, "
-                      "FilterAttributeTable.Name "
-                  "FROM "
-                      "FileAttributeSetTable, "
-                      "FilterAttributeTable "
-                  "WHERE FileAttributeSetTable.FilterAttributeId = FilterAttributeTable.Id "
-                  "ORDER BY FileAttributeSetTable.Id"));
+        m_query->exec(
+            "SELECT "
+                "FileAttributeSetTable.Id, "
+                "FilterAttributeTable.Name "
+            "FROM "
+                "FileAttributeSetTable, "
+                "FilterAttributeTable "
+            "WHERE FileAttributeSetTable.FilterAttributeId = FilterAttributeTable.Id "
+            "ORDER BY FileAttributeSetTable.Id"_L1);
         int oldId = -1;
         while (m_query->next()) {
             const int id = m_query->value(0).toInt();
@@ -420,22 +369,22 @@ QByteArray QHelpDBReader::fileData(const QString &virtualFolder,
         return ba;
 
     namespaceName();
-    m_query->prepare(QLatin1String(
-                    "SELECT "
-                        "FileDataTable.Data "
-                    "FROM "
-                        "FileDataTable, "
-                        "FileNameTable, "
-                        "FolderTable, "
-                        "NamespaceTable "
-                    "WHERE FileDataTable.Id = FileNameTable.FileId "
-                    "AND (FileNameTable.Name = ? OR FileNameTable.Name = ?) "
-                    "AND FileNameTable.FolderId = FolderTable.Id "
-                    "AND FolderTable.Name = ? "
-                    "AND FolderTable.NamespaceId = NamespaceTable.Id "
-                    "AND NamespaceTable.Name = ?"));
+    m_query->prepare(
+        "SELECT "
+            "FileDataTable.Data "
+        "FROM "
+            "FileDataTable, "
+            "FileNameTable, "
+            "FolderTable, "
+            "NamespaceTable "
+        "WHERE FileDataTable.Id = FileNameTable.FileId "
+        "AND (FileNameTable.Name = ? OR FileNameTable.Name = ?) "
+        "AND FileNameTable.FolderId = FolderTable.Id "
+        "AND FolderTable.Name = ? "
+        "AND FolderTable.NamespaceId = NamespaceTable.Id "
+        "AND NamespaceTable.Name = ?"_L1);
     m_query->bindValue(0, filePath);
-    m_query->bindValue(1, QString(QLatin1String("./") + filePath));
+    m_query->bindValue(1, QString("./"_L1 + filePath));
     m_query->bindValue(2, virtualFolder);
     m_query->bindValue(3, m_namespace);
     m_query->exec();
@@ -448,7 +397,7 @@ QStringList QHelpDBReader::customFilters() const
 {
     QStringList lst;
     if (m_query) {
-        m_query->exec(QLatin1String("SELECT Name FROM FilterNameTable"));
+        m_query->exec("SELECT Name FROM FilterNameTable"_L1);
         while (m_query->next())
             lst.append(m_query->value(0).toString());
     }
@@ -460,18 +409,18 @@ QStringList QHelpDBReader::filterAttributes(const QString &filterName) const
     QStringList lst;
     if (m_query) {
         if (filterName.isEmpty()) {
-            m_query->prepare(QLatin1String("SELECT Name FROM FilterAttributeTable"));
+            m_query->prepare("SELECT Name FROM FilterAttributeTable"_L1);
         } else {
-            m_query->prepare(QLatin1String(
-                     "SELECT "
-                         "FilterAttributeTable.Name "
-                     "FROM "
-                         "FilterAttributeTable, "
-                         "FilterTable, "
-                         "FilterNameTable "
-                     "WHERE FilterNameTable.Name = ? "
-                    "AND FilterNameTable.Id = FilterTable.NameId "
-                    "AND FilterTable.FilterAttributeId = FilterAttributeTable.Id"));
+            m_query->prepare(
+                 "SELECT "
+                     "FilterAttributeTable.Name "
+                 "FROM "
+                     "FilterAttributeTable, "
+                     "FilterTable, "
+                     "FilterNameTable "
+                 "WHERE FilterNameTable.Name = ? "
+                "AND FilterNameTable.Id = FilterTable.NameId "
+                "AND FilterTable.FilterAttributeId = FilterAttributeTable.Id"_L1);
             m_query->bindValue(0, filterName);
         }
         m_query->exec();
@@ -481,80 +430,73 @@ QStringList QHelpDBReader::filterAttributes(const QString &filterName) const
     return lst;
 }
 
-QMap<QString, QByteArray> QHelpDBReader::filesData(
-        const QStringList &filterAttributes,
-        const QString &extensionFilter) const
+QMultiMap<QString, QByteArray> QHelpDBReader::filesData(const QStringList &filterAttributes,
+                                                        const QString &extensionFilter) const
 {
-    QMap<QString, QByteArray> result;
     if (!m_query)
-        return result;
+        return {};
 
     QString query;
     QString extension;
     if (!extensionFilter.isEmpty())
-        extension = QString(QLatin1String("AND FileNameTable.Name "
-                                          "LIKE \'%.%1\'")).arg(extensionFilter);
+        extension = "AND FileNameTable.Name LIKE \'%.%1\'"_L1.arg(extensionFilter);
 
     if (filterAttributes.isEmpty()) {
-        query = QString(QLatin1String("SELECT "
-                                          "FileNameTable.Name, "
-                                          "FileDataTable.Data "
-                                      "FROM "
-                                          "FolderTable, "
-                                          "FileNameTable, "
-                                          "FileDataTable "
-                                      "WHERE FileDataTable.Id = FileNameTable.FileId "
-                                      "AND FileNameTable.FolderId = FolderTable.Id %1"))
-            .arg(extension);
+        query =
+            "SELECT "
+                "FileNameTable.Name, "
+                "FileDataTable.Data "
+            "FROM "
+                "FolderTable, "
+                "FileNameTable, "
+                "FileDataTable "
+            "WHERE FileDataTable.Id = FileNameTable.FileId "
+            "AND FileNameTable.FolderId = FolderTable.Id %1"_L1.arg(extension);
     } else {
-        for (int i = 0; i < filterAttributes.count(); ++i) {
+        for (int i = 0; i < filterAttributes.size(); ++i) {
             if (i > 0)
-                query.append(QLatin1String(" INTERSECT "));
-            query.append(QString(QLatin1String(
-                                     "SELECT "
-                                         "FileNameTable.Name, "
-                                         "FileDataTable.Data "
-                                     "FROM "
-                                         "FolderTable, "
-                                         "FileNameTable, "
-                                         "FileDataTable, "
-                                         "FileFilterTable, "
-                                         "FilterAttributeTable "
-                                     "WHERE FileDataTable.Id = FileNameTable.FileId "
-                                     "AND FileNameTable.FolderId = FolderTable.Id "
-                                     "AND FileNameTable.FileId = FileFilterTable.FileId "
-                                     "AND FileFilterTable.FilterAttributeId = FilterAttributeTable.Id "
-                                     "AND FilterAttributeTable.Name = \'%1\' %2"))
-                         .arg(quote(filterAttributes.at(i)))
-                         .arg(extension));
+                query.append(" INTERSECT "_L1);
+            query.append(
+                "SELECT "
+                    "FileNameTable.Name, "
+                    "FileDataTable.Data "
+                "FROM "
+                    "FolderTable, "
+                    "FileNameTable, "
+                    "FileDataTable, "
+                    "FileFilterTable, "
+                    "FilterAttributeTable "
+                "WHERE FileDataTable.Id = FileNameTable.FileId "
+                "AND FileNameTable.FolderId = FolderTable.Id "
+                "AND FileNameTable.FileId = FileFilterTable.FileId "
+                "AND FileFilterTable.FilterAttributeId = FilterAttributeTable.Id "
+                "AND FilterAttributeTable.Name = \'%1\' %2"_L1
+                            .arg(quote(filterAttributes.at(i)), extension));
         }
     }
     m_query->exec(query);
+    QMultiMap<QString, QByteArray> result;
     while (m_query->next())
         result.insert(m_query->value(0).toString(), qUncompress(m_query->value(1).toByteArray()));
-
     return result;
 }
 
 QVariant QHelpDBReader::metaData(const QString &name) const
 {
-    QVariant v;
     if (!m_query)
-        return v;
+        return {};
 
-    m_query->prepare(QLatin1String("SELECT COUNT(Value), Value FROM MetaDataTable "
-        "WHERE Name=?"));
+    m_query->prepare("SELECT COUNT(Value), Value FROM MetaDataTable WHERE Name=?"_L1);
     m_query->bindValue(0, name);
-    if (m_query->exec() && m_query->next()
-        && m_query->value(0).toInt() == 1)
-        v = m_query->value(1);
-    return v;
+    if (m_query->exec() && m_query->next() && m_query->value(0).toInt() == 1)
+        return m_query->value(1);
+    return {};
 }
 
 QString QHelpDBReader::quote(const QString &string) const
 {
     QString s = string;
-    s.replace(QLatin1Char('\''), QLatin1String("\'\'"));
+    s.replace(u'\'', "\'\'"_L1);
     return s;
 }
 

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwindowskeymapper.h"
 #include "qwindowscontext.h"
@@ -49,8 +13,9 @@
 #include <private/qguiapplication_p.h>
 #include <private/qhighdpiscaling_p.h>
 #include <QtGui/qevent.h>
-#include <QtEventDispatcherSupport/private/qwindowsguieventdispatcher_p.h>
+#include <QtGui/private/qwindowsguieventdispatcher_p.h>
 #include <QtCore/private/qdebug_p.h>
+#include <QtCore/private/qtools_p.h>
 
 #if defined(WM_APPCOMMAND)
 #  ifndef FAPPCOMMAND_MOUSE
@@ -123,9 +88,17 @@ QWindowsKeyMapper::~QWindowsKeyMapper()= default;
 #define VK_OEM_3 0xC0
 #endif
 
-// We not only need the scancode itself but also the extended bit of key messages. Thus we need
-// the additional bit when masking the scancode.
-enum { scancodeBitmask = 0x1ff };
+// Get scancode from the given message
+static constexpr quint32 getScancode(const MSG &msg)
+{
+    const auto keyFlags = HIWORD(msg.lParam);
+    quint32 scancode = LOBYTE(keyFlags);
+    // if extended-key flag is on, the scan code consists of a sequence of two bytes,
+    // where the first byte has a value of 0xe0.
+    if ((keyFlags & KF_EXTENDED) != 0)
+        scancode |= 0xE000;
+    return scancode;
+}
 
 // Key recorder ------------------------------------------------------------------------[ start ] --
 struct KeyRecord {
@@ -389,7 +362,8 @@ static const uint KeyTbl[] = { // Keyboard mapping table
     Qt::Key_MediaNext,  // 176   0xB0   VK_MEDIA_NEXT_TRACK | Next Track key
     Qt::Key_MediaPrevious, //177 0xB1   VK_MEDIA_PREV_TRACK | Previous Track key
     Qt::Key_MediaStop,  // 178   0xB2   VK_MEDIA_STOP       | Stop Media key
-    Qt::Key_MediaPlay,  // 179   0xB3   VK_MEDIA_PLAY_PAUSE | Play/Pause Media key
+    Qt::Key_MediaTogglePlayPause,
+                        // 179   0xB3   VK_MEDIA_PLAY_PAUSE | Play/Pause Media key
     Qt::Key_LaunchMail, // 180   0xB4   VK_LAUNCH_MAIL      | Start Mail key
     Qt::Key_LaunchMedia,// 181   0xB5   VK_LAUNCH_MEDIA_SELECT Select Media key
     Qt::Key_Launch0,    // 182   0xB6   VK_LAUNCH_APP1      | Start Application 1 key
@@ -540,7 +514,7 @@ static const Qt::KeyboardModifiers ModsTbl[] = {
     Qt::NoModifier,                                             // Fall-back to raw Key_*
 };
 static const size_t NumMods = sizeof ModsTbl / sizeof *ModsTbl;
-Q_STATIC_ASSERT((NumMods == KeyboardLayoutItem::NumQtKeys));
+static_assert((NumMods == KeyboardLayoutItem::NumQtKeys));
 
 #ifndef QT_NO_DEBUG_STREAM
 QDebug operator<<(QDebug d, const KeyboardLayoutItem &k)
@@ -566,33 +540,6 @@ QDebug operator<<(QDebug d, const KeyboardLayoutItem &k)
     d << ')';
     return d;
 }
-
-// Helpers to format a list of int as Qt key sequence
-class formatKeys
-{
-public:
-    explicit formatKeys(const QList<int> &keys) : m_keys(keys) {}
-
-private:
-    friend QDebug operator<<(QDebug d, const formatKeys &keys);
-    const QList<int> &m_keys;
-};
-
-QDebug operator<<(QDebug d, const formatKeys &k)
-{
-    QDebugStateSaver saver(d);
-    d.nospace();
-    d << '(';
-    for (int i =0, size = k.m_keys.size(); i < size; ++i) {
-        if (i)
-            d << ", ";
-        d << QKeySequence(k.m_keys.at(i));
-    }
-    d << ')';
-    return d;
-}
-#else // !QT_NO_DEBUG_STREAM
-static int formatKeys(const QList<int> &) { return 0; }
 #endif // QT_NO_DEBUG_STREAM
 
 /**
@@ -634,8 +581,7 @@ static inline quint32 toKeyOrUnicode(quint32 vk, quint32 scancode, unsigned char
 
 static inline int asciiToKeycode(char a, int state)
 {
-    if (a >= 'a' && a <= 'z')
-        a = toupper(a);
+    a = QtMiscUtils::toAsciiUpper(a);
     if ((state & Qt::ControlModifier) != 0) {
         if (a >= 0 && a <= 31)              // Ctrl+@..Ctrl+A..CTRL+Z..Ctrl+_
             a += '@';                       // to @..A..Z.._
@@ -691,7 +637,7 @@ void QWindowsKeyMapper::updateKeyMap(const MSG &msg)
 {
     unsigned char kbdBuffer[256]; // Will hold the complete keyboard state
     GetKeyboardState(kbdBuffer);
-    const quint32 scancode = (msg.lParam >> 16) & scancodeBitmask;
+    const quint32 scancode = getScancode(msg);
     updatePossibleKeyCodes(kbdBuffer, scancode, quint32(msg.wParam));
 }
 
@@ -784,6 +730,27 @@ static inline QString messageKeyText(const MSG &msg)
     return ch.isNull() ? QString() : QString(ch);
 }
 
+[[nodiscard]] static inline int getTitleBarHeight(const HWND hwnd)
+{
+    const UINT dpi = GetDpiForWindow(hwnd);
+    const int captionHeight = GetSystemMetricsForDpi(SM_CYCAPTION, dpi);
+    if (IsZoomed(hwnd))
+        return captionHeight;
+    // The frame height should also be taken into account if the window
+    // is not maximized.
+    const int frameHeight = GetSystemMetricsForDpi(SM_CYSIZEFRAME, dpi)
+                            + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+    return captionHeight + frameHeight;
+}
+
+[[nodiscard]] static inline bool isSystemMenuOffsetNeeded(const Qt::WindowFlags flags)
+{
+    static constexpr const Qt::WindowFlags titleBarHints =
+        Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint | Qt::WindowContextHelpButtonHint;
+    return (flags & Qt::WindowSystemMenuHint) && (flags & Qt::WindowTitleHint) && !(flags & titleBarHints)
+           && (flags & (Qt::FramelessWindowHint | Qt::CustomizeWindowHint));
+}
+
 static void showSystemMenu(QWindow* w)
 {
     QWindow *topLevel = QWindowsWindow::topLevelOf(w);
@@ -792,41 +759,49 @@ static void showSystemMenu(QWindow* w)
     if (!menu)
         return; // no menu for this window
 
-#define enabled (MF_BYCOMMAND | MF_ENABLED)
-#define disabled (MF_BYCOMMAND | MF_GRAYED)
+#define enabled (MF_BYCOMMAND | MFS_ENABLED)
+#define disabled (MF_BYCOMMAND | MFS_GRAYED)
 
-    EnableMenuItem(menu, SC_MINIMIZE, (topLevel->flags() & Qt::WindowMinimizeButtonHint)?enabled:disabled);
-    bool maximized = IsZoomed(topLevelHwnd);
+    EnableMenuItem(menu, SC_MINIMIZE, (topLevel->flags() & Qt::WindowMinimizeButtonHint) ? enabled : disabled);
+    const bool maximized = IsZoomed(topLevelHwnd);
 
-    EnableMenuItem(menu, SC_MAXIMIZE, ! (topLevel->flags() & Qt::WindowMaximizeButtonHint) || maximized?disabled:enabled);
-    EnableMenuItem(menu, SC_RESTORE, maximized?enabled:disabled);
+    EnableMenuItem(menu, SC_MAXIMIZE, !(topLevel->flags() & Qt::WindowMaximizeButtonHint) || maximized ? disabled : enabled);
 
     // We should _not_ check with the setFixedSize(x,y) case here, since Windows is not able to check
     // this and our menu here would be out-of-sync with the menu produced by mouse-click on the
     // System Menu, or right-click on the title bar.
-    EnableMenuItem(menu, SC_SIZE, (topLevel->flags() & Qt::MSWindowsFixedSizeDialogHint) || maximized?disabled:enabled);
-    EnableMenuItem(menu, SC_MOVE, maximized?disabled:enabled);
+    EnableMenuItem(menu, SC_SIZE, (topLevel->flags() & Qt::MSWindowsFixedSizeDialogHint) || maximized ? disabled : enabled);
+    EnableMenuItem(menu, SC_MOVE, maximized ? disabled : enabled);
     EnableMenuItem(menu, SC_CLOSE, enabled);
+    EnableMenuItem(menu, SC_RESTORE, maximized ? enabled : disabled);
+
+    // Highlight the first entry in the menu, this is what native Win32 applications usually do.
+    HiliteMenuItem(topLevelHwnd, menu, SC_RESTORE, MF_BYCOMMAND | MFS_HILITE);
+
     // Set bold on close menu item
-    MENUITEMINFO closeItem;
-    closeItem.cbSize = sizeof(MENUITEMINFO);
-    closeItem.fMask = MIIM_STATE;
-    closeItem.fState = MFS_DEFAULT;
-    SetMenuItemInfo(menu, SC_CLOSE, FALSE, &closeItem);
+    SetMenuDefaultItem(menu, SC_CLOSE, FALSE);
 
 #undef enabled
 #undef disabled
+
     const QPoint pos = QHighDpi::toNativePixels(topLevel->geometry().topLeft(), topLevel);
+    const int titleBarOffset = isSystemMenuOffsetNeeded(topLevel->flags()) ? getTitleBarHeight(topLevelHwnd) : 0;
     const int ret = TrackPopupMenuEx(menu,
-                               TPM_LEFTALIGN  | TPM_TOPALIGN | TPM_NONOTIFY | TPM_RETURNCMD,
-                               pos.x(), pos.y(),
+                               TPM_LEFTALIGN | TPM_TOPALIGN | TPM_NONOTIFY | TPM_RETURNCMD,
+                               pos.x(), pos.y() + titleBarOffset,
                                topLevelHwnd,
                                nullptr);
+
+    // Remove the highlight of the restore menu item, otherwise when the user right-clicks
+    // on the title bar, the popuped system menu will also highlight the restore item, which
+    // is not appropriate, it should only be highlighted if the menu is brought up by keyboard.
+    HiliteMenuItem(topLevelHwnd, menu, SC_RESTORE, MF_BYCOMMAND | MFS_UNHILITE);
+
     if (ret)
         qWindowsWndProc(topLevelHwnd, WM_SYSCOMMAND, WPARAM(ret), 0);
 }
 
-static inline void sendExtendedPressRelease(QWindow *w, int k,
+static inline void sendExtendedPressRelease(QWindow *w, unsigned long timestamp, int k,
                                             Qt::KeyboardModifiers mods,
                                             quint32 nativeScanCode,
                                             quint32 nativeVirtualKey,
@@ -835,8 +810,8 @@ static inline void sendExtendedPressRelease(QWindow *w, int k,
                                             bool autorep = false,
                                             ushort count = 1)
 {
-    QWindowSystemInterface::handleExtendedKeyEvent(w, QEvent::KeyPress, k, mods, nativeScanCode, nativeVirtualKey, nativeModifiers, text, autorep, count);
-    QWindowSystemInterface::handleExtendedKeyEvent(w, QEvent::KeyRelease, k, mods, nativeScanCode, nativeVirtualKey, nativeModifiers, text, autorep, count);
+    QWindowSystemInterface::handleExtendedKeyEvent(w, timestamp, QEvent::KeyPress, k, mods, nativeScanCode, nativeVirtualKey, nativeModifiers, text, autorep, count);
+    QWindowSystemInterface::handleExtendedKeyEvent(w, timestamp, QEvent::KeyRelease, k, mods, nativeScanCode, nativeVirtualKey, nativeModifiers, text, autorep, count);
 }
 
 /*!
@@ -903,11 +878,11 @@ bool QWindowsKeyMapper::translateMultimediaKeyEventInternal(QWindow *window, con
 
     const int qtKey = int(CmdTbl[cmd]);
     if (!skipPressRelease)
-        sendExtendedPressRelease(receiver, qtKey, Qt::KeyboardModifier(state), 0, 0, 0);
+        sendExtendedPressRelease(receiver, msg.time, qtKey, Qt::KeyboardModifier(state), 0, 0, 0);
     // QTBUG-43343: Make sure to return false if Qt does not handle the key, otherwise,
     // the keys are not passed to the active media player.
 # if QT_CONFIG(shortcut)
-    const QKeySequence sequence(Qt::Modifier(state) + qtKey);
+    const QKeySequence sequence(Qt::Modifier(state) | Qt::Key(qtKey));
     return QGuiApplicationPrivate::instance()->shortcutMap.hasShortcutForKeySequence(sequence);
 # else
     return false;
@@ -948,7 +923,7 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, MSG msg,
         m_seenAltGr = true;
     const UINT msgType = msg.message;
 
-    const quint32 scancode = (msg.lParam >> 16) & scancodeBitmask;
+    const quint32 scancode = getScancode(msg);
     auto vk_key = quint32(msg.wParam);
     quint32 nModifiers = 0;
 
@@ -983,7 +958,7 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, MSG msg,
     // A multi-character key or a Input method character
     // not found by our look-ahead
     if (msgType == WM_CHAR || msgType == WM_IME_CHAR) {
-        sendExtendedPressRelease(receiver, 0, Qt::KeyboardModifier(state), scancode, vk_key, nModifiers, messageKeyText(msg), false);
+        sendExtendedPressRelease(receiver, msg.time, 0, Qt::KeyboardModifier(state), scancode, 0, nModifiers, messageKeyText(msg), false);
         return true;
     }
 
@@ -1018,14 +993,14 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, MSG msg,
                 if (dirStatus == VK_LSHIFT
                         && ((msg.wParam == VK_SHIFT && GetKeyState(VK_LCONTROL))
                             || (msg.wParam == VK_CONTROL && GetKeyState(VK_LSHIFT)))) {
-                    sendExtendedPressRelease(receiver, Qt::Key_Direction_L, {},
+                    sendExtendedPressRelease(receiver, msg.time, Qt::Key_Direction_L, {},
                                              scancode, vk_key, nModifiers, QString(), false);
                     result = true;
                     dirStatus = 0;
                 } else if (dirStatus == VK_RSHIFT
                            && ( (msg.wParam == VK_SHIFT && GetKeyState(VK_RCONTROL))
                                 || (msg.wParam == VK_CONTROL && GetKeyState(VK_RSHIFT)))) {
-                    sendExtendedPressRelease(receiver, Qt::Key_Direction_R, {},
+                    sendExtendedPressRelease(receiver, msg.time, Qt::Key_Direction_R, {},
                                              scancode, vk_key, nModifiers, QString(), false);
                     result = true;
                     dirStatus = 0;
@@ -1219,7 +1194,6 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, MSG msg,
             switch (code) {
             case Qt::Key_Escape:
             case Qt::Key_Tab:
-            case Qt::Key_Enter:
             case Qt::Key_F4:
                 return false; // Send the event on to Windows
             case Qt::Key_Space:
@@ -1239,9 +1213,9 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, MSG msg,
         // so, we have an auto-repeating key
         if (rec) {
             if (code < Qt::Key_Shift || code > Qt::Key_ScrollLock) {
-                QWindowSystemInterface::handleExtendedKeyEvent(receiver, QEvent::KeyRelease, code,
+                QWindowSystemInterface::handleExtendedKeyEvent(receiver, msg.time, QEvent::KeyRelease, code,
                                                                Qt::KeyboardModifier(state), scancode, quint32(msg.wParam), nModifiers, rec->text, true);
-                QWindowSystemInterface::handleExtendedKeyEvent(receiver, QEvent::KeyPress, code,
+                QWindowSystemInterface::handleExtendedKeyEvent(receiver, msg.time, QEvent::KeyPress, code,
                                                                Qt::KeyboardModifier(state), scancode, quint32(msg.wParam), nModifiers, rec->text, true);
                 result = true;
             }
@@ -1255,7 +1229,7 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, MSG msg,
 #ifndef QT_NO_SHORTCUT
             // Is Qt interested in the context menu key?
             if (modifiers == Qt::SHIFT && code == Qt::Key_F10
-                && !QGuiApplicationPrivate::instance()->shortcutMap.hasShortcutForKeySequence(QKeySequence(Qt::SHIFT + Qt::Key_F10))) {
+                && !QGuiApplicationPrivate::instance()->shortcutMap.hasShortcutForKeySequence(QKeySequence(Qt::SHIFT | Qt::Key_F10))) {
                 return false;
             }
 #endif // !QT_NO_SHORTCUT
@@ -1267,7 +1241,7 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, MSG msg,
             if (msg.wParam == VK_PACKET)
                 code = asciiToKeycode(char(uch.cell()), state);
 
-            QWindowSystemInterface::handleExtendedKeyEvent(receiver, QEvent::KeyPress, code,
+            QWindowSystemInterface::handleExtendedKeyEvent(receiver, msg.time, QEvent::KeyPress, code,
                                                            modifiers, scancode, quint32(msg.wParam), nModifiers, text, false);
             result =true;
             bool store = true;
@@ -1309,10 +1283,10 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, MSG msg,
             if ((msg.lParam & 0x40000000) == 0 &&
                     Qt::KeyboardModifier(state) == Qt::NoModifier &&
                     ((code == Qt::Key_F18) || (code == Qt::Key_F19) || (code == Qt::Key_F20))) {
-                QWindowSystemInterface::handleExtendedKeyEvent(receiver, QEvent::KeyPress, code,
+                QWindowSystemInterface::handleExtendedKeyEvent(receiver, msg.time, QEvent::KeyPress, code,
                                                                Qt::MetaModifier, scancode,
                                                                quint32(msg.wParam), MetaLeft);
-                QWindowSystemInterface::handleExtendedKeyEvent(receiver, QEvent::KeyRelease, code,
+                QWindowSystemInterface::handleExtendedKeyEvent(receiver, msg.time, QEvent::KeyRelease, code,
                                                                Qt::NoModifier, scancode,
                                                                quint32(msg.wParam), 0);
                 result = true;
@@ -1324,7 +1298,7 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, MSG msg,
             // Map SHIFT + Tab to SHIFT + BackTab, QShortcutMap knows about this translation
             if (code == Qt::Key_Tab && (state & Qt::ShiftModifier) == Qt::ShiftModifier)
                 code = Qt::Key_Backtab;
-            QWindowSystemInterface::handleExtendedKeyEvent(receiver, QEvent::KeyRelease, code,
+            QWindowSystemInterface::handleExtendedKeyEvent(receiver, msg.time, QEvent::KeyRelease, code,
                                                            Qt::KeyboardModifier(state), scancode, quint32(msg.wParam),
                                                            nModifiers,
                                                            (rec ? rec->text : QString()), false);
@@ -1346,7 +1320,7 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, MSG msg,
     return result;
 }
 
-Qt::KeyboardModifiers QWindowsKeyMapper::queryKeyboardModifiers()
+Qt::KeyboardModifiers QWindowsKeyMapper::queryKeyboardModifiers() const
 {
     Qt::KeyboardModifiers modifiers = Qt::NoModifier;
     if (GetKeyState(VK_SHIFT) < 0)
@@ -1360,9 +1334,9 @@ Qt::KeyboardModifiers QWindowsKeyMapper::queryKeyboardModifiers()
     return modifiers;
 }
 
-QList<int> QWindowsKeyMapper::possibleKeys(const QKeyEvent *e) const
+QList<QKeyCombination> QWindowsKeyMapper::possibleKeyCombinations(const QKeyEvent *e) const
 {
-    QList<int> result;
+    QList<QKeyCombination> result;
 
 
     const quint32 nativeVirtualKey = e->nativeVirtualKey();
@@ -1376,31 +1350,39 @@ QList<int> QWindowsKeyMapper::possibleKeys(const QKeyEvent *e) const
     quint32 baseKey = kbItem.qtKey[0];
     Qt::KeyboardModifiers keyMods = e->modifiers();
     if (baseKey == Qt::Key_Return && (e->nativeModifiers() & ExtendedKey)) {
-        result << int(Qt::Key_Enter + keyMods);
+        result << (Qt::Key_Enter | keyMods);
         return result;
     }
-    result << int(baseKey + keyMods); // The base key is _always_ valid, of course
+
+    // If Key_Tab+Shift is pressed we add Key_Backtab without
+    // shift modifier as a possible combination too
+    if (baseKey == Qt::Key_Tab && (keyMods & Qt::ShiftModifier))
+        result << (Qt::Key_Backtab | (keyMods & ~Qt::ShiftModifier));
+
+    // The base key is _always_ valid, of course
+    result << QKeyCombination::fromCombined(int(baseKey) + int(keyMods));
 
     for (size_t i = 1; i < NumMods; ++i) {
         Qt::KeyboardModifiers neededMods = ModsTbl[i];
         quint32 key = kbItem.qtKey[i];
         if (key && key != baseKey && ((keyMods & neededMods) == neededMods)) {
             const Qt::KeyboardModifiers missingMods = keyMods & ~neededMods;
-            const int matchedKey = int(key) + missingMods;
-            const auto it =
-                std::find_if(result.begin(), result.end(),
-                             [key] (int k) { return (k & ~Qt::KeyboardModifierMask) == key; });
+            const auto matchedKey = QKeyCombination::fromCombined(int(key) + int(missingMods));
+            const auto it = std::find_if(result.begin(), result.end(),
+                [key](auto keyCombination) {
+                    return keyCombination.key() == key;
+                });
             // QTBUG-67200: Use the match with the least modifiers (prefer
             // Shift+9 over Alt + Shift + 9) resulting in more missing modifiers.
             if (it == result.end())
                 result << matchedKey;
-            else if (missingMods > (*it & Qt::KeyboardModifierMask))
+            else if (missingMods > it->keyboardModifiers())
                 *it = matchedKey;
         }
     }
     qCDebug(lcQpaEvents) << __FUNCTION__  << e << "nativeVirtualKey="
         << Qt::showbase << Qt::hex << e->nativeVirtualKey() << Qt::dec << Qt::noshowbase
-        << e->modifiers() << kbItem << "\n  returns" << formatKeys(result);
+        << e->modifiers() << kbItem << "\n  returns" << result;
     return result;
 }
 

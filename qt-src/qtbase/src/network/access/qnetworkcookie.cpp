@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qnetworkcookie.h"
 #include "qnetworkcookie_p.h"
@@ -43,17 +7,23 @@
 #include "qnetworkrequest.h"
 #include "qnetworkreply.h"
 #include "QtCore/qbytearray.h"
+#include "QtCore/qdatetime.h"
 #include "QtCore/qdebug.h"
 #include "QtCore/qlist.h"
 #include "QtCore/qlocale.h"
-#include <QtCore/qregexp.h>
+#include <QtCore/qregularexpression.h>
 #include "QtCore/qstring.h"
 #include "QtCore/qstringlist.h"
+#include "QtCore/qtimezone.h"
 #include "QtCore/qurl.h"
 #include "QtNetwork/qhostaddress.h"
 #include "private/qobject_p.h"
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+QT_IMPL_METATYPE_EXTERN(QNetworkCookie)
 
 /*!
     \class QNetworkCookie
@@ -147,9 +117,7 @@ QNetworkCookie &QNetworkCookie::operator=(const QNetworkCookie &other)
 /*!
     \fn void QNetworkCookie::swap(QNetworkCookie &other)
     \since 5.0
-
-    Swaps this cookie with \a other. This function is very fast and
-    never fails.
+    \memberswap{cookie}
 */
 
 /*!
@@ -180,7 +148,8 @@ bool QNetworkCookie::operator==(const QNetworkCookie &other) const
         d->domain == other.d->domain &&
         d->path == other.d->path &&
         d->secure == other.d->secure &&
-        d->comment == other.d->comment;
+        d->comment == other.d->comment &&
+        d->sameSite == other.d->sameSite;
 }
 
 /*!
@@ -219,6 +188,29 @@ bool QNetworkCookie::isSecure() const
 void QNetworkCookie::setSecure(bool enable)
 {
     d->secure = enable;
+}
+
+/*!
+    Returns the "SameSite" option if specified in the cookie
+    string, \c SameSite::Default if not present.
+
+    \since 6.1
+    \sa setSameSitePolicy()
+*/
+QNetworkCookie::SameSite QNetworkCookie::sameSitePolicy() const
+{
+    return d->sameSite;
+}
+
+/*!
+    Sets the "SameSite" option of this cookie to \a sameSite.
+
+    \since 6.1
+    \sa sameSitePolicy()
+*/
+void QNetworkCookie::setSameSitePolicy(QNetworkCookie::SameSite sameSite)
+{
+    d->sameSite = sameSite;
 }
 
 /*!
@@ -382,13 +374,13 @@ void QNetworkCookie::setValue(const QByteArray &value)
 }
 
 // ### move this to qnetworkcookie_p.h and share with qnetworkaccesshttpbackend
-static QPair<QByteArray, QByteArray> nextField(const QByteArray &text, int &position, bool isNameValue)
+static QPair<QByteArray, QByteArray> nextField(QByteArrayView text, int &position, bool isNameValue)
 {
     // format is one of:
     //    (1)  token
     //    (2)  token = token
     //    (3)  token = quoted-string
-    const int length = text.length();
+    const int length = text.size();
     position = nextNonWhitespace(text, position);
 
     int semiColonPosition = text.indexOf(';', position);
@@ -402,11 +394,11 @@ static QPair<QByteArray, QByteArray> nextField(const QByteArray &text, int &posi
         equalsPosition = semiColonPosition; //no '=' means there is an attribute-name but no attribute-value
     }
 
-    QByteArray first = text.mid(position, equalsPosition - position).trimmed();
+    QByteArray first = text.mid(position, equalsPosition - position).trimmed().toByteArray();
     QByteArray second;
     int secondLength = semiColonPosition - equalsPosition - 1;
     if (secondLength > 0)
-        second = text.mid(equalsPosition + 1, secondLength).trimmed();
+        second = text.mid(equalsPosition + 1, secondLength).trimmed().toByteArray();
 
     position = semiColonPosition;
     return qMakePair(first, second);
@@ -435,6 +427,53 @@ static QPair<QByteArray, QByteArray> nextField(const QByteArray &text, int &posi
 */
 
 /*!
+    \enum QNetworkCookie::SameSite
+    \since 6.1
+
+    \value Default  SameSite is not set. Can be interpreted as None or Lax by the browser.
+    \value None     Cookies can be sent in all contexts. This used to be default, but
+        recent browsers made Lax default, and will now require the cookie to be both secure and to set SameSite=None.
+    \value Lax      Cookies are sent on first party requests and GET requests initiated by third party website.
+        This is the default in modern browsers (since mid 2020).
+    \value Strict   Cookies will only be sent in a first-party context.
+
+    \sa setSameSitePolicy(), sameSitePolicy()
+*/
+
+namespace {
+
+constexpr QByteArrayView sameSiteNone() noexcept { return "None"; }
+constexpr QByteArrayView sameSiteLax() noexcept { return "Lax"; }
+constexpr QByteArrayView sameSiteStrict() noexcept { return "Strict"; }
+
+QByteArrayView sameSiteToRawString(QNetworkCookie::SameSite samesite) noexcept
+{
+    switch (samesite) {
+    case QNetworkCookie::SameSite::None:
+        return sameSiteNone();
+    case QNetworkCookie::SameSite::Lax:
+        return sameSiteLax();
+    case QNetworkCookie::SameSite::Strict:
+        return sameSiteStrict();
+    case QNetworkCookie::SameSite::Default:
+        break;
+    }
+    return QByteArrayView();
+}
+
+QNetworkCookie::SameSite sameSiteFromRawString(QByteArrayView str) noexcept
+{
+    if (str.compare(sameSiteNone(), Qt::CaseInsensitive) == 0)
+        return QNetworkCookie::SameSite::None;
+    if (str.compare(sameSiteLax(), Qt::CaseInsensitive) == 0)
+        return QNetworkCookie::SameSite::Lax;
+    if (str.compare(sameSiteStrict(), Qt::CaseInsensitive) == 0)
+        return QNetworkCookie::SameSite::Strict;
+    return QNetworkCookie::SameSite::Default;
+}
+} // namespace
+
+/*!
     Returns the raw form of this QNetworkCookie. The QByteArray
     returned by this function is suitable for an HTTP header, either
     in a server response (the Set-Cookie header) or the client request
@@ -459,14 +498,18 @@ QByteArray QNetworkCookie::toRawForm(RawForm form) const
             result += "; secure";
         if (isHttpOnly())
             result += "; HttpOnly";
+        if (d->sameSite != SameSite::Default) {
+            result += "; SameSite=";
+            result += sameSiteToRawString(d->sameSite);
+        }
         if (!isSessionCookie()) {
             result += "; expires=";
             result += QLocale::c().toString(d->expirationDate.toUTC(),
-                                            QLatin1String("ddd, dd-MMM-yyyy hh:mm:ss 'GMT")).toLatin1();
+                                            "ddd, dd-MMM-yyyy hh:mm:ss 'GMT"_L1).toLatin1();
         }
         if (!d->domain.isEmpty()) {
             result += "; domain=";
-            if (d->domain.startsWith(QLatin1Char('.'))) {
+            if (d->domain.startsWith(u'.')) {
                 result += '.';
                 result += QUrl::toAce(d->domain.mid(1));
             } else {
@@ -535,11 +578,11 @@ static inline bool isValueSeparator(char c)
 static inline bool isWhitespace(char c)
 { return c == ' '  || c == '\t'; }
 
-static bool checkStaticArray(int &val, const QByteArray &dateString, int at, const char *array, int size)
+static bool checkStaticArray(int &val, QByteArrayView dateString, int at, const char *array, int size)
 {
     if (dateString[at] < 'a' || dateString[at] > 'z')
         return false;
-    if (val == -1 && dateString.length() >= at + 3) {
+    if (val == -1 && dateString.size() >= at + 3) {
         int j = 0;
         int i = 0;
         while (i <= size) {
@@ -582,7 +625,7 @@ static bool checkStaticArray(int &val, const QByteArray &dateString, int at, con
     Or in their own words:
         "} // else what the hell is this."
 */
-static QDateTime parseDateString(const QByteArray &dateString)
+static QDateTime parseDateString(QByteArrayView dateString)
 {
     QTime time;
     // placeholders for values when we are not sure it is a year, month or day
@@ -593,10 +636,11 @@ static QDateTime parseDateString(const QByteArray &dateString)
     int zoneOffset = -1;
 
     // hour:minute:second.ms pm
-    QRegExp timeRx(QLatin1String("(\\d{1,2}):(\\d{1,2})(:(\\d{1,2})|)(\\.(\\d{1,3})|)((\\s{0,}(am|pm))|)"));
+    static const QRegularExpression timeRx(
+            u"(\\d\\d?):(\\d\\d?)(?::(\\d\\d?)(?:\\.(\\d{1,3}))?)?(?:\\s*(am|pm))?"_s);
 
     int at = 0;
-    while (at < dateString.length()) {
+    while (at < dateString.size()) {
 #ifdef PARSEDATESTRINGDEBUG
         qDebug() << dateString.mid(at);
 #endif
@@ -637,20 +681,20 @@ static QDateTime parseDateString(const QByteArray &dateString)
                     && (dateString[at - 1] == 't')))) {
 
             int end = 1;
-            while (end < 5 && dateString.length() > at+end
+            while (end < 5 && dateString.size() > at+end
                    && dateString[at + end] >= '0' && dateString[at + end] <= '9')
                 ++end;
             int minutes = 0;
             int hours = 0;
             switch (end - 1) {
             case 4:
-                minutes = atoi(dateString.mid(at + 3, 2).constData());
+                minutes = dateString.mid(at + 3, 2).toInt();
                 Q_FALLTHROUGH();
             case 2:
-                hours = atoi(dateString.mid(at + 1, 2).constData());
+                hours = dateString.mid(at + 1, 2).toInt();
                 break;
             case 1:
-                hours = atoi(dateString.mid(at + 1, 1).constData());
+                hours = dateString.mid(at + 1, 1).toInt();
                 break;
             default:
                 at += end;
@@ -669,25 +713,27 @@ static QDateTime parseDateString(const QByteArray &dateString)
 
         // Time
         if (isNum && time.isNull()
-            && dateString.length() >= at + 3
+            && dateString.size() >= at + 3
             && (dateString[at + 2] == ':' || dateString[at + 1] == ':')) {
             // While the date can be found all over the string the format
             // for the time is set and a nice regexp can be used.
-            int pos = timeRx.indexIn(QLatin1String(dateString), at);
-            if (pos != -1) {
-                QStringList list = timeRx.capturedTexts();
-                int h = atoi(list.at(1).toLatin1().constData());
-                int m = atoi(list.at(2).toLatin1().constData());
-                int s = atoi(list.at(4).toLatin1().constData());
-                int ms = atoi(list.at(6).toLatin1().constData());
-                if (h < 12 && !list.at(9).isEmpty())
-                    if (list.at(9) == QLatin1String("pm"))
+            // This string needs to stay for as long as the QRegularExpressionMatch is used,
+            // or else we get use-after-free issues:
+            QString dateToString = QString::fromLatin1(dateString);
+            if (auto match = timeRx.match(dateToString, at); match.hasMatch()) {
+                int h = match.capturedView(1).toInt();
+                int m = match.capturedView(2).toInt();
+                int s = match.capturedView(3).toInt();
+                int ms = match.capturedView(4).toInt();
+                QStringView ampm = match.capturedView(5);
+                if (h < 12 && !ampm.isEmpty())
+                    if (ampm == "pm"_L1)
                         h += 12;
                 time = QTime(h, m, s, ms);
 #ifdef PARSEDATESTRINGDEBUG
-                qDebug() << "Time:" << list << timeRx.matchedLength();
+                qDebug() << "Time:" << match.capturedTexts() << match.capturedLength();
 #endif
-                at += timeRx.matchedLength();
+                at += match.capturedLength();
                 continue;
             }
         }
@@ -695,11 +741,11 @@ static QDateTime parseDateString(const QByteArray &dateString)
         // 4 digit Year
         if (isNum
             && year == -1
-            && dateString.length() > at + 3) {
+            && dateString.size() > at + 3) {
             if (isNumber(dateString[at + 1])
                 && isNumber(dateString[at + 2])
                 && isNumber(dateString[at + 3])) {
-                year = atoi(dateString.mid(at, 4).constData());
+                year = dateString.mid(at, 4).toInt();
                 at += 4;
 #ifdef PARSEDATESTRINGDEBUG
                 qDebug() << "Year:" << year;
@@ -712,10 +758,10 @@ static QDateTime parseDateString(const QByteArray &dateString)
         // Could be month, day or year
         if (isNum) {
             int length = 1;
-            if (dateString.length() > at + 1
+            if (dateString.size() > at + 1
                 && isNumber(dateString[at + 1]))
                 ++length;
-            int x = atoi(dateString.mid(at, length).constData());
+            int x = dateString.mid(at, length).toInt();
             if (year == -1 && (x > 31 || x == 0)) {
                 year = x;
             } else {
@@ -864,11 +910,11 @@ static QDateTime parseDateString(const QByteArray &dateString)
     if (!date.isValid())
         date = QDate(day + y2k, month, year);
 
-    QDateTime dateTime(date, time, Qt::UTC);
+    QDateTime dateTime(date, time, QTimeZone::UTC);
 
-    if (zoneOffset != -1) {
+    if (zoneOffset != -1)
         dateTime = dateTime.addSecs(zoneOffset);
-    }
+
     if (!dateTime.isValid())
         return QDateTime();
     return dateTime;
@@ -884,19 +930,19 @@ static QDateTime parseDateString(const QByteArray &dateString)
     cookie that is parsed.
 
     \sa toRawForm()
+    \note In Qt versions prior to 6.7, this function took QByteArray only.
 */
-QList<QNetworkCookie> QNetworkCookie::parseCookies(const QByteArray &cookieString)
+QList<QNetworkCookie> QNetworkCookie::parseCookies(QByteArrayView cookieString)
 {
     // cookieString can be a number of set-cookie header strings joined together
     // by \n, parse each line separately.
     QList<QNetworkCookie> cookies;
-    QList<QByteArray> list = cookieString.split('\n');
-    for (int a = 0; a < list.size(); a++)
-        cookies += QNetworkCookiePrivate::parseSetCookieHeaderLine(list.at(a));
+    for (auto s : QLatin1StringView(cookieString).tokenize('\n'_L1))
+        cookies += QNetworkCookiePrivate::parseSetCookieHeaderLine(s);
     return cookies;
 }
 
-QList<QNetworkCookie> QNetworkCookiePrivate::parseSetCookieHeaderLine(const QByteArray &cookieString)
+QList<QNetworkCookie> QNetworkCookiePrivate::parseSetCookieHeaderLine(QByteArrayView cookieString)
 {
     // According to http://wp.netscape.com/newsref/std/cookie_spec.html,<
     // the Set-Cookie response header is of the format:
@@ -911,7 +957,7 @@ QList<QNetworkCookie> QNetworkCookiePrivate::parseSetCookieHeaderLine(const QByt
     const QDateTime now = QDateTime::currentDateTimeUtc();
 
     int position = 0;
-    const int length = cookieString.length();
+    const int length = cookieString.size();
     while (position < length) {
         QNetworkCookie cookie;
 
@@ -929,28 +975,27 @@ QList<QNetworkCookie> QNetworkCookiePrivate::parseSetCookieHeaderLine(const QByt
             case ';':
                 // new field in the cookie
                 field = nextField(cookieString, position, false);
-                field.first = field.first.toLower(); // everything but the NAME=VALUE is case-insensitive
 
-                if (field.first == "expires") {
-                    position -= field.second.length();
+                if (field.first.compare("expires", Qt::CaseInsensitive) == 0) {
+                    position -= field.second.size();
                     int end;
                     for (end = position; end < length; ++end)
                         if (isValueSeparator(cookieString.at(end)))
                             break;
 
-                    QByteArray dateString = cookieString.mid(position, end - position).trimmed();
+                    QByteArray dateString = cookieString.mid(position, end - position).trimmed().toByteArray().toLower();
                     position = end;
-                    QDateTime dt = parseDateString(dateString.toLower());
+                    QDateTime dt = parseDateString(dateString);
                     if (dt.isValid())
                         cookie.setExpirationDate(dt);
                     //if unparsed, ignore the attribute but not the whole cookie (RFC6265 section 5.2.1)
-                } else if (field.first == "domain") {
-                    QByteArray rawDomain = field.second;
+                } else if (field.first.compare("domain", Qt::CaseInsensitive) == 0) {
+                    QByteArrayView rawDomain = field.second;
                     //empty domain should be ignored (RFC6265 section 5.2.3)
                     if (!rawDomain.isEmpty()) {
-                        QString maybeLeadingDot;
+                        QLatin1StringView maybeLeadingDot;
                         if (rawDomain.startsWith('.')) {
-                            maybeLeadingDot = QLatin1Char('.');
+                            maybeLeadingDot = "."_L1;
                             rawDomain = rawDomain.mid(1);
                         }
 
@@ -965,7 +1010,7 @@ QList<QNetworkCookie> QNetworkCookiePrivate::parseSetCookieHeaderLine(const QByt
                             return result;
                         }
                     }
-                } else if (field.first == "max-age") {
+                } else if (field.first.compare("max-age", Qt::CaseInsensitive) == 0) {
                     bool ok = false;
                     int secs = field.second.toInt(&ok);
                     if (ok) {
@@ -977,7 +1022,7 @@ QList<QNetworkCookie> QNetworkCookiePrivate::parseSetCookieHeaderLine(const QByt
                         }
                     }
                     //if unparsed, ignore the attribute but not the whole cookie (RFC6265 section 5.2.2)
-                } else if (field.first == "path") {
+                } else if (field.first.compare("path", Qt::CaseInsensitive) == 0) {
                     if (field.second.startsWith('/')) {
                         // ### we should treat cookie paths as an octet sequence internally
                         // However RFC6265 says we should assume UTF-8 for presentation as a string
@@ -987,10 +1032,12 @@ QList<QNetworkCookie> QNetworkCookiePrivate::parseSetCookieHeaderLine(const QByt
                         // and also IETF test case path0030 which has valid and empty path in the same cookie
                         cookie.setPath(QString());
                     }
-                } else if (field.first == "secure") {
+                } else if (field.first.compare("secure", Qt::CaseInsensitive) == 0) {
                     cookie.setSecure(true);
-                } else if (field.first == "httponly") {
+                } else if (field.first.compare("httponly", Qt::CaseInsensitive) == 0) {
                     cookie.setHttpOnly(true);
+                } else if (field.first.compare("samesite", Qt::CaseInsensitive) == 0) {
+                    cookie.setSameSitePolicy(sameSiteFromRawString(field.second));
                 } else {
                     // ignore unknown fields in the cookie (RFC6265 section 5.2, rule 6)
                 }
@@ -1016,9 +1063,9 @@ void QNetworkCookie::normalize(const QUrl &url)
     // don't do path checking. See QTBUG-5815
     if (d->path.isEmpty()) {
         QString pathAndFileName = url.path();
-        QString defaultPath = pathAndFileName.left(pathAndFileName.lastIndexOf(QLatin1Char('/'))+1);
+        QString defaultPath = pathAndFileName.left(pathAndFileName.lastIndexOf(u'/') + 1);
         if (defaultPath.isEmpty())
-            defaultPath = QLatin1Char('/');
+            defaultPath = u'/';
         d->path = defaultPath;
     }
 
@@ -1028,12 +1075,12 @@ void QNetworkCookie::normalize(const QUrl &url)
         QHostAddress hostAddress(d->domain);
         if (hostAddress.protocol() != QAbstractSocket::IPv4Protocol
                 && hostAddress.protocol() != QAbstractSocket::IPv6Protocol
-                && !d->domain.startsWith(QLatin1Char('.'))) {
+                && !d->domain.startsWith(u'.')) {
             // Ensure the domain starts with a dot if its field was not empty
             // in the HTTP header. There are some servers that forget the
             // leading dot and this is actually forbidden according to RFC 2109,
             // but all browsers accept it anyway so we do that as well.
-            d->domain.prepend(QLatin1Char('.'));
+            d->domain.prepend(u'.');
         }
     }
 }
@@ -1049,3 +1096,5 @@ QDebug operator<<(QDebug s, const QNetworkCookie &cookie)
 #endif
 
 QT_END_NAMESPACE
+
+#include "moc_qnetworkcookie.cpp"

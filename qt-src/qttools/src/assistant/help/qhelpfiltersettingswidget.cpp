@@ -1,52 +1,93 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhelpfilterdata.h"
-#include "qhelpfiltersettings_p.h"
+#include "qfilternamedialog_p.h"
 #include "qhelpfiltersettingswidget.h"
 #include "ui_qhelpfiltersettingswidget.h"
-#include "qfilternamedialog_p.h"
 
-#include <QtWidgets/QMessageBox>
-#include <QtCore/QVersionNumber>
+#include <QtCore/qversionnumber.h>
+#include <QtHelp/qhelpfilterdata.h>
+#include <QtHelp/qhelpfilterengine.h>
+#include <QtWidgets/qmessagebox.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+class QHelpFilterSettings final
+{
+public:
+    void setFilter(const QString &filterName, const QHelpFilterData &filterData)
+    {
+        m_filterToData.insert(filterName, filterData);
+    }
+    void removeFilter(const QString &filterName) { m_filterToData.remove(filterName); }
+    QHelpFilterData filterData(const QString &filterName) const
+    {
+        return m_filterToData.value(filterName);
+    }
+    QMap<QString, QHelpFilterData> filters() const { return m_filterToData; }
+
+    void setCurrentFilter(const QString &filterName) { m_currentFilter = filterName; }
+    QString currentFilter() const { return m_currentFilter; }
+
+private:
+    QMap<QString, QHelpFilterData> m_filterToData;
+    QString m_currentFilter;
+};
+
+static QHelpFilterSettings readSettingsHelper(const QHelpFilterEngine *filterEngine)
+{
+    QHelpFilterSettings filterSettings;
+
+    const QStringList allFilters = filterEngine->filters();
+    for (const QString &filter : allFilters)
+        filterSettings.setFilter(filter, filterEngine->filterData(filter));
+
+    filterSettings.setCurrentFilter(filterEngine->activeFilter());
+    return filterSettings;
+}
+
+static QMap<QString, QHelpFilterData> subtract(const QMap<QString, QHelpFilterData> &minuend,
+                                               const QMap<QString, QHelpFilterData> &subtrahend)
+{
+    QMap<QString, QHelpFilterData> result = minuend;
+
+    for (auto itSubtrahend = subtrahend.cbegin(); itSubtrahend != subtrahend.cend(); ++itSubtrahend) {
+        auto itResult = result.find(itSubtrahend.key());
+        if (itResult != result.end() && itSubtrahend.value() == itResult.value())
+            result.erase(itResult);
+    }
+    return result;
+}
+
+static bool applySettingsHelper(QHelpFilterEngine *filterEngine, const QHelpFilterSettings &settings)
+{
+    bool changed = false;
+    const QHelpFilterSettings oldSettings = readSettingsHelper(filterEngine);
+
+    const auto filtersToRemove = subtract(oldSettings.filters(), settings.filters());
+    const auto filtersToAdd = subtract(settings.filters(), oldSettings.filters());
+
+    const QString &currentFilter = filterEngine->activeFilter();
+
+    for (auto it = filtersToRemove.cbegin(); it != filtersToRemove.cend(); ++it) {
+        filterEngine->removeFilter(it.key());
+        if (currentFilter == it.key() && !filtersToAdd.contains(it.key()))
+            filterEngine->setActiveFilter({});
+        changed = true;
+    }
+
+    for (auto it = filtersToAdd.cbegin(); it != filtersToAdd.cend(); ++it) {
+        filterEngine->setFilterData(it.key(), it.value());
+        changed = true;
+    }
+
+    if (changed)
+        filterEngine->setActiveFilter(settings.currentFilter());
+    return changed;
+}
 
 static QStringList versionsToStringList(const QList<QVersionNumber> &versions)
 {
@@ -67,11 +108,11 @@ static QList<QVersionNumber> stringListToVersions(const QStringList &versionList
 class QHelpFilterSettingsWidgetPrivate
 {
     QHelpFilterSettingsWidget *q_ptr;
-    Q_DECLARE_PUBLIC(QHelpFilterSettingsWidget)
+    Q_DECLARE_PUBLIC(QHelpFilterSettingsWidget) // TODO: remove Q_DECLARE_PUBLIC
 public:
     QHelpFilterSettingsWidgetPrivate() = default;
 
-    QHelpFilterSettings filterSettings() const;
+    QHelpFilterSettings filterSettings() const { return m_filterSettings; }
     void setFilterSettings(const QHelpFilterSettings &settings);
 
     void updateCurrentFilter();
@@ -80,11 +121,9 @@ public:
     void addFilterClicked();
     void renameFilterClicked();
     void removeFilterClicked();
-    void addFilter(const QString &filterName,
-                   const QHelpFilterData &filterData = QHelpFilterData());
+    void addFilter(const QString &filterName, const QHelpFilterData &filterData = {});
     void removeFilter(const QString &filterName);
-    QString getUniqueFilterName(const QString &windowTitle,
-                                const QString &initialFilterName);
+    QString getUniqueFilterName(const QString &windowTitle, const QString &initialFilterName);
     QString suggestedNewFilterName(const QString &initialFilterName) const;
 
     QMap<QString, QListWidgetItem *> m_filterToItem;
@@ -114,7 +153,9 @@ void QHelpFilterSettingsWidgetPrivate::setFilterSettings(const QHelpFilterSettin
     m_itemToFilter.clear();
     m_filterToItem.clear();
 
-    for (const QString &filterName : m_filterSettings.filterNames()) {
+    const auto filters = m_filterSettings.filters();
+    for (auto it = filters.cbegin(); it != filters.cend(); ++it) {
+        const QString &filterName = it.key();
         QListWidgetItem *item = new QListWidgetItem(filterName);
         m_ui.filterWidget->addItem(item);
         m_itemToFilter.insert(item, filterName);
@@ -127,11 +168,6 @@ void QHelpFilterSettingsWidgetPrivate::setFilterSettings(const QHelpFilterSettin
         m_ui.filterWidget->setCurrentItem(m_filterToItem.first());
 
     updateCurrentFilter();
-}
-
-QHelpFilterSettings QHelpFilterSettingsWidgetPrivate::filterSettings() const
-{
-    return m_filterSettings;
 }
 
 void QHelpFilterSettingsWidgetPrivate::updateCurrentFilter()
@@ -209,17 +245,15 @@ void QHelpFilterSettingsWidgetPrivate::removeFilterClicked()
         return;
 
     if (QMessageBox::question(q, QHelpFilterSettingsWidget::tr("Remove Filter"),
-                              QHelpFilterSettingsWidget::tr("Are you sure you want to remove the \"%1\" filter?")
-                              .arg(currentFilter),
-                              QMessageBox::Yes | QMessageBox::No)
-            != QMessageBox::Yes) {
+            QHelpFilterSettingsWidget::tr("Are you sure you want to remove the \"%1\" filter?")
+            .arg(currentFilter), QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes) {
         return;
     }
 
     removeFilter(currentFilter);
 
     if (m_filterSettings.currentFilter() == currentFilter)
-        m_filterSettings.setCurrentFilter(QString());
+        m_filterSettings.setCurrentFilter({});
 }
 
 void QHelpFilterSettingsWidgetPrivate::addFilter(const QString &filterName,
@@ -241,7 +275,6 @@ void QHelpFilterSettingsWidgetPrivate::removeFilter(const QString &filterName)
     m_itemToFilter.remove(item);
     m_filterToItem.remove(filterName);
     delete item;
-
     m_filterSettings.removeFilter(filterName);
 }
 
@@ -251,39 +284,32 @@ QString QHelpFilterSettingsWidgetPrivate::getUniqueFilterName(const QString &win
     Q_Q(QHelpFilterSettingsWidget);
 
     QString newFilterName = initialFilterName;
-    while (1) {
+    while (true) {
         QFilterNameDialog dialog(q);
         dialog.setWindowTitle(windowTitle);
         dialog.setFilterName(newFilterName);
         if (dialog.exec() == QDialog::Rejected)
-            return QString();
+            return {};
 
         newFilterName = dialog.filterName();
         if (!m_filterToItem.contains(newFilterName))
             break;
 
         if (QMessageBox::warning(q, QHelpFilterSettingsWidget::tr("Filter Exists"),
-                                 QHelpFilterSettingsWidget::tr("The filter \"%1\" already exists.")
-                                 .arg(newFilterName),
-                                 QMessageBox::Retry | QMessageBox::Cancel)
-                == QMessageBox::Cancel) {
-            return QString();
+                QHelpFilterSettingsWidget::tr("The filter \"%1\" already exists.").arg(newFilterName),
+                QMessageBox::Retry | QMessageBox::Cancel) == QMessageBox::Cancel) {
+            return {};
         }
     }
-
     return newFilterName;
 }
 
 QString QHelpFilterSettingsWidgetPrivate::suggestedNewFilterName(const QString &initialFilterName) const
 {
     QString newFilterName = initialFilterName;
-
     int counter = 1;
-    while (m_filterToItem.contains(newFilterName)) {
-        newFilterName = initialFilterName + QLatin1Char(' ')
-                + QString::number(++counter);
-    }
-
+    while (m_filterToItem.contains(newFilterName))
+        newFilterName = initialFilterName + u' ' + QString::number(++counter);
     return newFilterName;
 }
 
@@ -319,22 +345,22 @@ QHelpFilterSettingsWidget::QHelpFilterSettingsWidget(QWidget *parent)
     d->m_ui.setupUi(this);
 
     // TODO: make resources configurable
-    QString resourcePath = QLatin1String(":/qt-project.org/assistant/images/");
+    QString resourcePath = ":/qt-project.org/assistant/images/"_L1;
 #ifdef Q_OS_MACOS
-    resourcePath.append(QLatin1String("mac"));
+    resourcePath.append("mac"_L1);
 #else
-    resourcePath.append(QLatin1String("win"));
+    resourcePath.append("win"_L1);
 #endif
-    d->m_ui.addButton->setIcon(QIcon(resourcePath + QLatin1String("/plus.png")));
-    d->m_ui.removeButton->setIcon(QIcon(resourcePath + QLatin1String("/minus.png")));
+    d->m_ui.addButton->setIcon(QIcon(resourcePath + "/plus.png"_L1));
+    d->m_ui.removeButton->setIcon(QIcon(resourcePath + "/minus.png"_L1));
 
     connect(d->m_ui.componentWidget, &QOptionsWidget::optionSelectionChanged,
-            [this](const QStringList &options) {
+            this, [this](const QStringList &options) {
         Q_D(QHelpFilterSettingsWidget);
         d->componentsChanged(options);
     });
     connect(d->m_ui.versionWidget, &QOptionsWidget::optionSelectionChanged,
-            [this](const QStringList &options) {
+            this, [this](const QStringList &options) {
         Q_D(QHelpFilterSettingsWidget);
         d->versionsChanged(options);
     });
@@ -344,24 +370,21 @@ QHelpFilterSettingsWidget::QHelpFilterSettingsWidget(QWidget *parent)
         d->updateCurrentFilter();
     });
     connect(d->m_ui.filterWidget, &QListWidget::itemDoubleClicked,
-            [this](QListWidgetItem *) {
+            this, [this](QListWidgetItem *) {
         Q_D(QHelpFilterSettingsWidget);
         d->renameFilterClicked();
     });
 
     // TODO: repeat these actions on context menu
-    connect(d->m_ui.addButton, &QAbstractButton::clicked,
-            [this]() {
+    connect(d->m_ui.addButton, &QAbstractButton::clicked, this, [this] {
         Q_D(QHelpFilterSettingsWidget);
         d->addFilterClicked();
     });
-    connect(d->m_ui.renameButton, &QAbstractButton::clicked,
-            [this]() {
+    connect(d->m_ui.renameButton, &QAbstractButton::clicked, this, [this] {
         Q_D(QHelpFilterSettingsWidget);
         d->renameFilterClicked();
     });
-    connect(d->m_ui.removeButton, &QAbstractButton::clicked,
-            [this]() {
+    connect(d->m_ui.removeButton, &QAbstractButton::clicked, this, [this] {
         Q_D(QHelpFilterSettingsWidget);
         d->removeFilterClicked();
     });
@@ -406,19 +429,19 @@ void QHelpFilterSettingsWidget::setAvailableVersions(const QList<QVersionNumber>
 void QHelpFilterSettingsWidget::readSettings(const QHelpFilterEngine *filterEngine)
 {
     Q_D(QHelpFilterSettingsWidget);
-    const QHelpFilterSettings settings = QHelpFilterSettings::readSettings(filterEngine);
+    const QHelpFilterSettings settings = readSettingsHelper(filterEngine);
     d->setFilterSettings(settings);
 }
 
 /*!
     Writes the filter settings, currently presented in this filter settings
     widget, to the \a filterEngine. The old settings stored in the filter
-    engine will be overwritten.
+    engine will be overwritten. Returns \c true on success.
 */
 bool QHelpFilterSettingsWidget::applySettings(QHelpFilterEngine *filterEngine) const
 {
     Q_D(const QHelpFilterSettingsWidget);
-    return QHelpFilterSettings::applySettings(filterEngine, d->filterSettings());
+    return applySettingsHelper(filterEngine, d->filterSettings());
 }
 
 QT_END_NAMESPACE

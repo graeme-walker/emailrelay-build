@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <qtextdocument.h>
 #include <qabstracttextdocumentlayout.h>
@@ -49,17 +24,24 @@ private slots:
     void cleanupTestCase();
     void defaultPageSizeHandling();
     void idealWidth();
+#ifndef QT_NO_TEXTHTMLPARSER
     void lineSeparatorFollowingTable();
+#endif
 #ifndef QT_NO_WIDGETS
     void wrapAtWordBoundaryOrAnywhere();
 #endif
     void inlineImage();
+#ifndef QT_NO_TEXTHTMLPARSER
     void clippedTableCell();
+#endif
     void floatingTablePageBreak();
     void imageAtRightAlignedTab();
     void blockVisibility();
+#ifndef QT_NO_TEXTHTMLPARSER
+    void testHitTest();
 
     void largeImage();
+#endif
 
 private:
     QTextDocument *doc;
@@ -123,6 +105,7 @@ void tst_QTextDocumentLayout::idealWidth()
     QVERIFY(doc->idealWidth() > 0);
 }
 
+#ifndef QT_NO_TEXTHTMLPARSER
 // none of the QTextLine items in the document should intersect with the margin rect
 void tst_QTextDocumentLayout::lineSeparatorFollowingTable()
 {
@@ -169,6 +152,7 @@ void tst_QTextDocumentLayout::lineSeparatorFollowingTable()
         }
     }
 }
+#endif
 
 #ifndef QT_NO_WIDGETS
 void tst_QTextDocumentLayout::wrapAtWordBoundaryOrAnywhere()
@@ -208,6 +192,7 @@ void tst_QTextDocumentLayout::inlineImage()
     QCOMPARE(doc->pageCount(), 1);
 }
 
+#ifndef QT_NO_TEXTHTMLPARSER
 void tst_QTextDocumentLayout::clippedTableCell()
 {
     const char *html =
@@ -248,6 +233,7 @@ void tst_QTextDocumentLayout::clippedTableCell()
     expected.save("expected.png");
     QCOMPARE(img, expected);
 }
+#endif
 
 void tst_QTextDocumentLayout::floatingTablePageBreak()
 {
@@ -301,6 +287,7 @@ void tst_QTextDocumentLayout::imageAtRightAlignedTab()
     imgFormat.setName(name);
     cursor.insertImage(imgFormat);
 
+    // Everything should fit into the 300 pixels
     qreal bearing = QFontMetricsF(doc->defaultFont()).rightBearing(QLatin1Char('t'));
     QCOMPARE(doc->idealWidth(), std::max(300.0, 300.0 - bearing));
 }
@@ -346,6 +333,7 @@ void tst_QTextDocumentLayout::blockVisibility()
     QCOMPARE(doc->size(), halfSize);
 }
 
+#ifndef QT_NO_TEXTHTMLPARSER
 void tst_QTextDocumentLayout::largeImage()
 {
      auto img = QImage(400, 500, QImage::Format_ARGB32_Premultiplied);
@@ -403,6 +391,43 @@ void tst_QTextDocumentLayout::largeImage()
          QCOMPARE(document.pageCount(), 2);
      }
 }
+
+void tst_QTextDocumentLayout::testHitTest()
+{
+    QTextDocument document;
+    QTextCursor cur(&document);
+    int topMargin = 20;
+
+    //insert 500 blocks into textedit
+    for (int i = 0; i < 500; i++) {
+      cur.insertBlock();
+      cur.insertHtml(QString("block %1").arg(i));
+    }
+
+    //randomly set half the blocks invisible
+    QTextBlock blk=document.begin();
+    for (int i = 0; i < 500; i++) {
+      if (i % 7)
+        blk.setVisible(0);
+      blk = blk.next();
+    }
+
+    //set margin for all blocks (not strictly necessary, but makes easier to click in between blocks)
+    QTextBlockFormat blkfmt;
+    blkfmt.setTopMargin(topMargin);
+    cur.movePosition(QTextCursor::Start);
+    cur.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
+    cur.mergeBlockFormat(blkfmt);
+
+    for (int y = cur.selectionStart(); y < cur.selectionEnd(); y += 10) {
+         QPoint mousePoint(1, y);
+         int cursorPos = document.documentLayout()->hitTest(mousePoint, Qt::FuzzyHit);
+         int positionY = document.findBlock(cursorPos).layout()->position().toPoint().y();
+         //mousePoint is in the rect of the current Block
+         QVERIFY(positionY - topMargin <= y);
+    }
+}
+#endif
 
 QTEST_MAIN(tst_QTextDocumentLayout)
 #include "tst_qtextdocumentlayout.moc"

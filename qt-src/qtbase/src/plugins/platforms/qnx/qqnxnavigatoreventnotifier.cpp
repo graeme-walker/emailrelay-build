@@ -1,41 +1,5 @@
-/***************************************************************************
-**
-** Copyright (C) 2011 - 2012 Research In Motion
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2011 - 2012 Research In Motion
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqnxnavigatoreventnotifier.h"
 
@@ -53,16 +17,12 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#if defined(QQNXNAVIGATOREVENTNOTIFIER_DEBUG)
-#define qNavigatorEventNotifierDebug qDebug
-#else
-#define qNavigatorEventNotifierDebug QT_NO_QDEBUG_MACRO
-#endif
-
-static const char *navigatorControlPath = "/pps/services/navigator/control";
-static const int ppsBufferSize = 4096;
-
 QT_BEGIN_NAMESPACE
+
+// Q_LOGGING_CATEGORY(lcQpaQnxNavigatorEvents, "qt.qpa.qnx.navigator.events");
+
+const char *QQnxNavigatorEventNotifier::navigatorControlPath = "/pps/services/navigator/control";
+const size_t QQnxNavigatorEventNotifier::ppsBufferSize = 4096;
 
 QQnxNavigatorEventNotifier::QQnxNavigatorEventNotifier(QQnxNavigatorEventHandler *eventHandler, QObject *parent)
     : QObject(parent),
@@ -80,18 +40,18 @@ QQnxNavigatorEventNotifier::~QQnxNavigatorEventNotifier()
     if (m_fd != -1)
         close(m_fd);
 
-    qNavigatorEventNotifierDebug("navigator event notifier stopped");
+    qCDebug(lcQpaQnxNavigatorEvents) << "Navigator event notifier stopped";
 }
 
 void QQnxNavigatorEventNotifier::start()
 {
-    qNavigatorEventNotifierDebug("navigator event notifier started");
+    qCDebug(lcQpaQnxNavigatorEvents) << "Navigator event notifier started";
 
     // open connection to navigator
     errno = 0;
     m_fd = open(navigatorControlPath, O_RDWR);
     if (m_fd == -1) {
-        qNavigatorEventNotifierDebug("failed to open navigator pps: %s", strerror(errno));
+        qCDebug(lcQpaQnxNavigatorEvents, "Failed to open navigator pps: %s", strerror(errno));
         return;
     }
 
@@ -101,7 +61,7 @@ void QQnxNavigatorEventNotifier::start()
 
 void QQnxNavigatorEventNotifier::parsePPS(const QByteArray &ppsData, QByteArray &msg, QByteArray &dat, QByteArray &id)
 {
-    qNavigatorEventNotifierDebug() << "data=" << ppsData;
+    qCDebug(lcQpaQnxNavigatorEvents) << Q_FUNC_INFO << "data=" << ppsData;
 
     // tokenize pps data into lines
     QList<QByteArray> lines = ppsData.split('\n');
@@ -115,7 +75,7 @@ void QQnxNavigatorEventNotifier::parsePPS(const QByteArray &ppsData, QByteArray 
 
         // tokenize current attribute
         const QByteArray &attr = lines.at(i);
-        qNavigatorEventNotifierDebug() << "attr=" << attr;
+        qCDebug(lcQpaQnxNavigatorEvents) << Q_FUNC_INFO << "attr=" << attr;
 
         int firstColon = attr.indexOf(':');
         if (firstColon == -1) {
@@ -132,8 +92,7 @@ void QQnxNavigatorEventNotifier::parsePPS(const QByteArray &ppsData, QByteArray 
         QByteArray key = attr.left(firstColon);
         QByteArray value = attr.mid(secondColon + 1);
 
-        qNavigatorEventNotifierDebug() << "key=" << key;
-        qNavigatorEventNotifierDebug() << "val=" << value;
+        qCDebug(lcQpaQnxNavigatorEvents) << Q_FUNC_INFO << "key =" << key << "value =" << value;
 
         // save attribute value
         if (key == "msg")
@@ -160,7 +119,7 @@ void QQnxNavigatorEventNotifier::replyPPS(const QByteArray &res, const QByteArra
     }
     ppsData += "\n";
 
-    qNavigatorEventNotifierDebug() << "reply=" << ppsData;
+    qCDebug(lcQpaQnxNavigatorEvents) << Q_FUNC_INFO << "reply=" << ppsData;
 
     // send pps message to navigator
     errno = 0;
@@ -171,7 +130,7 @@ void QQnxNavigatorEventNotifier::replyPPS(const QByteArray &res, const QByteArra
 
 void QQnxNavigatorEventNotifier::handleMessage(const QByteArray &msg, const QByteArray &dat, const QByteArray &id)
 {
-    qNavigatorEventNotifierDebug() << "msg=" << msg << ", dat=" << dat << ", id=" << id;
+    qCDebug(lcQpaQnxNavigatorEvents) << Q_FUNC_INFO << "msg=" << msg << ", dat=" << dat << ", id=" << id;
 
     // check message type
     if (msg == "orientationCheck") {
@@ -195,7 +154,7 @@ void QQnxNavigatorEventNotifier::handleMessage(const QByteArray &msg, const QByt
 
 void QQnxNavigatorEventNotifier::readData()
 {
-    qNavigatorEventNotifierDebug("reading navigator data");
+    qCDebug(lcQpaQnxNavigatorEvents) << "Reading navigator data";
 
     // allocate buffer for pps data
     char buffer[ppsBufferSize];

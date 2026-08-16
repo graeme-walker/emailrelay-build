@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef TOKEN_H
 #define TOKEN_H
@@ -89,6 +64,7 @@ QT_BEGIN_NAMESPACE
     F(EXPLICIT) \
     F(STATIC) \
     F(CONST) \
+    F(CONSTEXPR) \
     F(VOLATILE) \
     F(OPERATOR) \
     F(SIZEOF) \
@@ -152,11 +128,14 @@ QT_BEGIN_NAMESPACE
     F(SIGNALS) \
     F(SLOTS) \
     F(RETURN) \
+    F(Q_META_TOKEN_BEGIN) \
     F(Q_OBJECT_TOKEN) \
     F(Q_GADGET_TOKEN) \
+    F(Q_GADGET_EXPORT_TOKEN) \
     F(Q_NAMESPACE_TOKEN) \
     F(Q_NAMESPACE_EXPORT_TOKEN) \
     F(Q_PROPERTY_TOKEN) \
+    F(QT_ANONYMOUS_PROPERTY_TOKEN) \
     F(Q_PLUGIN_METADATA_TOKEN) \
     F(Q_ENUMS_TOKEN) \
     F(Q_ENUM_TOKEN) \
@@ -164,7 +143,6 @@ QT_BEGIN_NAMESPACE
     F(Q_FLAGS_TOKEN) \
     F(Q_FLAG_TOKEN) \
     F(Q_FLAG_NS_TOKEN) \
-    F(Q_DECLARE_FLAGS_TOKEN) \
     F(Q_DECLARE_INTERFACE_TOKEN) \
     F(Q_DECLARE_METATYPE_TOKEN) \
     F(Q_CLASSINFO_TOKEN) \
@@ -178,7 +156,11 @@ QT_BEGIN_NAMESPACE
     F(Q_INVOKABLE_TOKEN) \
     F(Q_SCRIPTABLE_TOKEN) \
     F(Q_PRIVATE_PROPERTY_TOKEN) \
+    F(QT_ANONYMOUS_PRIVATE_PROPERTY_TOKEN) \
     F(Q_REVISION_TOKEN) \
+    F(Q_MOC_INCLUDE_TOKEN) \
+    F(Q_META_TOKEN_END) \
+    F(Q_DECLARE_FLAGS_TOKEN) \
     F(SPECIAL_TREATMENT_MARK) \
     F(MOC_INCLUDE_BEGIN) \
     F(MOC_INCLUDE_END) \
@@ -259,8 +241,6 @@ enum Token {
     PP_STRING_LITERAL = STRING_LITERAL,
     PP_TILDE = TILDE,
     PP_WHITESPACE = WHITESPACE,
-    Q_META_TOKEN_BEGIN = Q_OBJECT_TOKEN,
-    Q_META_TOKEN_END = SPECIAL_TREATMENT_MARK
 };
 
 // for debugging only

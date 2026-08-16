@@ -1,43 +1,8 @@
 #! /bin/sh
-#############################################################################
-##
-## Copyright (C) 2017 André Klitzing
-## Contact: https://www.qt.io/licensing/
-##
-## This file is the build configuration utility of the Qt Toolkit.
-##
-## $QT_BEGIN_LICENSE:LGPL$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU Lesser General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU Lesser
-## General Public License version 3 as published by the Free Software
-## Foundation and appearing in the file LICENSE.LGPL3 included in the
-## packaging of this file. Please review the following information to
-## ensure the GNU Lesser General Public License version 3 requirements
-## will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 2.0 or (at your option) the GNU General
-## Public license version 3 or any later version approved by the KDE Free
-## Qt Foundation. The licenses are as published by the Free Software
-## Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-2.0.html and
-## https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
 
+# Copyright (C) 2017 André Klitzing
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+#
 # This is a small script to copy the required files from a LIBJPEG tarball
 # into 3rdparty/libjpeg/.
 
@@ -75,12 +40,11 @@ copy_file() {
 }
 
 copy_file "LICENSE.md" "LICENSE"
+copy_file "ChangeLog.md" "ChangeLog.md"
+copy_file "README.md" "README.md"
+copy_file "README.ijg" "README.ijg"
 
 FILES="
-   change.log
-   ChangeLog.md
-   README.md
-   README.ijg
    jconfig.h.in
    jconfigint.h.in
 
@@ -92,12 +56,17 @@ FILES="
    jccolext.c
    jccolor.c
    jcdctmgr.c
+   jcdiffct.c
    jchuff.c
    jchuff.h
+   jcicc.c
    jcinit.c
+   jclhuff.c
+   jclossls.c
    jcmainct.c
    jcmarker.c
    jcmaster.c
+   jcmaster.h
    jcomapi.c
    jcparam.c
    jcphuff.c
@@ -116,16 +85,22 @@ FILES="
    jdcolor.c
    jdct.h
    jddctmgr.c
+   jddiffct.c
    jdhuff.c
    jdhuff.h
+   jdicc.c
    jdphuff.c
    jdinput.c
+   jdlhuff.c
+   jdlossls.c
+   jlossls.h
    jdmainct.c
    jdmainct.h
    jdmarker.c
    jdmaster.c
    jdmaster.h
    jdmerge.c
+   jdmerge.h
    jdmrgext.c
    jdmrg565.c
    jdpostct.c
@@ -142,26 +117,37 @@ FILES="
    jidctfst.c
    jidctint.c
    jinclude.h
-   jpegcomp.h
+   jpegapicomp.h
    jpegint.h
    jpeglib.h
    jmemmgr.c
    jmemnobs.c
    jmemsys.h
    jmorecfg.h
-   jpeg_nbits_table.h
+   jpeg_nbits.h
    jquant1.c
    jquant2.c
+   jsamplecomp.h
    jsimd.h
-   jsimd_none.c
    jsimddct.h
    jstdhuff.c
    jutils.c
-   jversion.h
 "
 
 for i in $FILES; do
-    copy_file "$i" "src/$i"
+    copy_file "src/$i" "src/$i"
 done
+copy_file "src/jversion.h.in" "src/jversion.h"
 
-echo Done. $TARGET_DIR/jconfig.h and jconfigint.h may need manual updating.
+cyear=$(grep COPYRIGHT_YEAR $LIBJPEG_DIR/CMakeLists.txt | sed -e 's/.*"\(.*\)".*/\1/')
+sed -i -e "s/@COPYRIGHT_YEAR@/$cyear/" $TARGET_DIR/src/jversion.h
+
+sed -n -e 's/^[ ]*"//
+           s/\(\\n\)*"[ ]*\\*$//
+           /JCOPYRIGHT.\ /,/^[ ]*$/ {
+               /Copyright/p
+           }
+          ' $TARGET_DIR/src/jversion.h > $TARGET_DIR/COPYRIGHT.txt
+
+
+echo Done. $TARGET_DIR/src/jconfig.h and jconfigint.h may need manual updating.

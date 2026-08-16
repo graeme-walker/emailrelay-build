@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qpa/qplatforminputcontextfactory_p.h>
 #include <qpa/qplatforminputcontextplugin_p.h>
@@ -48,35 +12,60 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 #if QT_CONFIG(settings)
-Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
-    (QPlatformInputContextFactoryInterface_iid, QLatin1String("/platforminputcontexts"), Qt::CaseInsensitive))
+Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, icLoader,
+    (QPlatformInputContextFactoryInterface_iid, "/platforminputcontexts"_L1, Qt::CaseInsensitive))
 #endif
 
 QStringList QPlatformInputContextFactory::keys()
 {
 #if QT_CONFIG(settings)
-    return loader()->keyMap().values();
+    return icLoader()->keyMap().values();
 #else
     return QStringList();
 #endif
 }
 
-QString QPlatformInputContextFactory::requested()
+QStringList QPlatformInputContextFactory::requested()
 {
-    QByteArray env = qgetenv("QT_IM_MODULE");
-    return env.isNull() ? QString() : QString::fromLocal8Bit(env);
+    QStringList imList;
+    QByteArray env = qgetenv("QT_IM_MODULES");
+
+    if (!env.isEmpty())
+        imList = QString::fromLocal8Bit(env).split(QChar::fromLatin1(';'), Qt::SkipEmptyParts);
+
+    if (!imList.isEmpty())
+        return imList;
+
+    env = qgetenv("QT_IM_MODULE");
+    if (!env.isEmpty())
+        imList = {QString::fromLocal8Bit(env)};
+
+    return imList;
+}
+
+QPlatformInputContext *QPlatformInputContextFactory::create(const QStringList& keys)
+{
+    for (const QString &key : keys) {
+        auto plugin = create(key);
+        if (plugin)
+            return plugin;
+    }
+
+    return nullptr;
 }
 
 QPlatformInputContext *QPlatformInputContextFactory::create(const QString& key)
 {
 #if QT_CONFIG(settings)
     if (!key.isEmpty()) {
-        QStringList paramList = key.split(QLatin1Char(':'));
+        QStringList paramList = key.split(u':');
         const QString platform = paramList.takeFirst().toLower();
 
         QPlatformInputContext *ic = qLoadPlugin<QPlatformInputContext, QPlatformInputContextPlugin>
-                                                 (loader(), platform, paramList);
+                                                 (icLoader(), platform, paramList);
         if (ic && ic->isValid())
             return ic;
 

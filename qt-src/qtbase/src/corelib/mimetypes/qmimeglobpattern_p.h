@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QMIMEGLOBPATTERN_P_H
 #define QMIMEGLOBPATTERN_P_H
@@ -58,17 +22,20 @@ QT_REQUIRE_CONFIG(mimetype);
 #include <QtCore/qstringlist.h>
 #include <QtCore/qhash.h>
 
+#include <algorithm>
+
 QT_BEGIN_NAMESPACE
 
 struct QMimeGlobMatchResult
 {
-    void addMatch(const QString &mimeType, int weight, const QString &pattern, int knownSuffixLength = 0);
+    void addMatch(const QString &mimeType, int weight, const QString &pattern,
+                  qsizetype knownSuffixLength = 0);
 
     QStringList m_matchingMimeTypes; // only those with highest weight
     QStringList m_allMatchingMimeTypes;
     int m_weight = 0;
-    int m_matchingPatternLength = 0;
-    int m_knownSuffixLength = 0;
+    qsizetype m_matchingPatternLength = 0;
+    qsizetype m_knownSuffixLength = 0;
 };
 
 class QMimeGlobPattern
@@ -80,7 +47,10 @@ public:
 
     explicit QMimeGlobPattern(const QString &thePattern, const QString &theMimeType, unsigned theWeight = DefaultWeight, Qt::CaseSensitivity s = Qt::CaseInsensitive) :
         m_pattern(s == Qt::CaseInsensitive ? thePattern.toLower() : thePattern),
-        m_mimeType(theMimeType), m_weight(theWeight), m_caseSensitivity(s)
+        m_mimeType(theMimeType),
+        m_weight(theWeight),
+        m_caseSensitivity(s),
+        m_patternType(detectPatternType(m_pattern))
     {
     }
 
@@ -90,9 +60,10 @@ public:
         qSwap(m_mimeType,        other.m_mimeType);
         qSwap(m_weight,          other.m_weight);
         qSwap(m_caseSensitivity, other.m_caseSensitivity);
+        qSwap(m_patternType,     other.m_patternType);
     }
 
-    bool matchFileName(const QString &filename) const;
+    bool matchFileName(const QString &inputFileName) const;
 
     inline const QString &pattern() const { return m_pattern; }
     inline unsigned weight() const { return m_weight; }
@@ -100,38 +71,50 @@ public:
     inline bool isCaseSensitive() const { return m_caseSensitivity == Qt::CaseSensitive; }
 
 private:
+    enum PatternType {
+        SuffixPattern,
+        PrefixPattern,
+        LiteralPattern,
+        VdrPattern,        // special handling for "[0-9][0-9][0-9].vdr" pattern
+        AnimPattern,       // special handling for "*.anim[1-9j]" pattern
+        OtherPattern
+    };
+    PatternType detectPatternType(QStringView pattern) const;
+
     QString m_pattern;
     QString m_mimeType;
     int m_weight;
     Qt::CaseSensitivity m_caseSensitivity;
+    PatternType m_patternType;
 };
 Q_DECLARE_SHARED(QMimeGlobPattern)
+
+using AddMatchFilterFunc = std::function<bool(const QString &)>;
 
 class QMimeGlobPatternList : public QList<QMimeGlobPattern>
 {
 public:
-    bool hasPattern(const QString &mimeType, const QString &pattern) const
+    bool hasPattern(QStringView mimeType, QStringView pattern) const
     {
-        const_iterator it = begin();
-        const const_iterator myend = end();
-        for (; it != myend; ++it)
-            if ((*it).pattern() == pattern && (*it).mimeType() == mimeType)
-                return true;
-        return false;
+        auto matchesMimeAndPattern = [mimeType, pattern](const QMimeGlobPattern &e) {
+            return e.pattern() == pattern && e.mimeType() == mimeType;
+        };
+        return std::any_of(begin(), end(), matchesMimeAndPattern);
     }
 
     /*!
         "noglobs" is very rare occurrence, so it's ok if it's slow
      */
-    void removeMimeType(const QString &mimeType)
+    void removeMimeType(QStringView mimeType)
     {
-        auto isMimeTypeEqual = [&mimeType](const QMimeGlobPattern &pattern) {
+        auto isMimeTypeEqual = [mimeType](const QMimeGlobPattern &pattern) {
             return pattern.mimeType() == mimeType;
         };
-        erase(std::remove_if(begin(), end(), isMimeTypeEqual), end());
+        removeIf(isMimeTypeEqual);
     }
 
-    void match(QMimeGlobMatchResult &result, const QString &fileName) const;
+    void match(QMimeGlobMatchResult &result, const QString &fileName,
+               const AddMatchFilterFunc &filterFunc) const;
 };
 
 /*!
@@ -148,7 +131,8 @@ public:
 
     void addGlob(const QMimeGlobPattern &glob);
     void removeMimeType(const QString &mimeType);
-    void matchingGlobs(const QString &fileName, QMimeGlobMatchResult &result) const;
+    void matchingGlobs(const QString &fileName, QMimeGlobMatchResult &result,
+                       const AddMatchFilterFunc &filterFunc) const;
     void clear();
 
     PatternsMap m_fastPatterns; // example: "doc" -> "application/msword", "text/plain"

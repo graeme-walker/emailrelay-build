@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcommandlinkbutton.h"
 #include "qstylepainter.h"
@@ -207,8 +171,8 @@ bool QCommandLinkButtonPrivate::usingVistaStyle() const
     Q_Q(const QCommandLinkButton);
     //### This is a hack to detect if we are indeed running Vista style themed and not in classic
     // When we add api to query for this, we should change this implementation to use it.
-    return q->style()->inherits("QWindowsVistaStyle")
-        && q->style()->pixelMetric(QStyle::PM_ButtonShiftHorizontal, nullptr) == 0;
+    return q->property("_qt_usingVistaStyle").toBool()
+        && q->style()->pixelMetric(QStyle::PM_ButtonShiftHorizontal, nullptr, q) == 0;
 }
 
 void QCommandLinkButtonPrivate::init()
@@ -216,6 +180,7 @@ void QCommandLinkButtonPrivate::init()
     Q_Q(QCommandLinkButton);
     QPushButtonPrivate::init();
     q->setAttribute(Qt::WA_Hover);
+    q->setAttribute(Qt::WA_MacShowFocusRect, false);
 
     QSizePolicy policy(QSizePolicy::Preferred, QSizePolicy::Preferred, QSizePolicy::PushButton);
     policy.setHeightForWidth(true);
@@ -224,7 +189,7 @@ void QCommandLinkButtonPrivate::init()
     q->setIconSize(QSize(20, 20));
     QStyleOptionButton opt;
     q->initStyleOption(&opt);
-    q->setIcon(q->style()->standardIcon(QStyle::SP_CommandLink, &opt));
+    q->setIcon(q->style()->standardIcon(QStyle::SP_CommandLink, &opt, q));
 }
 
 // Calculates the height of the description text based on widget width
@@ -262,6 +227,12 @@ QSize QCommandLinkButton::minimumSizeHint() const
                              icon().actualSize(iconSize()).height() + d->topMargin());
     size.setHeight(minimumHeight);
     return size;
+}
+
+void QCommandLinkButton::initStyleOption(QStyleOptionButton *option) const
+{
+    QPushButton::initStyleOption(option);
+    option->features |= QStyleOptionButton::CommandLinkButton;
 }
 
 /*!
@@ -305,6 +276,12 @@ QCommandLinkButton::~QCommandLinkButton()
 /*! \reimp */
 bool QCommandLinkButton::event(QEvent *e)
 {
+    if (e->type() == QEvent::StyleChange) {
+        QStyleOptionButton opt;
+        initStyleOption(&opt);
+        setIcon(style()->standardIcon(QStyle::SP_CommandLink, &opt, this));
+    }
+
     return QPushButton::event(e);
 }
 
@@ -344,35 +321,35 @@ void QCommandLinkButton::paintEvent(QPaintEvent *)
 {
     Q_D(QCommandLinkButton);
     QStylePainter p(this);
-    p.save();
 
     QStyleOptionButton option;
     initStyleOption(&option);
 
-    //Enable command link appearance on Vista
-    option.features |= QStyleOptionButton::CommandLinkButton;
     option.text = QString();
     option.icon = QIcon(); //we draw this ourselves
-    QSize pixmapSize = icon().actualSize(iconSize());
 
     const int vOffset = isDown()
-        ? style()->pixelMetric(QStyle::PM_ButtonShiftVertical, &option) : 0;
+        ? style()->pixelMetric(QStyle::PM_ButtonShiftVertical, &option, this) : 0;
     const int hOffset = isDown()
-        ? style()->pixelMetric(QStyle::PM_ButtonShiftHorizontal, &option) : 0;
+        ? style()->pixelMetric(QStyle::PM_ButtonShiftHorizontal, &option, this) : 0;
 
     //Draw icon
     p.drawControl(QStyle::CE_PushButton, option);
-    if (!icon().isNull())
-        p.drawPixmap(d->leftMargin() + hOffset, d->topMargin() + vOffset,
-        icon().pixmap(pixmapSize, isEnabled() ? QIcon::Normal : QIcon::Disabled,
-                                  isChecked() ? QIcon::On : QIcon::Off));
+    if (!icon().isNull()) {
+        const auto size = icon().actualSize(iconSize());
+        const auto mode = isEnabled() ? QIcon::Normal : QIcon::Disabled;
+        const auto state = isChecked() ? QIcon::On : QIcon::Off;
+        const auto rect = QRect(d->leftMargin() + hOffset, d->topMargin() + vOffset,
+                                size.width(), size.height());
+        icon().paint(&p, rect, Qt::AlignCenter, mode, state);
+    }
 
     //Draw title
     QColor textColor = palette().buttonText().color();
     if (isEnabled() && d->usingVistaStyle()) {
-        textColor = QColor(21, 28, 85);
+        textColor = option.palette.buttonText().color();
         if (underMouse() && !isDown())
-            textColor = QColor(7, 64, 229);
+            textColor = option.palette.brightText().color();
         //A simple text color transition
         d->currentColor = d->mergedColors(textColor, d->currentColor, 60);
         option.palette.setColor(QPalette::ButtonText, d->currentColor);
@@ -391,7 +368,6 @@ void QCommandLinkButton::paintEvent(QPaintEvent *)
     p.setFont(d->descriptionFont());
     p.drawItemText(d->descriptionRect().translated(hOffset, vOffset), textflags,
                     option.palette, isEnabled(), description(), QPalette::ButtonText);
-    p.restore();
 }
 
 void QCommandLinkButton::setDescription(const QString &description)

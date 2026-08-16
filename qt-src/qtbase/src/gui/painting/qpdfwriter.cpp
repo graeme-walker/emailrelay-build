@@ -1,50 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qpdfwriter.h>
 
 #ifndef QT_NO_PDF
 
 #include "qpagedpaintdevice_p.h"
-#include <QtCore/private/qobject_p.h>
-#include "private/qpdf_p.h"
+#include "qpdf_p.h"
+#include "qpdfoutputintent.h"
+
 #include <QtCore/qfile.h>
+#include <QtCore/private/qobject_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -225,6 +191,27 @@ void QPdfWriter::setCreator(const QString &creator)
 }
 
 /*!
+  \since 6.8
+  Returns the ID of the document. By default, the ID is a
+  randomly generated UUID.
+  */
+QUuid QPdfWriter::documentId() const
+{
+    Q_D(const QPdfWriter);
+    return d->engine->d_func()->documentId;
+}
+
+/*!
+  \since 6.8
+  Sets the ID of the document to \a documentId.
+  */
+void QPdfWriter::setDocumentId(QUuid documentId)
+{
+    Q_D(QPdfWriter);
+    d->engine->d_func()->documentId = documentId;
+}
+
+/*!
   \reimp
   */
 QPaintEngine *QPdfWriter::paintEngine() const
@@ -310,144 +297,6 @@ void QPdfWriter::addFileAttachment(const QString &fileName, const QByteArray &da
     d->engine->addFileAttachment(fileName, data, mimeType);
 }
 
-// Defined in QPagedPaintDevice but non-virtual, add QPdfWriter specific doc here
-#ifdef Q_QDOC
-/*!
-    \fn bool QPdfWriter::setPageLayout(const QPageLayout &newPageLayout)
-    \since 5.3
-
-    Sets the PDF page layout to \a newPageLayout.
-
-    You should call this before calling QPainter::begin(), or immediately
-    before calling newPage() to apply the new page layout to a new page.
-    You should not call any painting methods between a call to setPageLayout()
-    and newPage() as the wrong paint metrics may be used.
-
-    Returns true if the page layout was successfully set to \a newPageLayout.
-
-    \sa pageLayout()
-*/
-
-/*!
-    \fn bool QPdfWriter::setPageSize(const QPageSize &pageSize)
-    \since 5.3
-
-    Sets the PDF page size to \a pageSize.
-
-    To get the current QPageSize use pageLayout().pageSize().
-
-    You should call this before calling QPainter::begin(), or immediately
-    before calling newPage() to apply the new page size to a new page.
-    You should not call any painting methods between a call to setPageSize()
-    and newPage() as the wrong paint metrics may be used.
-
-    Returns true if the page size was successfully set to \a pageSize.
-
-    \sa pageLayout()
-*/
-
-/*!
-    \fn bool QPdfWriter::setPageOrientation(QPageLayout::Orientation orientation)
-    \since 5.3
-
-    Sets the PDF page \a orientation.
-
-    The page orientation is used to define the orientation of the
-    page size when obtaining the page rect.
-
-    You should call this before calling QPainter::begin(), or immediately
-    before calling newPage() to apply the new orientation to a new page.
-    You should not call any painting methods between a call to setPageOrientation()
-    and newPage() as the wrong paint metrics may be used.
-
-    To get the current QPageLayout::Orientation use pageLayout().orientation().
-
-    Returns true if the page orientation was successfully set to \a orientation.
-
-    \sa pageLayout()
-*/
-
-/*!
-    \fn bool QPdfWriter::setPageMargins(const QMarginsF &margins)
-    \since 5.3
-
-    Set the PDF page \a margins in the current page layout units.
-
-    You should call this before calling QPainter::begin(), or immediately
-    before calling newPage() to apply the new margins to a new page.
-    You should not call any painting methods between a call to setPageMargins()
-    and newPage() as the wrong paint metrics may be used.
-
-    To get the current page margins use pageLayout().margins().
-
-    Returns true if the page margins were successfully set to \a margins.
-
-    \sa pageLayout()
-*/
-
-/*!
-    \fn bool QPdfWriter::setPageMargins(const QMarginsF &margins, QPageLayout::Unit units)
-    \since 5.3
-
-    Set the PDF page \a margins defined in the given \a units.
-
-    You should call this before calling QPainter::begin(), or immediately
-    before calling newPage() to apply the new margins to a new page.
-    You should not call any painting methods between a call to setPageMargins()
-    and newPage() as the wrong paint metrics may be used.
-
-    To get the current page margins use pageLayout().margins().
-
-    Returns true if the page margins were successfully set to \a margins.
-
-    \sa pageLayout()
-*/
-
-/*!
-    \fn QPageLayout QPdfWriter::pageLayout() const
-    \since 5.3
-
-    Returns the current page layout.  Use this method to access the current
-    QPageSize, QPageLayout::Orientation, QMarginsF, fullRect() and paintRect().
-
-    Note that you cannot use the setters on the returned object, you must either
-    call the individual QPdfWriter methods or use setPageLayout().
-
-    \sa setPageLayout(), setPageSize(), setPageOrientation(), setPageMargins()
-*/
-#endif
-
-#if QT_DEPRECATED_SINCE(5, 14)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-/*!
-    \reimp
-
-    \obsolete Use setPageSize(QPageSize(id)) instead
-
-    \sa setPageSize()
-*/
-
-void QPdfWriter::setPageSize(PageSize size)
-{
-    setPageSize(QPageSize(QPageSize::PageSizeId(size)));
-}
-
-/*!
-    \reimp
-
-    \obsolete Use setPageSize(QPageSize(size, QPageSize::Millimeter)) instead
-
-    \sa setPageSize()
-*/
-
-void QPdfWriter::setPageSizeMM(const QSizeF &size)
-{
-    setPageSize(QPageSize(size, QPageSize::Millimeter));
-}
-QT_WARNING_POP
-#endif
-
 /*!
     \internal
 
@@ -469,24 +318,77 @@ bool QPdfWriter::newPage()
     return d->engine->newPage();
 }
 
-
-#if QT_DEPRECATED_SINCE(5, 14)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
 /*!
-    \reimp
+  \enum QPdfWriter::ColorModel
+  \since 6.8
 
-    \obsolete Use setPageMargins(QMarginsF(l, t, r, b), QPageLayout::Millimeter) instead
+  This enumeration describes the way in which the PDF engine interprets
+  stroking and filling colors, set as a QPainter's pen or brush (via
+  QPen and QBrush).
 
-    \sa setPageMargins()
-  */
-void QPdfWriter::setMargins(const Margins &m)
+  \value RGB All colors are converted to RGB and saved as such in the
+  PDF.
+
+  \value Grayscale All colors are converted to grayscale. For backwards
+  compatibility, they are emitted in the PDF output as RGB colors, with
+  identical quantities of red, green and blue.
+
+  \value CMYK All colors are converted to CMYK and saved as such.
+
+  \value Auto RGB colors are emitted as RGB; CMYK colors are emitted as
+  CMYK. Colors of any other color spec are converted to RGB.
+  This is the default since Qt 6.8.
+
+  \sa QColor, QGradient
+*/
+
+/*!
+  \since 6.8
+
+  Returns the color model used by this PDF writer.
+  The default is QPdfWriter::ColorModel::Auto.
+*/
+QPdfWriter::ColorModel QPdfWriter::colorModel() const
 {
-    setPageMargins(QMarginsF(m.left, m.top, m.right, m.bottom), QPageLayout::Millimeter);
+    Q_D(const QPdfWriter);
+    return static_cast<ColorModel>(d->engine->d_func()->colorModel);
 }
-QT_WARNING_POP
-#endif
+
+/*!
+  \since 6.8
+
+  Sets the color model used by this PDF writer to \a model.
+*/
+void QPdfWriter::setColorModel(ColorModel model)
+{
+    Q_D(QPdfWriter);
+    d->engine->d_func()->colorModel = static_cast<QPdfEngine::ColorModel>(model);
+}
+
+/*!
+  \since 6.8
+
+  Returns the output intent used by this PDF writer.
+*/
+QPdfOutputIntent QPdfWriter::outputIntent() const
+{
+    Q_D(const QPdfWriter);
+    return d->engine->d_func()->outputIntent;
+}
+
+/*!
+  \since 6.8
+
+  Sets the output intent used by this PDF writer to \a intent.
+*/
+void QPdfWriter::setOutputIntent(const QPdfOutputIntent &intent)
+{
+    Q_D(QPdfWriter);
+    d->engine->d_func()->outputIntent = intent;
+}
 
 QT_END_NAMESPACE
+
+#include "moc_qpdfwriter.cpp"
 
 #endif // QT_NO_PDF

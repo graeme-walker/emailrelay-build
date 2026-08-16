@@ -1,34 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QtCore/QCoreApplication>
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QScopeGuard>
+#include <QCryptographicHash>
 #include <QtCore/QMetaEnum>
 
 Q_DECLARE_METATYPE(QCryptographicHash::Algorithm)
@@ -41,12 +18,25 @@ private slots:
     void repeated_result();
     void intermediary_result_data();
     void intermediary_result();
+    void static_hash_data() { intermediary_result_data(); }
+    void static_hash();
     void sha1();
     void sha3_data();
     void sha3();
+    void keccak();
+    void keccak_data();
+    void blake2_data();
+    void blake2();
     void files_data();
     void files();
+    void hashLength_data() { all_methods(true); }
     void hashLength();
+    void addDataAcceptsNullByteArrayView_data() { all_methods(false); }
+    void addDataAcceptsNullByteArrayView();
+    void move();
+    void swap();
+private:
+    void all_methods(bool includingNumAlgorithms) const;
 };
 
 void tst_QCryptographicHash::repeated_result_data()
@@ -60,19 +50,23 @@ void tst_QCryptographicHash::repeated_result()
     QCryptographicHash::Algorithm _algo = QCryptographicHash::Algorithm(algo);
     QCryptographicHash hash(_algo);
 
+    QCOMPARE_EQ(hash.algorithm(), _algo);
+
     QFETCH(QByteArray, first);
     hash.addData(first);
 
     QFETCH(QByteArray, hash_first);
-    QByteArray result = hash.result();
+    QByteArrayView result = hash.resultView();
     QCOMPARE(result, hash_first);
+    QCOMPARE(result, hash.resultView());
     QCOMPARE(result, hash.result());
 
     hash.reset();
     hash.addData(first);
-    result = hash.result();
+    result = hash.resultView();
     QCOMPARE(result, hash_first);
     QCOMPARE(result, hash.result());
+    QCOMPARE(result, hash.resultView());
 }
 
 void tst_QCryptographicHash::intermediary_result_data()
@@ -153,6 +147,27 @@ void tst_QCryptographicHash::intermediary_result_data()
             << QByteArray("abc") << QByteArray("abc")
             << QByteArray::fromHex("B751850B1A57168A5693CD924B6B096E08F621827444F70D884F5D0240D2712E10E116E9192AF3C91A7EC57647E3934057340B4CF408D5A56592F8274EEC53F0")
             << QByteArray::fromHex("BB582DA40D15399ACF62AFCBBD6CFC9EE1DD5129B1EF9935DD3B21668F1A73D7841018BE3B13F281C3A8E9DA7EDB60F57B9F9F1C04033DF4CE3654B7B2ADB310");
+
+    QTest::newRow("keccak_224_abc_abc")
+            << int(QCryptographicHash::Keccak_224)
+            << QByteArray("abc") << QByteArray("abc")
+            << QByteArray::fromHex("c30411768506ebe1c2871b1ee2e87d38df342317300a9b97a95ec6a8")
+            << QByteArray::fromHex("048330e7c7c8b4a41ab713b3a6f958d77b8cf3ee969930f1584dd550");
+    QTest::newRow("keccak_256_abc_abc")
+            << int(QCryptographicHash::Keccak_256)
+            << QByteArray("abc") << QByteArray("abc")
+            << QByteArray::fromHex("4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45")
+            << QByteArray::fromHex("9f0adad0a59b05d2e04a1373342b10b9eb16c57c164c8a3bfcbf46dccee39a21");
+    QTest::newRow("keccak_384_abc_abc")
+            << int(QCryptographicHash::Keccak_384)
+            << QByteArray("abc") << QByteArray("abc")
+            << QByteArray::fromHex("f7df1165f033337be098e7d288ad6a2f74409d7a60b49c36642218de161b1f99f8c681e4afaf31a34db29fb763e3c28e")
+            << QByteArray::fromHex("d733b87d392d270889d3da23ae113f349e25574b445f319cde4cd3f877c753e9e3c65980421339b3a131457ff393939f");
+    QTest::newRow("keccak_512_abc_abc")
+            << int(QCryptographicHash::Keccak_512)
+            << QByteArray("abc") << QByteArray("abc")
+            << QByteArray::fromHex("18587dc2ea106b9a1563e32b3312421ca164c7f1f07bc922a9c83d77cea3a1e5d0c69910739025372dc14ac9642629379540c17e2a65b19d77aa511a9d00bb96")
+            << QByteArray::fromHex("a7c392d2a42155761ca76bddde1c47d55486b007edf465397bfb9dfa74d11c8f0d7c86cd29415283f1b5e7f655cec25b869c9e9c33a8986f0b38542fb12bfb93");
 }
 
 void tst_QCryptographicHash::intermediary_result()
@@ -165,18 +180,33 @@ void tst_QCryptographicHash::intermediary_result()
     hash.addData(first);
 
     QFETCH(QByteArray, hash_first);
-    QByteArray result = hash.result();
-    QCOMPARE(result, hash_first);
+    QCOMPARE(hash.resultView(), hash_first);
 
     // don't reset
     QFETCH(QByteArray, second);
     QFETCH(QByteArray, hash_firstsecond);
     hash.addData(second);
 
-    result = hash.result();
-    QCOMPARE(result, hash_firstsecond);
+    QCOMPARE(hash.resultView(), hash_firstsecond);
 
     hash.reset();
+}
+
+void tst_QCryptographicHash::static_hash()
+{
+    QFETCH(const int, algo);
+    QFETCH(const QByteArray, first);
+    QFETCH(const QByteArray, hash_first);
+
+    const auto _algo = QCryptographicHash::Algorithm(algo);
+
+    QCOMPARE(QCryptographicHash::hash(first, _algo), hash_first);
+
+    std::byte buffer[1024];
+    QCOMPARE(QCryptographicHash::hashInto(buffer, first, _algo), hash_first);
+
+    // Too small buffer
+    QVERIFY(QCryptographicHash::hashInto(QSpan{buffer}.first(5), first, _algo).isNull());
 }
 
 
@@ -195,10 +225,7 @@ void tst_QCryptographicHash::sha1()
 
 //  SHA1(A million repetitions of "a") =
 //      34AA973C D4C4DAA4 F61EEB2B DBAD2731 6534016F
-    QByteArray as;
-    for (int i = 0; i < 1000000; ++i)
-        as += 'a';
-    QCOMPARE(QCryptographicHash::hash(as, QCryptographicHash::Sha1).toHex().toUpper(),
+    QCOMPARE(QCryptographicHash::hash(QByteArray(1'000'000, 'a'), QCryptographicHash::Sha1).toHex().toUpper(),
              QByteArray("34AA973CD4C4DAA4F61EEB2BDBAD27316534016F"));
 }
 
@@ -264,6 +291,172 @@ void tst_QCryptographicHash::sha3()
     QCOMPARE(result, expectedResult);
 }
 
+void tst_QCryptographicHash::keccak_data()
+{
+    QTest::addColumn<QCryptographicHash::Algorithm>("algorithm");
+    QTest::addColumn<QByteArray>("data");
+    QTest::addColumn<QByteArray>("expectedResult");
+
+#define ROW(Tag, Algorithm, Input, Result) \
+    QTest::newRow(Tag) << Algorithm << QByteArrayLiteral(Input) << QByteArray::fromHex(Result)
+
+    ROW("keccak_224_pangram",
+        QCryptographicHash::Keccak_224,
+        "The quick brown fox jumps over the lazy dog",
+        "310aee6b30c47350576ac2873fa89fd190cdc488442f3ef654cf23fe");
+
+    ROW("keccak_224_pangram_dot",
+        QCryptographicHash::Keccak_224,
+        "The quick brown fox jumps over the lazy dog.",
+        "c59d4eaeac728671c635ff645014e2afa935bebffdb5fbd207ffdeab");
+
+    ROW("keccak_256_pangram",
+        QCryptographicHash::Keccak_256,
+        "The quick brown fox jumps over the lazy dog",
+        "4d741b6f1eb29cb2a9b9911c82f56fa8d73b04959d3d9d222895df6c0b28aa15");
+
+    ROW("keccak_256_pangram_dot",
+        QCryptographicHash::Keccak_256,
+        "The quick brown fox jumps over the lazy dog.",
+        "578951e24efd62a3d63a86f7cd19aaa53c898fe287d2552133220370240b572d");
+
+    ROW("keccak_384_pangram",
+        QCryptographicHash::Keccak_384,
+        "The quick brown fox jumps over the lazy dog",
+        "283990fa9d5fb731d786c5bbee94ea4db4910f18c62c03d173fc0a5e494422e8a0b3da7574dae7fa0baf005e504063b3");
+
+    ROW("keccak_384_pangram_dot",
+        QCryptographicHash::Keccak_384,
+        "The quick brown fox jumps over the lazy dog.",
+        "9ad8e17325408eddb6edee6147f13856ad819bb7532668b605a24a2d958f88bd5c169e56dc4b2f89ffd325f6006d820b");
+
+    ROW("skeccak_512_pangram",
+        QCryptographicHash::Keccak_512,
+        "The quick brown fox jumps over the lazy dog",
+        "d135bb84d0439dbac432247ee573a23ea7d3c9deb2a968eb31d47c4fb45f1ef4422d6c531b5b9bd6f449ebcc449ea94d0a8f05f62130fda612da53c79659f609");
+
+    ROW("keccak_512_pangram_dot",
+        QCryptographicHash::Keccak_512,
+        "The quick brown fox jumps over the lazy dog.",
+        "ab7192d2b11f51c7dd744e7b3441febf397ca07bf812cceae122ca4ded6387889064f8db9230f173f6d1ab6e24b6e50f065b039f799f5592360a6558eb52d760");
+
+#undef ROW
+}
+
+void tst_QCryptographicHash::keccak()
+{
+    QFETCH(QCryptographicHash::Algorithm, algorithm);
+    QFETCH(QByteArray, data);
+    QFETCH(QByteArray, expectedResult);
+
+    const auto result = QCryptographicHash::hash(data, algorithm);
+    QCOMPARE(result, expectedResult);
+}
+
+void tst_QCryptographicHash::blake2_data()
+{
+    QTest::addColumn<QCryptographicHash::Algorithm>("algorithm");
+    QTest::addColumn<QByteArray>("data");
+    QTest::addColumn<QByteArray>("expectedResult");
+
+#define ROW(Tag, Algorithm, Input, Result) \
+    QTest::newRow(Tag) << Algorithm << QByteArrayLiteral(Input) << QByteArray::fromHex(Result)
+
+    // BLAKE2b
+    ROW("blake2b_160_pangram",
+        QCryptographicHash::Blake2b_160,
+        "The quick brown fox jumps over the lazy dog",
+        "3c523ed102ab45a37d54f5610d5a983162fde84f");
+
+    ROW("blake2b_160_pangram_dot",
+        QCryptographicHash::Blake2b_160,
+        "The quick brown fox jumps over the lazy dog.",
+        "d0c8bb0bdd830296d1d4f4348176699ccccc16bb");
+
+    ROW("blake2b_256_pangram",
+        QCryptographicHash::Blake2b_256,
+        "The quick brown fox jumps over the lazy dog",
+        "01718cec35cd3d796dd00020e0bfecb473ad23457d063b75eff29c0ffa2e58a9");
+
+    ROW("blake2b_256_pangram_dot",
+        QCryptographicHash::Blake2b_256,
+        "The quick brown fox jumps over the lazy dog.",
+        "69d7d3b0afba81826d27024c17f7f183659ed0812cf27b382eaef9fdc29b5712");
+
+    ROW("blake2b_384_pangram",
+        QCryptographicHash::Blake2b_384,
+        "The quick brown fox jumps over the lazy dog",
+        "b7c81b228b6bd912930e8f0b5387989691c1cee1e65aade4da3b86a3c9f678fc8018f6ed9e2906720c8d2a3aeda9c03d");
+
+    ROW("blake2b_384_pangram_dot",
+        QCryptographicHash::Blake2b_384,
+        "The quick brown fox jumps over the lazy dog.",
+        "16d65de1a3caf1c26247234c39af636284c7e19ca448c0de788272081410778852c94d9cef6b939968d4f872c7f78337");
+
+    ROW("blake2b_512_pangram",
+        QCryptographicHash::Blake2b_512,
+        "The quick brown fox jumps over the lazy dog",
+        "a8add4bdddfd93e4877d2746e62817b116364a1fa7bc148d95090bc7333b3673f82401cf7aa2e4cb1ecd90296e3f14cb5413f8ed77be73045b13914cdcd6a918");
+
+    ROW("blake2b_512_pangram_dot",
+        QCryptographicHash::Blake2b_512,
+        "The quick brown fox jumps over the lazy dog.",
+        "87af9dc4afe5651b7aa89124b905fd214bf17c79af58610db86a0fb1e0194622a4e9d8e395b352223a8183b0d421c0994b98286cbf8c68a495902e0fe6e2bda2");
+
+    // BLAKE2s
+    ROW("blake2s_128_pangram",
+        QCryptographicHash::Blake2s_128,
+        "The quick brown fox jumps over the lazy dog",
+        "96fd07258925748a0d2fb1c8a1167a73");
+
+    ROW("blake2s_128_pangram_dot",
+        QCryptographicHash::Blake2s_128,
+        "The quick brown fox jumps over the lazy dog.",
+        "1f298f2e1f9c2490e506c2308f64e7c0");
+
+    ROW("blake2s_160_pangram",
+        QCryptographicHash::Blake2s_160,
+        "The quick brown fox jumps over the lazy dog",
+        "5a604fec9713c369e84b0ed68daed7d7504ef240");
+
+    ROW("blake2s_160_pangram_dot",
+        QCryptographicHash::Blake2s_160,
+        "The quick brown fox jumps over the lazy dog.",
+        "cd4a863226463aac852662d16275d399966e3ffe");
+
+    ROW("blake2s_224_pangram",
+        QCryptographicHash::Blake2s_224,
+        "The quick brown fox jumps over the lazy dog",
+        "e4e5cb6c7cae41982b397bf7b7d2d9d1949823ae78435326e8db4912");
+
+    ROW("blake2s_224_pangram_dot",
+        QCryptographicHash::Blake2s_224,
+        "The quick brown fox jumps over the lazy dog.",
+        "fd1557500ef49f308882969507acd18a13e155c26f8fcd82f9bf2ff7");
+
+    ROW("blake2s_256_pangram",
+        QCryptographicHash::Blake2s_256,
+        "The quick brown fox jumps over the lazy dog",
+        "606beeec743ccbeff6cbcdf5d5302aa855c256c29b88c8ed331ea1a6bf3c8812");
+
+    ROW("blake2s_256_pangram_dot",
+        QCryptographicHash::Blake2s_256,
+        "The quick brown fox jumps over the lazy dog.",
+        "95bca6e1b761dca1323505cc629949a0e03edf11633cc7935bd8b56f393afcf2");
+
+#undef ROW
+}
+
+void tst_QCryptographicHash::blake2()
+{
+    QFETCH(QCryptographicHash::Algorithm, algorithm);
+    QFETCH(QByteArray, data);
+    QFETCH(QByteArray, expectedResult);
+
+    const auto result = QCryptographicHash::hash(data, algorithm);
+    QCOMPARE(result, expectedResult);
+}
+
 void tst_QCryptographicHash::files_data() {
     QTest::addColumn<QString>("filename");
     QTest::addColumn<QCryptographicHash::Algorithm>("algorithm");
@@ -293,14 +486,90 @@ void tst_QCryptographicHash::files()
     }
 }
 
-void tst_QCryptographicHash::hashLength()
+void tst_QCryptographicHash::all_methods(bool inclNumAlgos) const
 {
+    QTest::addColumn<QCryptographicHash::Algorithm>("algorithm");
     auto metaEnum = QMetaEnum::fromType<QCryptographicHash::Algorithm>();
     for (int i = 0, value = metaEnum.value(i); value != -1; value = metaEnum.value(++i)) {
         auto algorithm = QCryptographicHash::Algorithm(value);
-        QByteArray output = QCryptographicHash::hash(QByteArrayLiteral("test"), algorithm);
-        QCOMPARE(QCryptographicHash::hashLength(algorithm), output.length());
+        if (!inclNumAlgos && algorithm == QCryptographicHash::Algorithm::NumAlgorithms)
+            continue;
+        QTest::addRow("%s", metaEnum.key(i)) << algorithm;
     }
+}
+
+void tst_QCryptographicHash::hashLength()
+{
+    QFETCH(const QCryptographicHash::Algorithm, algorithm);
+
+    qsizetype expectedSize;
+    if (algorithm == QCryptographicHash::NumAlgorithms) {
+        // It's UB to call ::hash() with NumAlgorithms, but hashLength() is
+        // fine and returns 0 for invalid values:
+        expectedSize = 0;
+    } else {
+        expectedSize = QCryptographicHash::hash("test", algorithm).size();
+
+        std::byte buffer[1024];
+        QCOMPARE(QCryptographicHash::hashInto(buffer, "foo", algorithm).size(), expectedSize);
+    }
+    QCOMPARE(QCryptographicHash::hashLength(algorithm), expectedSize);
+}
+
+void tst_QCryptographicHash::addDataAcceptsNullByteArrayView()
+{
+    QFETCH(const QCryptographicHash::Algorithm, algorithm);
+
+    if (!QCryptographicHash::supportsAlgorithm(algorithm))
+        QSKIP("QCryptographicHash doesn't support this algorithm");
+
+    QCryptographicHash hash1(algorithm);
+    hash1.addData("meep");
+    hash1.addData(QByteArrayView{}); // after other data
+
+    QCryptographicHash hash2(algorithm);
+    hash2.addData(QByteArrayView{}); // before any other data
+    hash2.addData("meep");
+
+    const auto expected = QCryptographicHash::hash("meep", algorithm);
+
+    QCOMPARE(hash1.resultView(), expected);
+    QCOMPARE(hash2.resultView(), expected);
+}
+
+void tst_QCryptographicHash::move()
+{
+    QCryptographicHash hash1(QCryptographicHash::Sha1);
+    hash1.addData("a");
+
+    // move constructor
+    auto hash2(std::move(hash1));
+    hash2.addData("b");
+
+    // move assign operator
+    QCryptographicHash hash3(QCryptographicHash::Sha256);
+    hash3.addData("no effect on the end result");
+    hash3 = std::move(hash2);
+    hash3.addData("c");
+
+    QCOMPARE(hash3.resultView(), QByteArray::fromHex("A9993E364706816ABA3E25717850C26C9CD0D89D"));
+}
+
+void tst_QCryptographicHash::swap()
+{
+    QCryptographicHash hash1(QCryptographicHash::Sha1);
+    QCryptographicHash hash2(QCryptographicHash::Sha256);
+
+    hash1.addData("da");
+    hash2.addData("te");
+
+    hash1.swap(hash2);
+
+    hash2.addData("ta");
+    hash1.addData("st");
+
+    QCOMPARE(hash2.result(), QCryptographicHash::hash("data", QCryptographicHash::Sha1));
+    QCOMPARE(hash1.result(), QCryptographicHash::hash("test", QCryptographicHash::Sha256));
 }
 
 QTEST_MAIN(tst_QCryptographicHash)

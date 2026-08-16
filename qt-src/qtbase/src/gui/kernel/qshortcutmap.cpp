@@ -1,55 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qshortcutmap_p.h"
 #include "private/qobject_p.h"
 #include "qkeysequence.h"
 #include "qdebug.h"
 #include "qevent.h"
-#include "qvector.h"
-#include "qcoreapplication.h"
+#include "qlist.h"
+#include "qguiapplication.h"
+#include "qwindow.h"
 #include <private/qkeymapper_p.h>
 #include <QtCore/qloggingcategory.h>
+#include <QtCore/qscopeguard.h>
 
 #include <algorithm>
-
-#ifndef QT_NO_SHORTCUT
 
 QT_BEGIN_NAMESPACE
 
@@ -65,23 +29,23 @@ Q_LOGGING_CATEGORY(lcShortcutMap, "qt.gui.shortcutmap")
 struct QShortcutEntry
 {
     QShortcutEntry()
-        : keyseq(0), context(Qt::WindowShortcut), enabled(false), autorepeat(1), id(0), owner(nullptr), contextMatcher(nullptr)
+        : keySequence(0), context(Qt::WindowShortcut), enabled(false), autorepeat(1), id(0), owner(nullptr), contextMatcher(nullptr)
     {}
 
     QShortcutEntry(const QKeySequence &k)
-        : keyseq(k), context(Qt::WindowShortcut), enabled(false), autorepeat(1), id(0), owner(nullptr), contextMatcher(nullptr)
+        : keySequence(k), context(Qt::WindowShortcut), enabled(false), autorepeat(1), id(0), owner(nullptr), contextMatcher(nullptr)
     {}
 
     QShortcutEntry(QObject *o, const QKeySequence &k, Qt::ShortcutContext c, int i, bool a, QShortcutMap::ContextMatcher m)
-        : keyseq(k), context(c), enabled(true), autorepeat(a), id(i), owner(o), contextMatcher(m)
+        : keySequence(k), context(c), enabled(true), autorepeat(a), id(i), owner(o), contextMatcher(m)
     {}
 
     bool correctContext() const { return contextMatcher(owner, context); }
 
     bool operator<(const QShortcutEntry &f) const
-    { return keyseq < f.keyseq; }
+    { return keySequence < f.keySequence; }
 
-    QKeySequence keyseq;
+    QKeySequence keySequence;
     Qt::ShortcutContext context;
     bool enabled : 1;
     bool autorepeat : 1;
@@ -89,7 +53,7 @@ struct QShortcutEntry
     QObject *owner;
     QShortcutMap::ContextMatcher contextMatcher;
 };
-Q_DECLARE_TYPEINFO(QShortcutEntry, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QShortcutEntry, Q_RELOCATABLE_TYPE);
 
 #ifdef Dump_QShortcutMap
 /*! \internal
@@ -124,15 +88,15 @@ public:
     }
     QShortcutMap *q_ptr;                        // Private's parent
 
-    QVector<QShortcutEntry> sequences;          // All sequences!
+    QList<QShortcutEntry> shortcuts;            // All shortcuts!
 
     int currentId;                              // Global shortcut ID number
     int ambigCount;                             // Index of last enabled ambiguous dispatch
     QKeySequence::SequenceMatch currentState;
-    QVector<QKeySequence> currentSequences;     // Sequence for the current state
-    QVector<QKeySequence> newEntries;
+    QList<QKeySequence> currentSequences;       // Sequence for the current state
+    QList<QKeySequence> newEntries;
     QKeySequence prevSequence;                  // Sequence for the previous identical match
-    QVector<const QShortcutEntry*> identicals;  // Last identical matches
+    QList<const QShortcutEntry*> identicals;    // Last identical matches
 };
 
 
@@ -156,18 +120,18 @@ QShortcutMap::~QShortcutMap()
     Adds a shortcut to the global map.
     Returns the id of the newly added shortcut.
 */
-int QShortcutMap::addShortcut(QObject *owner, const QKeySequence &key, Qt::ShortcutContext context, ContextMatcher matcher)
+int QShortcutMap::addShortcut(QObject *owner, const QKeySequence &keySequence, Qt::ShortcutContext context, ContextMatcher matcher)
 {
     Q_ASSERT_X(owner, "QShortcutMap::addShortcut", "All shortcuts need an owner");
-    Q_ASSERT_X(!key.isEmpty(), "QShortcutMap::addShortcut", "Cannot add keyless shortcuts to map");
+    Q_ASSERT_X(!keySequence.isEmpty(), "QShortcutMap::addShortcut", "Cannot add keyless shortcuts to map");
     Q_D(QShortcutMap);
 
-    QShortcutEntry newEntry(owner, key, context, --(d->currentId), true, matcher);
-    const auto it = std::upper_bound(d->sequences.begin(), d->sequences.end(), newEntry);
-    d->sequences.insert(it, newEntry); // Insert sorted
+    QShortcutEntry newEntry(owner, keySequence, context, --(d->currentId), true, matcher);
+    const auto it = std::upper_bound(d->shortcuts.begin(), d->shortcuts.end(), newEntry);
+    d->shortcuts.insert(it, newEntry); // Insert sorted
     qCDebug(lcShortcutMap).nospace()
         << "QShortcutMap::addShortcut(" << owner << ", "
-        << key << ", " << context << ") = " << d->currentId;
+        << keySequence << ", " << context << ") added shortcut with ID " << d->currentId;
     return d->currentId;
 }
 
@@ -180,39 +144,42 @@ int QShortcutMap::addShortcut(QObject *owner, const QKeySequence &key, Qt::Short
     Returns the number of sequences removed from the map.
 */
 
-int QShortcutMap::removeShortcut(int id, QObject *owner, const QKeySequence &key)
+int QShortcutMap::removeShortcut(int id, QObject *owner, const QKeySequence &keySequence)
 {
     Q_D(QShortcutMap);
     int itemsRemoved = 0;
     bool allOwners = (owner == nullptr);
-    bool allKeys = key.isEmpty();
+    bool allKeys = keySequence.isEmpty();
     bool allIds = id == 0;
+
+    auto debug = qScopeGuard([&](){
+        qCDebug(lcShortcutMap).nospace()
+            << "QShortcutMap::removeShortcut(" << id << ", " << owner << ", "
+            << keySequence << ") removed " << itemsRemoved << " shortcuts(s)";
+    });
 
     // Special case, remove everything
     if (allOwners && allKeys && allIds) {
-        itemsRemoved = d->sequences.size();
-        d->sequences.clear();
+        itemsRemoved = d->shortcuts.size();
+        d->shortcuts.clear();
         return itemsRemoved;
     }
 
-    int i = d->sequences.size()-1;
+    int i = d->shortcuts.size()-1;
     while (i>=0)
     {
-        const QShortcutEntry &entry = d->sequences.at(i);
+        const QShortcutEntry &entry = d->shortcuts.at(i);
         int entryId = entry.id;
         if ((allOwners || entry.owner == owner)
             && (allIds || entry.id == id)
-            && (allKeys || entry.keyseq == key)) {
-            d->sequences.removeAt(i);
+            && (allKeys || entry.keySequence == keySequence)) {
+            d->shortcuts.removeAt(i);
             ++itemsRemoved;
         }
         if (id == entryId)
             return itemsRemoved;
         --i;
     }
-    qCDebug(lcShortcutMap).nospace()
-        << "QShortcutMap::removeShortcut(" << id << ", " << owner << ", "
-        << key << ") = " << itemsRemoved;
     return itemsRemoved;
 }
 
@@ -224,22 +191,22 @@ int QShortcutMap::removeShortcut(int id, QObject *owner, const QKeySequence &key
     are changed.
     Returns the number of sequences which are matched in the map.
 */
-int QShortcutMap::setShortcutEnabled(bool enable, int id, QObject *owner, const QKeySequence &key)
+int QShortcutMap::setShortcutEnabled(bool enable, int id, QObject *owner, const QKeySequence &keySequence)
 {
     Q_D(QShortcutMap);
     int itemsChanged = 0;
     bool allOwners = (owner == nullptr);
-    bool allKeys = key.isEmpty();
+    bool allKeys = keySequence.isEmpty();
     bool allIds = id == 0;
 
-    int i = d->sequences.size()-1;
+    int i = d->shortcuts.size()-1;
     while (i>=0)
     {
-        QShortcutEntry entry = d->sequences.at(i);
+        const QShortcutEntry &entry = d->shortcuts.at(i);
         if ((allOwners || entry.owner == owner)
             && (allIds || entry.id == id)
-            && (allKeys || entry.keyseq == key)) {
-            d->sequences[i].enabled = enable;
+            && (allKeys || entry.keySequence == keySequence)) {
+            d->shortcuts[i].enabled = enable;
             ++itemsChanged;
         }
         if (id == entry.id)
@@ -248,7 +215,7 @@ int QShortcutMap::setShortcutEnabled(bool enable, int id, QObject *owner, const 
     }
     qCDebug(lcShortcutMap).nospace()
         << "QShortcutMap::setShortcutEnabled(" << enable << ", " << id << ", "
-        << owner << ", " << key << ") = " << itemsChanged;
+        << owner << ", " << keySequence << ") = " << itemsChanged;
     return itemsChanged;
 }
 
@@ -260,22 +227,22 @@ int QShortcutMap::setShortcutEnabled(bool enable, int id, QObject *owner, const 
     are changed.
     Returns the number of sequences which are matched in the map.
 */
-int QShortcutMap::setShortcutAutoRepeat(bool on, int id, QObject *owner, const QKeySequence &key)
+int QShortcutMap::setShortcutAutoRepeat(bool on, int id, QObject *owner, const QKeySequence &keySequence)
 {
     Q_D(QShortcutMap);
     int itemsChanged = 0;
     bool allOwners = (owner == nullptr);
-    bool allKeys = key.isEmpty();
+    bool allKeys = keySequence.isEmpty();
     bool allIds = id == 0;
 
-    int i = d->sequences.size()-1;
+    int i = d->shortcuts.size()-1;
     while (i>=0)
     {
-        QShortcutEntry entry = d->sequences.at(i);
+        QShortcutEntry entry = d->shortcuts.at(i);
         if ((allOwners || entry.owner == owner)
             && (allIds || entry.id == id)
-            && (allKeys || entry.keyseq == key)) {
-                d->sequences[i].autorepeat = on;
+            && (allKeys || entry.keySequence == keySequence)) {
+                d->shortcuts[i].autorepeat = on;
                 ++itemsChanged;
         }
         if (id == entry.id)
@@ -284,7 +251,7 @@ int QShortcutMap::setShortcutAutoRepeat(bool on, int id, QObject *owner, const Q
     }
     qCDebug(lcShortcutMap).nospace()
         << "QShortcutMap::setShortcutAutoRepeat(" << on << ", " << id << ", "
-        << owner << ", " << key << ") = " << itemsChanged;
+        << owner << ", " << keySequence << ") = " << itemsChanged;
     return itemsChanged;
 }
 
@@ -338,7 +305,7 @@ bool QShortcutMap::tryShortcut(QKeyEvent *e)
     case QKeySequence::ExactMatch: {
         // Save number of identical matches before dispatching
         // to keep QShortcutMap and tryShortcut reentrant.
-        const int identicalMatches = d->identicals.count();
+        const int identicalMatches = d->identicals.size();
         resetState();
         dispatchEvent(e);
         // If there are no identicals we've only found disabled shortcuts, and
@@ -346,8 +313,7 @@ bool QShortcutMap::tryShortcut(QKeyEvent *e)
         return identicalMatches > 0;
     }
     }
-    Q_UNREACHABLE();
-    return false;
+    Q_UNREACHABLE_RETURN(false);
 }
 
 /*! \internal
@@ -361,7 +327,7 @@ QKeySequence::SequenceMatch QShortcutMap::nextState(QKeyEvent *e)
     Q_D(QShortcutMap);
     // Modifiers can NOT be shortcuts...
     if (e->key() >= Qt::Key_Shift &&
-        e->key() <= Qt::Key_Alt)
+        e->key() <= Qt::Key_ScrollLock)
         return d->currentState;
 
     QKeySequence::SequenceMatch result = QKeySequence::NoMatch;
@@ -393,17 +359,18 @@ QKeySequence::SequenceMatch QShortcutMap::nextState(QKeyEvent *e)
 
 
 /*! \internal
-    Determines if an enabled shortcut has a matcing key sequence.
+    Determines if an enabled shortcut has a matching key sequence.
 */
 bool QShortcutMap::hasShortcutForKeySequence(const QKeySequence &seq) const
 {
     Q_D(const QShortcutMap);
     QShortcutEntry entry(seq); // needed for searching
-    const auto itEnd = d->sequences.cend();
-    auto it = std::lower_bound(d->sequences.cbegin(), itEnd, entry);
+    const auto itEnd = d->shortcuts.cend();
+    auto it = std::lower_bound(d->shortcuts.cbegin(), itEnd, entry);
 
     for (;it != itEnd; ++it) {
-        if (matches(entry.keyseq, (*it).keyseq) == QKeySequence::ExactMatch && (*it).correctContext() && (*it).enabled) {
+        if (entry.keySequence.matches(it->keySequence) == QKeySequence::ExactMatch
+                && (*it).correctContext() && (*it).enabled) {
             return true;
         }
     }
@@ -415,22 +382,22 @@ bool QShortcutMap::hasShortcutForKeySequence(const QKeySequence &seq) const
 /*! \internal
     Returns the next state of the statemachine, based
     on the new key event \a e.
-    Matches are appended to the vector of identicals,
+    Matches are appended to the list of identicals,
     which can be access through matches().
     \sa matches
 */
 QKeySequence::SequenceMatch QShortcutMap::find(QKeyEvent *e, int ignoredModifiers)
 {
     Q_D(QShortcutMap);
-    if (!d->sequences.count())
+    if (!d->shortcuts.size())
         return QKeySequence::NoMatch;
 
     createNewSequences(e, d->newEntries, ignoredModifiers);
-    qCDebug(lcShortcutMap) << "Possible shortcut key sequences:" << d->newEntries;
+    qCDebug(lcShortcutMap) << "Possible input sequences:" << d->newEntries;
 
     // Should never happen
     if (d->newEntries == d->currentSequences) {
-        Q_ASSERT_X(e->key() != Qt::Key_unknown || e->text().length(),
+        Q_ASSERT_X(e->key() != Qt::Key_unknown || e->text().size(),
                    "QShortcutMap::find", "New sequence to find identical to previous");
         return QKeySequence::NoMatch;
     }
@@ -440,27 +407,34 @@ QKeySequence::SequenceMatch QShortcutMap::find(QKeyEvent *e, int ignoredModifier
 
     bool partialFound = false;
     bool identicalDisabledFound = false;
-    QVector<QKeySequence> okEntries;
-    int result = QKeySequence::NoMatch;
-    for (int i = d->newEntries.count()-1; i >= 0 ; --i) {
+    QList<QKeySequence> okEntries;
+    QKeySequence::SequenceMatch result = QKeySequence::NoMatch;
+    for (int i = d->newEntries.size()-1; i >= 0 ; --i) {
         QShortcutEntry entry(d->newEntries.at(i)); // needed for searching
-        const auto itEnd = d->sequences.constEnd();
-        auto it = std::lower_bound(d->sequences.constBegin(), itEnd, entry);
+        qCDebug(lcShortcutMap) << "Looking for shortcuts matching" << entry.keySequence;
 
-        int oneKSResult = QKeySequence::NoMatch;
-        int tempRes = QKeySequence::NoMatch;
-        do {
-            if (it == itEnd)
+        QKeySequence::SequenceMatch bestMatchForEntry = QKeySequence::NoMatch;
+
+        const auto itEnd = d->shortcuts.constEnd();
+        auto it = std::lower_bound(d->shortcuts.constBegin(), itEnd, entry);
+        for (; it != itEnd; ++it) {
+            QKeySequence::SequenceMatch match = entry.keySequence.matches(it->keySequence);
+            qCDebug(lcShortcutMap) << " -" << match << "for shortcut" << it->keySequence;
+
+            // If we got a valid match, there might still be more keys to check against,
+            // but if we get no match, we know that there are no more possible matches.
+            if (match == QKeySequence::NoMatch)
                 break;
-            tempRes = matches(entry.keyseq, (*it).keyseq);
-            oneKSResult = qMax(oneKSResult, tempRes);
-            if (tempRes != QKeySequence::NoMatch && (*it).correctContext()) {
-                if (tempRes == QKeySequence::ExactMatch) {
+
+            bestMatchForEntry = qMax(bestMatchForEntry, match);
+
+            if ((*it).correctContext()) {
+                if (match == QKeySequence::ExactMatch) {
                     if ((*it).enabled)
                         d->identicals.append(&*it);
                     else
                         identicalDisabledFound = true;
-                } else if (tempRes == QKeySequence::PartialMatch) {
+                } else if (match == QKeySequence::PartialMatch) {
                     // We don't need partials, if we have identicals
                     if (d->identicals.size())
                         break;
@@ -468,20 +442,18 @@ QKeySequence::SequenceMatch QShortcutMap::find(QKeyEvent *e, int ignoredModifier
                     // key events when all partials are disabled!
                     partialFound |= (*it).enabled;
                 }
+            } else {
+                qCDebug(lcShortcutMap) << "  - But context was not correct";
             }
-            ++it;
-            // If we got a valid match on this run, there might still be more keys to check against,
-            // so we'll loop once more. If we get NoMatch, there's guaranteed no more possible
-            // matches in the shortcutmap.
-        } while (tempRes != QKeySequence::NoMatch);
+        }
 
         // If the type of match improves (ergo, NoMatch->Partial, or Partial->Exact), clear the
         // previous list. If this match is equal or better than the last match, append to the list
-        if (oneKSResult > result) {
+        if (bestMatchForEntry > result) {
             okEntries.clear();
             qCDebug(lcShortcutMap) << "Found better match (" << d->newEntries << "), clearing key sequence list";
         }
-        if (oneKSResult && oneKSResult >= result) {
+        if (bestMatchForEntry && bestMatchForEntry >= result) {
             okEntries << d->newEntries.at(i);
             qCDebug(lcShortcutMap) << "Added ok key sequence" << d->newEntries;
         }
@@ -500,7 +472,7 @@ QKeySequence::SequenceMatch QShortcutMap::find(QKeyEvent *e, int ignoredModifier
     if (result != QKeySequence::NoMatch)
         d->currentSequences = okEntries;
     qCDebug(lcShortcutMap) << "Returning shortcut match == " << result;
-    return QKeySequence::SequenceMatch(result);
+    return result;
 }
 
 /*! \internal
@@ -508,7 +480,7 @@ QKeySequence::SequenceMatch QShortcutMap::find(QKeyEvent *e, int ignoredModifier
     Same as doing (the slower)
     \snippet code/src_gui_kernel_qshortcutmap.cpp 0
 */
-void QShortcutMap::clearSequence(QVector<QKeySequence> &ksl)
+void QShortcutMap::clearSequence(QList<QKeySequence> &ksl)
 {
     ksl.clear();
     d_func()->newEntries.clear();
@@ -518,25 +490,17 @@ void QShortcutMap::clearSequence(QVector<QKeySequence> &ksl)
     Alters \a seq to the new sequence state, based on the
     current sequence state, and the new key event \a e.
 */
-void QShortcutMap::createNewSequences(QKeyEvent *e, QVector<QKeySequence> &ksl, int ignoredModifiers)
+void QShortcutMap::createNewSequences(QKeyEvent *e, QList<QKeySequence> &ksl, int ignoredModifiers)
 {
     Q_D(QShortcutMap);
-    QList<int> possibleKeys = QKeyMapper::possibleKeys(e);
-    if (lcShortcutMap().isDebugEnabled()) {
-        qCDebug(lcShortcutMap).nospace() << __FUNCTION__ << '(' << e << ", ignoredModifiers="
-            << Qt::KeyboardModifiers(ignoredModifiers) << "), possibleKeys=(";
-        for (int i = 0, size = possibleKeys.size(); i < size; ++i) {
-            if (i)
-                qCDebug(lcShortcutMap).nospace() << ", ";
-            qCDebug(lcShortcutMap).nospace() << QKeySequence(possibleKeys.at(i));
-        }
-        qCDebug(lcShortcutMap).nospace() << ')';
-    }
-    int pkTotal = possibleKeys.count();
+    QList<QKeyCombination> possibleKeys = QKeyMapper::possibleKeys(e);
+    qCDebug(lcShortcutMap) << "Creating new sequences for" << e
+        << "with ignoredModifiers=" << Qt::KeyboardModifiers(ignoredModifiers);
+    int pkTotal = possibleKeys.size();
     if (!pkTotal)
         return;
 
-    int ssActual = d->currentSequences.count();
+    int ssActual = d->currentSequences.size();
     int ssTotal = qMax(1, ssActual);
     // Resize to possible permutations of the current sequence(s).
     ksl.resize(pkTotal * ssTotal);
@@ -553,49 +517,16 @@ void QShortcutMap::createNewSequences(QKeyEvent *e, QVector<QKeySequence> &ksl, 
                 curKsl.setKey(curSeq[2], 2);
                 curKsl.setKey(curSeq[3], 3);
             } else {
-                curKsl.setKey(0, 0);
-                curKsl.setKey(0, 1);
-                curKsl.setKey(0, 2);
-                curKsl.setKey(0, 3);
+                curKsl.setKey(QKeyCombination::fromCombined(0), 0);
+                curKsl.setKey(QKeyCombination::fromCombined(0), 1);
+                curKsl.setKey(QKeyCombination::fromCombined(0), 2);
+                curKsl.setKey(QKeyCombination::fromCombined(0), 3);
             }
-            curKsl.setKey(possibleKeys.at(pkNum) & ~ignoredModifiers, index);
+            const int key = possibleKeys.at(pkNum).toCombined();
+            curKsl.setKey(QKeyCombination::fromCombined(key & ~ignoredModifiers), index);
         }
     }
 }
-
-/*! \internal
-    Basically the same function as QKeySequence::matches(const QKeySequence &seq) const
-    only that is specially handles Key_hyphen as Key_Minus, as people mix these up all the time and
-    they conceptually the same.
-*/
-QKeySequence::SequenceMatch QShortcutMap::matches(const QKeySequence &seq1,
-                                                  const QKeySequence &seq2) const
-{
-    uint userN = seq1.count(),
-        seqN = seq2.count();
-
-    if (userN > seqN)
-        return QKeySequence::NoMatch;
-
-    // If equal in length, we have a potential ExactMatch sequence,
-    // else we already know it can only be partial.
-    QKeySequence::SequenceMatch match = (userN == seqN
-                                            ? QKeySequence::ExactMatch
-                                            : QKeySequence::PartialMatch);
-
-    for (uint i = 0; i < userN; ++i) {
-        int userKey = seq1[i],
-            sequenceKey = seq2[i];
-        if ((userKey & Qt::Key_unknown) == Qt::Key_hyphen)
-            userKey = (userKey & Qt::KeyboardModifierMask) | Qt::Key_Minus;
-        if ((sequenceKey & Qt::Key_unknown) == Qt::Key_hyphen)
-            sequenceKey = (sequenceKey & Qt::KeyboardModifierMask) | Qt::Key_Minus;
-        if (userKey != sequenceKey)
-            return QKeySequence::NoMatch;
-    }
-    return match;
-}
-
 
 /*! \internal
     Converts keyboard button states into modifier states
@@ -615,9 +546,9 @@ int QShortcutMap::translateModifiers(Qt::KeyboardModifiers modifiers)
 }
 
 /*! \internal
-    Returns the vector of QShortcutEntry's matching the last Identical state.
+    Returns the list of QShortcutEntry's matching the last Identical state.
 */
-QVector<const QShortcutEntry*> QShortcutMap::matches() const
+QList<const QShortcutEntry*> QShortcutMap::matches() const
 {
     Q_D(const QShortcutMap);
     return d->identicals;
@@ -632,7 +563,7 @@ void QShortcutMap::dispatchEvent(QKeyEvent *e)
     if (!d->identicals.size())
         return;
 
-    const QKeySequence &curKey = d->identicals.at(0)->keyseq;
+    const QKeySequence &curKey = d->identicals.at(0)->keySequence;
     if (d->prevSequence != curKey) {
         d->ambigCount = 0;
         d->prevSequence = curKey;
@@ -640,7 +571,7 @@ void QShortcutMap::dispatchEvent(QKeyEvent *e)
     // Find next
     const QShortcutEntry *current = nullptr, *next = nullptr;
     int i = 0, enabledShortcuts = 0;
-    QVector<const QShortcutEntry*> ambiguousShortcuts;
+    QList<const QShortcutEntry*> ambiguousShortcuts;
     while(i < d->identicals.size()) {
         current = d->identicals.at(i);
         if (current->enabled || !next){
@@ -662,17 +593,57 @@ void QShortcutMap::dispatchEvent(QKeyEvent *e)
     if (lcShortcutMap().isDebugEnabled()) {
         if (ambiguousShortcuts.size() > 1) {
             qCDebug(lcShortcutMap) << "The following shortcuts are about to be activated ambiguously:";
-            for (const QShortcutEntry *entry : qAsConst(ambiguousShortcuts))
-                qCDebug(lcShortcutMap).nospace() << "- " << entry->keyseq << " (belonging to " << entry->owner << ")";
+            for (const QShortcutEntry *entry : std::as_const(ambiguousShortcuts))
+                qCDebug(lcShortcutMap).nospace() << "- " << entry->keySequence << " (belonging to " << entry->owner << ")";
         }
 
         qCDebug(lcShortcutMap).nospace()
             << "QShortcutMap::dispatchEvent(): Sending QShortcutEvent(\""
-            << next->keyseq.toString() << "\", " << next->id << ", "
+            << next->keySequence.toString() << "\", " << next->id << ", "
             << static_cast<bool>(enabledShortcuts>1) << ") to object(" << next->owner << ')';
     }
-    QShortcutEvent se(next->keyseq, next->id, enabledShortcuts>1);
+    QShortcutEvent se(next->keySequence, next->id, enabledShortcuts > 1);
     QCoreApplication::sendEvent(const_cast<QObject *>(next->owner), &se);
+}
+
+QList<QKeySequence> QShortcutMap::keySequences(bool getAll) const
+{
+    Q_D(const QShortcutMap);
+    QList<QKeySequence> keys;
+    for (auto sequence : d->shortcuts) {
+        bool addSequence = false;
+        if (sequence.enabled) {
+            if (getAll || sequence.context == Qt::ApplicationShortcut ||
+                sequence.owner == QGuiApplication::focusObject()) {
+                addSequence = true;
+            } else {
+                QObject *possibleWindow = sequence.owner;
+                while (possibleWindow) {
+                    if (qobject_cast<QWindow *>(possibleWindow))
+                        break;
+                    possibleWindow = possibleWindow->parent();
+                }
+                if (possibleWindow == QGuiApplication::focusWindow()) {
+                    if (sequence.context == Qt::WindowShortcut) {
+                        addSequence = true;
+                    } else if (sequence.context == Qt::WidgetWithChildrenShortcut) {
+                        QObject *possibleWidget = QGuiApplication::focusObject();
+                        while (possibleWidget->parent()) {
+                            possibleWidget = possibleWidget->parent();
+                            if (possibleWidget == sequence.owner) {
+                                addSequence = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if (addSequence)
+                keys << sequence.keySequence;
+        }
+    }
+    return keys;
+
 }
 
 /* \internal
@@ -683,11 +654,9 @@ void QShortcutMap::dispatchEvent(QKeyEvent *e)
 void QShortcutMap::dumpMap() const
 {
     Q_D(const QShortcutMap);
-    for (int i = 0; i < d->sequences.size(); ++i)
-        qDebug().nospace() << &(d->sequences.at(i));
+    for (int i = 0; i < d->shortcuts.size(); ++i)
+        qDebug().nospace() << &(d->shortcuts.at(i));
 }
 #endif
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_SHORTCUT

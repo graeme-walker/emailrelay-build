@@ -1,50 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhelpfilterengine.h"
+#include "qhelpcollectionhandler_p.h"
 #include "qhelpenginecore.h"
 #include "qhelpfilterdata.h"
-#include "qhelpdbreader_p.h"
-#include "qhelpcollectionhandler_p.h"
 
-#include <QtCore/QThread>
-#include <QtCore/QVersionNumber>
+#include <QtCore/qthread.h>
+#include <QtCore/qversionnumber.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -70,13 +33,18 @@ bool QHelpFilterEnginePrivate::setup()
     if (!m_needsSetup)
         return true;
 
-    if (!m_helpEngine->setupData())
-        return false;
-
+    // Prevent endless loop when connected to setupFinished() signal
+    // and using from there QHelpFilterEngine, causing setup() to be
+    // called in turn.
     m_needsSetup = false;
 
+    if (!m_helpEngine->setupData()) {
+        m_needsSetup = true;
+        return false;
+    }
+
     const QString filter = m_collectionHandler->customValue(
-                QLatin1String(ActiveFilter), QString()).toString();
+                QLatin1StringView(ActiveFilter), QString()).toString();
     if (!filter.isEmpty() && m_collectionHandler->filters().contains(filter))
         m_currentFilter = filter;
 
@@ -155,7 +123,7 @@ QHelpFilterEngine::~QHelpFilterEngine()
 void QHelpFilterEngine::setCollectionHandler(QHelpCollectionHandler *collectionHandler)
 {
     d->m_collectionHandler = collectionHandler;
-    d->m_currentFilter = QString();
+    d->m_currentFilter.clear();
     d->m_needsSetup = true;
 }
 
@@ -166,7 +134,7 @@ void QHelpFilterEngine::setCollectionHandler(QHelpCollectionHandler *collectionH
 QMap<QString, QString> QHelpFilterEngine::namespaceToComponent() const
 {
     if (!d->setup())
-        return QMap<QString, QString>();
+        return {};
     return d->m_collectionHandler->namespaceToComponent();
 }
 
@@ -177,8 +145,7 @@ QMap<QString, QString> QHelpFilterEngine::namespaceToComponent() const
 QMap<QString, QVersionNumber> QHelpFilterEngine::namespaceToVersion() const
 {
     if (!d->setup())
-        return QMap<QString, QVersionNumber>();
-
+        return {};
     return d->m_collectionHandler->namespaceToVersion();
 }
 
@@ -188,7 +155,7 @@ QMap<QString, QVersionNumber> QHelpFilterEngine::namespaceToVersion() const
 QStringList QHelpFilterEngine::filters() const
 {
     if (!d->setup())
-        return QStringList();
+        return {};
     return d->m_collectionHandler->filters();
 }
 
@@ -199,7 +166,7 @@ QStringList QHelpFilterEngine::filters() const
 QStringList QHelpFilterEngine::availableComponents() const
 {
     if (!d->setup())
-        return QStringList();
+        return {};
     return d->m_collectionHandler->availableComponents();
 }
 
@@ -212,7 +179,7 @@ QStringList QHelpFilterEngine::availableComponents() const
 QList<QVersionNumber> QHelpFilterEngine::availableVersions() const
 {
     if (!d->setup())
-        return QList<QVersionNumber>();
+        return {};
     return d->m_collectionHandler->availableVersions();
 }
 
@@ -222,7 +189,7 @@ QList<QVersionNumber> QHelpFilterEngine::availableVersions() const
 QHelpFilterData QHelpFilterEngine::filterData(const QString &filterName) const
 {
     if (!d->setup())
-        return QHelpFilterData();
+        return {};
     return d->m_collectionHandler->filterData(filterName);
 }
 
@@ -259,7 +226,7 @@ bool QHelpFilterEngine::removeFilter(const QString &filterName)
 QString QHelpFilterEngine::activeFilter() const
 {
     if (!d->setup())
-        return QString();
+        return {};
     return d->m_currentFilter;
 }
 
@@ -281,11 +248,8 @@ bool QHelpFilterEngine::setActiveFilter(const QString &filterName)
         return false;
 
     d->m_currentFilter = filterName;
-    d->m_collectionHandler->setCustomValue(QLatin1String(ActiveFilter),
-            d->m_currentFilter);
-
+    d->m_collectionHandler->setCustomValue(QLatin1StringView(ActiveFilter), d->m_currentFilter);
     emit filterActivated(d->m_currentFilter);
-
     return true;
 }
 
@@ -296,7 +260,7 @@ bool QHelpFilterEngine::setActiveFilter(const QString &filterName)
 QStringList QHelpFilterEngine::namespacesForFilter(const QString &filterName) const
 {
     if (!d->setup())
-        return QStringList();
+        return {};
     return  d->m_collectionHandler->namespacesForFilter(filterName);
 }
 
@@ -324,7 +288,7 @@ QStringList QHelpFilterEngine::indices() const
 QStringList QHelpFilterEngine::indices(const QString &filterName) const
 {
     if (!d->setup())
-        return QStringList();
+        return {};
     return d->m_collectionHandler->indicesForFilter(filterName);
 }
 

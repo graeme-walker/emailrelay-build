@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtXml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QDOM_H
 #define QDOM_H
@@ -43,16 +7,14 @@
 #include <QtXml/qtxmlglobal.h>
 #include <QtCore/qstring.h>
 
+#if QT_CONFIG(dom)
+
+class tst_QDom;
+
 QT_BEGIN_NAMESPACE
-
-
-#ifndef QT_NO_DOM
 
 class QIODevice;
 class QTextStream;
-
-class QXmlInputSource;
-class QXmlReader;
 
 class QDomDocumentPrivate;
 class QDomDocumentTypePrivate;
@@ -97,11 +59,11 @@ class Q_XML_EXPORT QDomImplementation
 {
 public:
     QDomImplementation();
-    QDomImplementation(const QDomImplementation&);
+    QDomImplementation(const QDomImplementation &implementation);
     ~QDomImplementation();
-    QDomImplementation& operator= (const QDomImplementation&);
-    bool operator== (const QDomImplementation&) const;
-    bool operator!= (const QDomImplementation&) const;
+    QDomImplementation& operator=(const QDomImplementation &other);
+    bool operator==(const QDomImplementation &other) const;
+    bool operator!=(const QDomImplementation &other) const;
 
     // functions
     bool hasFeature(const QString& feature, const QString& version) const;
@@ -149,10 +111,10 @@ public:
     };
 
     QDomNode();
-    QDomNode(const QDomNode&);
-    QDomNode& operator= (const QDomNode&);
-    bool operator== (const QDomNode&) const;
-    bool operator!= (const QDomNode&) const;
+    QDomNode(const QDomNode &node);
+    QDomNode& operator=(const QDomNode &other);
+    bool operator==(const QDomNode &other) const;
+    bool operator!=(const QDomNode &other) const;
     ~QDomNode();
 
     // DOM functions
@@ -183,7 +145,7 @@ public:
 
     // DOM attributes
     QString nodeValue() const;
-    void setNodeValue(const QString&);
+    void setNodeValue(const QString &value);
     QString prefix() const;
     void setPrefix(const QString& pre);
 
@@ -227,10 +189,10 @@ public:
 
     void save(QTextStream&, int, EncodingPolicy=QDomNode::EncodingFromDocument) const;
 
-    QDomElement firstChildElement(const QString &tagName = QString()) const;
-    QDomElement lastChildElement(const QString &tagName = QString()) const;
-    QDomElement previousSiblingElement(const QString &tagName = QString()) const;
-    QDomElement nextSiblingElement(const QString &taName = QString()) const;
+    QDomElement firstChildElement(const QString &tagName = QString(), const QString &namespaceURI = QString()) const;
+    QDomElement lastChildElement(const QString &tagName = QString(), const QString &namespaceURI = QString()) const;
+    QDomElement previousSiblingElement(const QString &tagName = QString(), const QString &namespaceURI = QString()) const;
+    QDomElement nextSiblingElement(const QString &taName = QString(), const QString &namespaceURI = QString()) const;
 
     int lineNumber() const;
     int columnNumber() const;
@@ -240,6 +202,7 @@ protected:
     QDomNode(QDomNodePrivate*);
 
 private:
+    friend class ::tst_QDom;
     friend class QDomDocument;
     friend class QDomDocumentType;
     friend class QDomNodeList;
@@ -250,10 +213,10 @@ class Q_XML_EXPORT QDomNodeList
 {
 public:
     QDomNodeList();
-    QDomNodeList(const QDomNodeList&);
-    QDomNodeList& operator= (const QDomNodeList&);
-    bool operator== (const QDomNodeList&) const;
-    bool operator!= (const QDomNodeList&) const;
+    QDomNodeList(const QDomNodeList &nodeList);
+    QDomNodeList& operator=(const QDomNodeList &other);
+    bool operator==(const QDomNodeList &other) const;
+    bool operator!=(const QDomNodeList &other) const;
     ~QDomNodeList();
 
     // DOM functions
@@ -279,8 +242,8 @@ class Q_XML_EXPORT QDomDocumentType : public QDomNode
 {
 public:
     QDomDocumentType();
-    QDomDocumentType(const QDomDocumentType& x);
-    QDomDocumentType& operator= (const QDomDocumentType&);
+    QDomDocumentType(const QDomDocumentType &documentType);
+    QDomDocumentType& operator=(const QDomDocumentType &other);
 
     // DOM read only attributes
     QString name() const;
@@ -304,11 +267,27 @@ private:
 class Q_XML_EXPORT QDomDocument : public QDomNode
 {
 public:
+    enum class ParseOption {
+        Default = 0x00,
+        UseNamespaceProcessing = 0x01,
+        PreserveSpacingOnlyNodes = 0x02,
+    };
+    Q_DECLARE_FLAGS(ParseOptions, ParseOption)
+
+    struct ParseResult
+    {
+        QString errorMessage;
+        qsizetype errorLine = 0;
+        qsizetype errorColumn = 0;
+
+        explicit operator bool() const noexcept { return errorMessage.isEmpty(); }
+    };
+
     QDomDocument();
     explicit QDomDocument(const QString& name);
     explicit QDomDocument(const QDomDocumentType& doctype);
-    QDomDocument(const QDomDocument& x);
-    QDomDocument& operator= (const QDomDocument&);
+    QDomDocument(const QDomDocument &document);
+    QDomDocument& operator=(const QDomDocument &other);
     ~QDomDocument();
 
     // DOM functions
@@ -336,34 +315,38 @@ public:
     inline QDomNode::NodeType nodeType() const { return DocumentNode; }
 
     // Qt extensions
-    bool setContent(const QByteArray& text, bool namespaceProcessing, QString *errorMsg=nullptr, int *errorLine=nullptr, int *errorColumn=nullptr );
-    bool setContent(const QString& text, bool namespaceProcessing, QString *errorMsg=nullptr, int *errorLine=nullptr, int *errorColumn=nullptr );
-    bool setContent(QIODevice* dev, bool namespaceProcessing, QString *errorMsg=nullptr, int *errorLine=nullptr, int *errorColumn=nullptr );
-#if QT_DEPRECATED_SINCE(5, 15)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-    QT_DEPRECATED_X("Use other overloads instead")
-    bool setContent(QXmlInputSource *source, bool namespaceProcessing, QString *errorMsg=nullptr, int *errorLine=nullptr, int *errorColumn=nullptr );
-QT_WARNING_POP
-#endif
-    bool setContent(const QByteArray& text, QString *errorMsg=nullptr, int *errorLine=nullptr, int *errorColumn=nullptr );
-    bool setContent(const QString& text, QString *errorMsg=nullptr, int *errorLine=nullptr, int *errorColumn=nullptr );
-    bool setContent(QIODevice* dev, QString *errorMsg=nullptr, int *errorLine=nullptr, int *errorColumn=nullptr );
-#if QT_DEPRECATED_SINCE(5, 15)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-    QT_DEPRECATED_X("Use other overloads instead")
-    bool setContent(QXmlInputSource *source, QXmlReader *reader, QString *errorMsg=nullptr, int *errorLine=nullptr, int *errorColumn=nullptr );
-QT_WARNING_POP
-#endif
+#if QT_DEPRECATED_SINCE(6, 8)
+    QT_DEPRECATED_VERSION_X_6_8("Use the overload taking ParseOptions instead.")
+    bool setContent(const QByteArray &text, bool namespaceProcessing, QString *errorMsg = nullptr, int *errorLine = nullptr, int *errorColumn = nullptr);
+    QT_DEPRECATED_VERSION_X_6_8("Use the overload taking ParseOptions instead.")
+    bool setContent(const QString &text, bool namespaceProcessing, QString *errorMsg = nullptr, int *errorLine = nullptr, int *errorColumn = nullptr);
+    QT_DEPRECATED_VERSION_X_6_8("Use the overload taking ParseOptions instead.")
+    bool setContent(QIODevice *dev, bool namespaceProcessing, QString *errorMsg = nullptr, int *errorLine = nullptr, int *errorColumn = nullptr);
+    QT_DEPRECATED_VERSION_X_6_8("Use the overload returning ParseResult instead.")
+    bool setContent(const QByteArray &text, QString *errorMsg, int *errorLine = nullptr, int *errorColumn = nullptr);
+    QT_DEPRECATED_VERSION_X_6_8("Use the overload returning ParseResult instead.")
+    bool setContent(const QString &text, QString *errorMsg, int *errorLine = nullptr, int *errorColumn = nullptr);
+    QT_DEPRECATED_VERSION_X_6_8("Use the overload returning ParseResult instead.")
+    bool setContent(QIODevice *dev, QString *errorMsg, int *errorLine = nullptr, int *errorColumn = nullptr);
+    QT_DEPRECATED_VERSION_X_6_8("Use the overload taking ParseOptions instead.")
     bool setContent(QXmlStreamReader *reader, bool namespaceProcessing, QString *errorMsg = nullptr,
                     int *errorLine = nullptr, int *errorColumn = nullptr);
+#endif // QT_DEPRECATED_SINCE(6, 8)
+
+    Q_WEAK_OVERLOAD
+    ParseResult setContent(const QByteArray &data, ParseOptions options = ParseOption::Default)
+    { return setContentImpl(data, options); }
+    ParseResult setContent(QAnyStringView data, ParseOptions options = ParseOption::Default);
+    ParseResult setContent(QIODevice *device, ParseOptions options = ParseOption::Default);
+    ParseResult setContent(QXmlStreamReader *reader, ParseOptions options = ParseOption::Default);
 
     // Qt extensions
-    QString toString(int = 1) const;
-    QByteArray toByteArray(int = 1) const;
+    QString toString(int indent = 1) const;
+    QByteArray toByteArray(int indent = 1) const;
 
 private:
+    ParseResult setContentImpl(const QByteArray &data, ParseOptions options);
+
     QDomDocument(QDomDocumentPrivate*);
 
     friend class QDomNode;
@@ -373,10 +356,10 @@ class Q_XML_EXPORT QDomNamedNodeMap
 {
 public:
     QDomNamedNodeMap();
-    QDomNamedNodeMap(const QDomNamedNodeMap&);
-    QDomNamedNodeMap& operator= (const QDomNamedNodeMap&);
-    bool operator== (const QDomNamedNodeMap&) const;
-    bool operator!= (const QDomNamedNodeMap&) const;
+    QDomNamedNodeMap(const QDomNamedNodeMap &namedNodeMap);
+    QDomNamedNodeMap& operator=(const QDomNamedNodeMap &other);
+    bool operator==(const QDomNamedNodeMap &other) const;
+    bool operator!=(const QDomNamedNodeMap &other) const;
     ~QDomNamedNodeMap();
 
     // DOM functions
@@ -410,8 +393,8 @@ class Q_XML_EXPORT QDomDocumentFragment : public QDomNode
 {
 public:
     QDomDocumentFragment();
-    QDomDocumentFragment(const QDomDocumentFragment& x);
-    QDomDocumentFragment& operator= (const QDomDocumentFragment&);
+    QDomDocumentFragment(const QDomDocumentFragment &documentFragment);
+    QDomDocumentFragment& operator=(const QDomDocumentFragment &other);
 
     // Overridden from QDomNode
     inline QDomNode::NodeType nodeType() const { return DocumentFragmentNode; }
@@ -427,8 +410,8 @@ class Q_XML_EXPORT QDomCharacterData : public QDomNode
 {
 public:
     QDomCharacterData();
-    QDomCharacterData(const QDomCharacterData& x);
-    QDomCharacterData& operator= (const QDomCharacterData&);
+    QDomCharacterData(const QDomCharacterData &characterData);
+    QDomCharacterData& operator=(const QDomCharacterData &other);
 
     // DOM functions
     QString substringData(unsigned long offset, unsigned long count);
@@ -442,7 +425,7 @@ public:
 
     // DOM attributes
     QString data() const;
-    void setData(const QString&);
+    void setData(const QString &data);
 
     // Overridden from QDomNode
     QDomNode::NodeType nodeType() const;
@@ -460,8 +443,8 @@ class Q_XML_EXPORT QDomAttr : public QDomNode
 {
 public:
     QDomAttr();
-    QDomAttr(const QDomAttr& x);
-    QDomAttr& operator= (const QDomAttr&);
+    QDomAttr(const QDomAttr &attr);
+    QDomAttr& operator=(const QDomAttr &other);
 
     // DOM read only attributes
     QString name() const;
@@ -470,7 +453,7 @@ public:
 
     // DOM attributes
     QString value() const;
-    void setValue(const QString&);
+    void setValue(const QString &value);
 
     // Overridden from QDomNode
     inline QDomNode::NodeType nodeType() const { return AttributeNode; }
@@ -487,8 +470,8 @@ class Q_XML_EXPORT QDomElement : public QDomNode
 {
 public:
     QDomElement();
-    QDomElement(const QDomElement& x);
-    QDomElement& operator= (const QDomElement&);
+    QDomElement(const QDomElement &element);
+    QDomElement& operator=(const QDomElement &other);
 
     // DOM functions
     QString attribute(const QString& name, const QString& defValue = QString() ) const;
@@ -508,15 +491,15 @@ public:
     QDomNodeList elementsByTagName(const QString& tagname) const;
     bool hasAttribute(const QString& name) const;
 
-    QString attributeNS(const QString nsURI, const QString& localName, const QString& defValue = QString()) const;
-    void setAttributeNS(const QString nsURI, const QString& qName, const QString& value);
-    inline void setAttributeNS(const QString nsURI, const QString& qName, int value)
+    QString attributeNS(const QString& nsURI, const QString& localName, const QString& defValue = QString()) const;
+    void setAttributeNS(const QString& nsURI, const QString& qName, const QString& value);
+    inline void setAttributeNS(const QString& nsURI, const QString& qName, int value)
         { setAttributeNS(nsURI, qName, qlonglong(value)); }
-    inline void setAttributeNS(const QString nsURI, const QString& qName, uint value)
+    inline void setAttributeNS(const QString& nsURI, const QString& qName, uint value)
         { setAttributeNS(nsURI, qName, qulonglong(value)); }
-    void setAttributeNS(const QString nsURI, const QString& qName, qlonglong value);
-    void setAttributeNS(const QString nsURI, const QString& qName, qulonglong value);
-    void setAttributeNS(const QString nsURI, const QString& qName, double value);
+    void setAttributeNS(const QString& nsURI, const QString& qName, qlonglong value);
+    void setAttributeNS(const QString& nsURI, const QString& qName, qulonglong value);
+    void setAttributeNS(const QString& nsURI, const QString& qName, double value);
     void removeAttributeNS(const QString& nsURI, const QString& localName);
     QDomAttr attributeNodeNS(const QString& nsURI, const QString& localName);
     QDomAttr setAttributeNodeNS(const QDomAttr& newAttr);
@@ -545,8 +528,8 @@ class Q_XML_EXPORT QDomText : public QDomCharacterData
 {
 public:
     QDomText();
-    QDomText(const QDomText& x);
-    QDomText& operator= (const QDomText&);
+    QDomText(const QDomText &text);
+    QDomText& operator=(const QDomText &other);
 
     // DOM functions
     QDomText splitText(int offset);
@@ -566,8 +549,8 @@ class Q_XML_EXPORT QDomComment : public QDomCharacterData
 {
 public:
     QDomComment();
-    QDomComment(const QDomComment& x);
-    QDomComment& operator= (const QDomComment&);
+    QDomComment(const QDomComment &comment);
+    QDomComment& operator=(const QDomComment &other);
 
     // Overridden from QDomCharacterData
     inline QDomNode::NodeType nodeType() const { return CommentNode; }
@@ -583,8 +566,8 @@ class Q_XML_EXPORT QDomCDATASection : public QDomText
 {
 public:
     QDomCDATASection();
-    QDomCDATASection(const QDomCDATASection& x);
-    QDomCDATASection& operator= (const QDomCDATASection&);
+    QDomCDATASection(const QDomCDATASection &cdataSection);
+    QDomCDATASection& operator=(const QDomCDATASection &other);
 
     // Overridden from QDomText
     inline QDomNode::NodeType nodeType() const { return CDATASectionNode; }
@@ -600,8 +583,8 @@ class Q_XML_EXPORT QDomNotation : public QDomNode
 {
 public:
     QDomNotation();
-    QDomNotation(const QDomNotation& x);
-    QDomNotation& operator= (const QDomNotation&);
+    QDomNotation(const QDomNotation &notation);
+    QDomNotation& operator=(const QDomNotation &other);
 
     // DOM read only attributes
     QString publicId() const;
@@ -621,8 +604,8 @@ class Q_XML_EXPORT QDomEntity : public QDomNode
 {
 public:
     QDomEntity();
-    QDomEntity(const QDomEntity& x);
-    QDomEntity& operator= (const QDomEntity&);
+    QDomEntity(const QDomEntity &entity);
+    QDomEntity& operator=(const QDomEntity &other);
 
     // DOM read only attributes
     QString publicId() const;
@@ -642,8 +625,8 @@ class Q_XML_EXPORT QDomEntityReference : public QDomNode
 {
 public:
     QDomEntityReference();
-    QDomEntityReference(const QDomEntityReference& x);
-    QDomEntityReference& operator= (const QDomEntityReference&);
+    QDomEntityReference(const QDomEntityReference &entityReference);
+    QDomEntityReference& operator=(const QDomEntityReference &other);
 
     // Overridden from QDomNode
     inline QDomNode::NodeType nodeType() const { return EntityReferenceNode; }
@@ -659,15 +642,15 @@ class Q_XML_EXPORT QDomProcessingInstruction : public QDomNode
 {
 public:
     QDomProcessingInstruction();
-    QDomProcessingInstruction(const QDomProcessingInstruction& x);
-    QDomProcessingInstruction& operator= (const QDomProcessingInstruction&);
+    QDomProcessingInstruction(const QDomProcessingInstruction &processingInstruction);
+    QDomProcessingInstruction& operator=(const QDomProcessingInstruction &other);
 
     // DOM read only attributes
     QString target() const;
 
     // DOM attributes
     QString data() const;
-    void setData(const QString& d);
+    void setData(const QString &data);
 
     // Overridden from QDomNode
     inline QDomNode::NodeType nodeType() const { return ProcessingInstructionNode; }
@@ -680,10 +663,10 @@ private:
 };
 
 
-Q_XML_EXPORT QTextStream& operator<<(QTextStream&, const QDomNode&);
-
-#endif // QT_NO_DOM
+Q_XML_EXPORT QTextStream& operator<<(QTextStream& stream, const QDomNode& node);
 
 QT_END_NAMESPACE
+
+#endif // feature dom
 
 #endif // QDOM_H

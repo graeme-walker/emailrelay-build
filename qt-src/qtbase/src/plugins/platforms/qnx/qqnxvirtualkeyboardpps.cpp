@@ -1,41 +1,5 @@
-/***************************************************************************
-**
-** Copyright (C) 2011 - 2012 Research In Motion
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2011 - 2012 Research In Motion
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqnxvirtualkeyboardpps.h"
 #include "qqnxscreen.h"
@@ -54,13 +18,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#if defined(QQNXVIRTUALKEYBOARD_DEBUG)
-#define qVirtualKeyboardDebug qDebug
-#else
-#define qVirtualKeyboardDebug QT_NO_QDEBUG_MACRO
-#endif
-
 QT_BEGIN_NAMESPACE
+
+Q_LOGGING_CATEGORY(lcQpaQnxVirtualKeyboard, "qt.qpa.qnx.virtualkeyboard");
 
 const char  *QQnxVirtualKeyboardPps::ms_PPSPath = "/pps/services/input/control";
 const size_t QQnxVirtualKeyboardPps::ms_bufferSize = 2048;
@@ -81,7 +41,7 @@ QQnxVirtualKeyboardPps::~QQnxVirtualKeyboardPps()
 
 void QQnxVirtualKeyboardPps::start()
 {
-    qVirtualKeyboardDebug("starting keyboard event processing");
+    qCDebug(lcQpaQnxVirtualKeyboard) << "Starting keyboard event processing";
     if (!connect())
         return;
 }
@@ -126,15 +86,15 @@ bool QQnxVirtualKeyboardPps::connect()
     m_fd = ::open(ms_PPSPath, O_RDWR);
     if (m_fd == -1)
     {
-        qVirtualKeyboardDebug() << "Unable to open" << ms_PPSPath
-                                               << ':' << strerror(errno);
+        qCDebug(lcQpaQnxVirtualKeyboard) << "Unable to open" << ms_PPSPath
+                                         << ':' << strerror(errno);
         close();
         return false;
     }
 
     m_buffer = new char[ms_bufferSize];
     if (Q_UNLIKELY(!m_buffer)) {
-        qCritical("QQnxVirtualKeyboard: Unable to allocate buffer of %d bytes. "
+        qCritical("QQnxVirtualKeyboard: Unable to allocate buffer of %zu bytes. "
                   "Size is unavailable.",  ms_bufferSize);
         return false;
     }
@@ -162,9 +122,9 @@ bool QQnxVirtualKeyboardPps::queryPPSInfo()
 
 void QQnxVirtualKeyboardPps::ppsDataReady()
 {
-    ssize_t nread = qt_safe_read(m_fd, m_buffer, ms_bufferSize - 1);
+    qint64 nread = qt_safe_read(m_fd, m_buffer, ms_bufferSize - 1);
 
-    qVirtualKeyboardDebug("keyboardMessage size: %zd", nread);
+    qCDebug(lcQpaQnxVirtualKeyboard, "keyboardMessage size: %lld", nread);
     if (nread < 0){
         connect(); // reconnect
         return;
@@ -177,7 +137,7 @@ void QQnxVirtualKeyboardPps::ppsDataReady()
 
     // nread is the real space necessary, not the amount read.
     if (Q_UNLIKELY(static_cast<size_t>(nread) > ms_bufferSize - 1)) {
-        qCritical("QQnxVirtualKeyboard: Keyboard buffer size too short; need %u.", nread + 1);
+        qCritical("QQnxVirtualKeyboard: Keyboard buffer size too short; need %lld.", nread + 1);
         connect(); // reconnect
         return;
     }
@@ -203,7 +163,7 @@ void QQnxVirtualKeyboardPps::ppsDataReady()
         else if (strcmp(value, "info") == 0)
             handleKeyboardInfoMessage();
         else if (strcmp(value, "connect") == 0)
-            qVirtualKeyboardDebug("Unhandled command 'connect'");
+            qCDebug(lcQpaQnxVirtualKeyboard, "Unhandled command 'connect'");
         else
             qCritical("QQnxVirtualKeyboard: Unexpected keyboard PPS msg value: %s", value ? value : "[null]");
     } else if (pps_decoder_get_string(m_decoder, "res", &value) == PPS_DECODER_OK) {
@@ -230,17 +190,17 @@ void QQnxVirtualKeyboardPps::handleKeyboardInfoMessage()
     }
     setHeight(newHeight);
 
-    qVirtualKeyboardDebug("size=%d", newHeight);
+    qCDebug(lcQpaQnxVirtualKeyboard, "size=%d", newHeight);
 }
 
 bool QQnxVirtualKeyboardPps::showKeyboard()
 {
-    qVirtualKeyboardDebug();
+    qCDebug(lcQpaQnxVirtualKeyboard) << Q_FUNC_INFO;
 
     if (!prepareToSend())
         return false;
 
-    // NOTE:  This must be done everytime the keyboard is shown even if there is no change because
+    // NOTE:  This must be done every time the keyboard is shown even if there is no change because
     // hiding the keyboard wipes the setting.
     applyKeyboardOptions();
 
@@ -257,7 +217,7 @@ bool QQnxVirtualKeyboardPps::showKeyboard()
 
 bool QQnxVirtualKeyboardPps::hideKeyboard()
 {
-    qVirtualKeyboardDebug();
+    qCDebug(lcQpaQnxVirtualKeyboard) << Q_FUNC_INFO;
 
     if (!prepareToSend())
         return false;

@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2015 Olivier Goffart <ogoffart@woboq.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// Copyright (C) 2015 Olivier Goffart <ogoffart@woboq.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qicon.h"
 #include "qicon_p.h"
@@ -61,10 +25,44 @@
 
 #include "private/qhexstring_p.h"
 #include "private/qguiapplication_p.h"
+#include "private/qoffsetstringarray_p.h"
 #include "qpa/qplatformtheme.h"
 
 #ifndef QT_NO_ICON
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+// Convenience class providing a bool read() function.
+namespace {
+class ImageReader
+{
+public:
+    ImageReader(const QString &fileName) : m_reader(fileName), m_atEnd(false) { }
+
+    QByteArray format() const { return m_reader.format(); }
+    bool supportsReadSize() const { return m_reader.supportsOption(QImageIOHandler::Size); }
+    QSize size() const { return m_reader.size(); }
+    bool jumpToNextImage() { return m_reader.jumpToNextImage(); }
+    void jumpToImage(int index) { m_reader.jumpToImage(index); }
+
+    bool read(QImage *image)
+    {
+        if (m_atEnd)
+            return false;
+        *image = m_reader.read();
+        if (!image->size().isValid()) {
+            m_atEnd = true;
+            return false;
+        }
+        m_atEnd = !m_reader.jumpToNextImage();
+        return true;
+    }
+
+private:
+    QImageReader m_reader;
+    bool m_atEnd;
+};
+} // namespace
 
 /*!
     \enum QIcon::Mode
@@ -101,7 +99,7 @@ QT_BEGIN_NAMESPACE
 
 static int nextSerialNumCounter()
 {
-    static QBasicAtomicInt serial = Q_BASIC_ATOMIC_INITIALIZER(0);
+    Q_CONSTINIT static QBasicAtomicInt serial = Q_BASIC_ATOMIC_INITIALIZER(0);
     return 1 + serial.fetchAndAddRelaxed(1);
 }
 
@@ -124,31 +122,17 @@ static void qt_cleanup_icon_cache()
     qtIconCache()->clear();
 }
 
-/*! \internal
-
-    Returns the effective device pixel ratio, using
-    the provided window pointer if possible.
-
-    if Qt::AA_UseHighDpiPixmaps is not set this function
-    returns 1.0 to keep non-hihdpi aware code working.
-*/
-static qreal qt_effective_device_pixel_ratio(QWindow *window = nullptr)
-{
-    if (!qApp->testAttribute(Qt::AA_UseHighDpiPixmaps))
-        return qreal(1.0);
-
-    if (window)
-        return window->devicePixelRatio();
-
-    return qApp->devicePixelRatio(); // Don't know which window to target.
-}
-
 QIconPrivate::QIconPrivate(QIconEngine *e)
     : engine(e), ref(1),
       serialNum(nextSerialNumCounter()),
     detach_no(0),
     is_mask(false)
 {
+}
+
+void QIconPrivate::clearIconCache()
+{
+    qt_cleanup_icon_cache();
 }
 
 /*! \internal
@@ -190,33 +174,52 @@ QPixmapIconEngine::~QPixmapIconEngine()
 
 void QPixmapIconEngine::paint(QPainter *painter, const QRect &rect, QIcon::Mode mode, QIcon::State state)
 {
-    qreal dpr = 1.0;
-    if (QCoreApplication::testAttribute(Qt::AA_UseHighDpiPixmaps)) {
-      auto paintDevice = painter->device();
-      dpr = paintDevice ? paintDevice->devicePixelRatioF() : qApp->devicePixelRatio();
-    }
-    const QSize pixmapSize = rect.size() * dpr;
-    QPixmap px = pixmap(pixmapSize, mode, state);
+    auto paintDevice = painter->device();
+    qreal dpr = paintDevice ? paintDevice->devicePixelRatio() : qApp->devicePixelRatio();
+    QPixmap px = scaledPixmap(rect.size(), mode, state, dpr);
     painter->drawPixmap(rect, px);
 }
 
-static inline int area(const QSize &s) { return s.width() * s.height(); }
+static inline qint64 area(const QSize &s) { return qint64(s.width()) * s.height(); }
 
-// returns the smallest of the two that is still larger than or equal to size.
-static QPixmapIconEngineEntry *bestSizeMatch( const QSize &size, QPixmapIconEngineEntry *pa, QPixmapIconEngineEntry *pb)
+// Returns the smallest of the two that is still larger than or equal to size.
+// Pixmaps at the correct scale are preferred, pixmaps at lower scale are
+// used as fallbacks. We assume that the pixmap set is complete, in the sense
+// that no 2x pixmap is going to be a better match than a 3x pixmap for the the
+// target scale of 3 (It's OK if 3x pixmaps are missing - we'll fall back to
+// the 2x pixmaps then.)
+static QPixmapIconEngineEntry *bestSizeScaleMatch(const QSize &size, qreal scale, QPixmapIconEngineEntry *pa, QPixmapIconEngineEntry *pb)
 {
-    int s = area(size);
+    const auto scaleA = pa->pixmap.devicePixelRatio();
+    const auto scaleB = pb->pixmap.devicePixelRatio();
+    // scale: we can only differentiate on scale if the scale differs
+    if (scaleA != scaleB) {
+
+        // Score the pixmaps: 0 is an exact scale match, positive
+        // scores have more detail than requested, negative scores
+        // have less detail than requested.
+        qreal ascore = scaleA - scale;
+        qreal bscore = scaleB - scale;
+
+        // always prefer positive scores to prevent upscaling
+        if ((ascore < 0) != (bscore < 0))
+            return bscore < 0 ? pa : pb;
+        // Take the one closest to 0
+        return (qAbs(ascore) < qAbs(bscore)) ? pa : pb;
+    }
+
+    qint64 s = area(size * scale);
     if (pa->size == QSize() && pa->pixmap.isNull()) {
         pa->pixmap = QPixmap(pa->fileName);
         pa->size = pa->pixmap.size();
     }
-    int a = area(pa->size);
+    qint64 a = area(pa->size);
     if (pb->size == QSize() && pb->pixmap.isNull()) {
         pb->pixmap = QPixmap(pb->fileName);
         pb->size = pb->pixmap.size();
     }
-    int b = area(pb->size);
-    int res = a;
+    qint64 b = area(pb->size);
+    qint64 res = a;
     if (qMin(a,b) >= s)
         res = qMin(a,b);
     else
@@ -226,56 +229,57 @@ static QPixmapIconEngineEntry *bestSizeMatch( const QSize &size, QPixmapIconEngi
     return pb;
 }
 
-QPixmapIconEngineEntry *QPixmapIconEngine::tryMatch(const QSize &size, QIcon::Mode mode, QIcon::State state)
+QPixmapIconEngineEntry *QPixmapIconEngine::tryMatch(const QSize &size, qreal scale, QIcon::Mode mode, QIcon::State state)
 {
     QPixmapIconEngineEntry *pe = nullptr;
-    for (int i = 0; i < pixmaps.count(); ++i)
-        if (pixmaps.at(i).mode == mode && pixmaps.at(i).state == state) {
+    for (auto &entry : pixmaps) {
+        if (entry.mode == mode && entry.state == state) {
             if (pe)
-                pe = bestSizeMatch(size, &pixmaps[i], pe);
+                pe = bestSizeScaleMatch(size, scale, &entry, pe);
             else
-                pe = &pixmaps[i];
+                pe = &entry;
         }
+    }
     return pe;
 }
 
 
-QPixmapIconEngineEntry *QPixmapIconEngine::bestMatch(const QSize &size, QIcon::Mode mode, QIcon::State state, bool sizeOnly)
+QPixmapIconEngineEntry *QPixmapIconEngine::bestMatch(const QSize &size, qreal scale, QIcon::Mode mode, QIcon::State state)
 {
-    QPixmapIconEngineEntry *pe = tryMatch(size, mode, state);
+    QPixmapIconEngineEntry *pe = tryMatch(size, scale, mode, state);
     while (!pe){
         QIcon::State oppositeState = (state == QIcon::On) ? QIcon::Off : QIcon::On;
         if (mode == QIcon::Disabled || mode == QIcon::Selected) {
             QIcon::Mode oppositeMode = (mode == QIcon::Disabled) ? QIcon::Selected : QIcon::Disabled;
-            if ((pe = tryMatch(size, QIcon::Normal, state)))
+            if ((pe = tryMatch(size, scale, QIcon::Normal, state)))
                 break;
-            if ((pe = tryMatch(size, QIcon::Active, state)))
+            if ((pe = tryMatch(size, scale, QIcon::Active, state)))
                 break;
-            if ((pe = tryMatch(size, mode, oppositeState)))
+            if ((pe = tryMatch(size, scale, mode, oppositeState)))
                 break;
-            if ((pe = tryMatch(size, QIcon::Normal, oppositeState)))
+            if ((pe = tryMatch(size, scale, QIcon::Normal, oppositeState)))
                 break;
-            if ((pe = tryMatch(size, QIcon::Active, oppositeState)))
+            if ((pe = tryMatch(size, scale, QIcon::Active, oppositeState)))
                 break;
-            if ((pe = tryMatch(size, oppositeMode, state)))
+            if ((pe = tryMatch(size, scale, oppositeMode, state)))
                 break;
-            if ((pe = tryMatch(size, oppositeMode, oppositeState)))
+            if ((pe = tryMatch(size, scale, oppositeMode, oppositeState)))
                 break;
         } else {
             QIcon::Mode oppositeMode = (mode == QIcon::Normal) ? QIcon::Active : QIcon::Normal;
-            if ((pe = tryMatch(size, oppositeMode, state)))
+            if ((pe = tryMatch(size, scale, oppositeMode, state)))
                 break;
-            if ((pe = tryMatch(size, mode, oppositeState)))
+            if ((pe = tryMatch(size, scale, mode, oppositeState)))
                 break;
-            if ((pe = tryMatch(size, oppositeMode, oppositeState)))
+            if ((pe = tryMatch(size, scale, oppositeMode, oppositeState)))
                 break;
-            if ((pe = tryMatch(size, QIcon::Disabled, state)))
+            if ((pe = tryMatch(size, scale, QIcon::Disabled, state)))
                 break;
-            if ((pe = tryMatch(size, QIcon::Selected, state)))
+            if ((pe = tryMatch(size, scale, QIcon::Selected, state)))
                 break;
-            if ((pe = tryMatch(size, QIcon::Disabled, oppositeState)))
+            if ((pe = tryMatch(size, scale, QIcon::Disabled, oppositeState)))
                 break;
-            if ((pe = tryMatch(size, QIcon::Selected, oppositeState)))
+            if ((pe = tryMatch(size, scale, QIcon::Selected, oppositeState)))
                 break;
         }
 
@@ -283,10 +287,38 @@ QPixmapIconEngineEntry *QPixmapIconEngine::bestMatch(const QSize &size, QIcon::M
             return pe;
     }
 
-    if (sizeOnly ? (pe->size.isNull() || !pe->size.isValid()) : pe->pixmap.isNull()) {
-        pe->pixmap = QPixmap(pe->fileName);
-        if (!pe->pixmap.isNull())
-            pe->size = pe->pixmap.size();
+    if (pe->pixmap.isNull()) {
+        // delay-load the image
+        ImageReader imageReader(pe->fileName);
+        QImage image, prevImage;
+        const QSize realSize = size * scale;
+        bool fittingImageFound = false;
+        if (imageReader.supportsReadSize()) {
+            // find the image with the best size without loading the entire image
+            do {
+                fittingImageFound = imageReader.size() == realSize;
+            } while (!fittingImageFound && imageReader.jumpToNextImage());
+        }
+        if (!fittingImageFound) {
+            imageReader.jumpToImage(0);
+            while (imageReader.read(&image) && image.size() != realSize)
+                prevImage = image;
+            if (image.isNull())
+                image = prevImage;
+        } else {
+            imageReader.read(&image);
+        }
+        if (!image.isNull()) {
+            pe->pixmap.convertFromImage(image);
+            if (!pe->pixmap.isNull()) {
+                pe->size = pe->pixmap.size();
+                pe->pixmap.setDevicePixelRatio(scale);
+            }
+        }
+        if (!pe->size.isValid()) {
+            removePixmapEntry(pe);
+            pe = nullptr;
+        }
     }
 
     return pe;
@@ -294,40 +326,39 @@ QPixmapIconEngineEntry *QPixmapIconEngine::bestMatch(const QSize &size, QIcon::M
 
 QPixmap QPixmapIconEngine::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state)
 {
+    return scaledPixmap(size, mode, state, 1.0);
+}
+
+QPixmap QPixmapIconEngine::scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale)
+{
     QPixmap pm;
-    QPixmapIconEngineEntry *pe = bestMatch(size, mode, state, false);
+    QPixmapIconEngineEntry *pe = bestMatch(size, scale, mode, state);
     if (pe)
         pm = pe->pixmap;
+    else
+        return pm;
 
     if (pm.isNull()) {
-        int idx = pixmaps.count();
-        while (--idx >= 0) {
-            if (pe == &pixmaps.at(idx)) {
-                pixmaps.remove(idx);
-                break;
-            }
-        }
+        removePixmapEntry(pe);
         if (pixmaps.isEmpty())
             return pm;
-        else
-            return pixmap(size, mode, state);
+        return scaledPixmap(size, mode, state, scale);
     }
 
-    QSize actualSize = pm.size();
-    if (!actualSize.isNull() && (actualSize.width() > size.width() || actualSize.height() > size.height()))
-        actualSize.scale(size, Qt::KeepAspectRatio);
-
-    QString key = QLatin1String("qt_")
+    const auto actualSize = adjustSize(size * scale, pm.size());
+    const auto calculatedDpr = QIconPrivate::pixmapDevicePixelRatio(scale, size, actualSize);
+    QString key = "qt_"_L1
                   % HexString<quint64>(pm.cacheKey())
-                  % HexString<uint>(pe ? pe->mode : QIcon::Normal)
+                  % HexString<quint8>(pe->mode)
                   % HexString<quint64>(QGuiApplication::palette().cacheKey())
                   % HexString<uint>(actualSize.width())
-                  % HexString<uint>(actualSize.height());
+                  % HexString<uint>(actualSize.height())
+                  % HexString<quint16>(qRound(calculatedDpr * 1000));
 
     if (mode == QIcon::Active) {
-        if (QPixmapCache::find(key % HexString<uint>(mode), &pm))
+        if (QPixmapCache::find(key % HexString<quint8>(mode), &pm))
             return pm; // horray
-        if (QPixmapCache::find(key % HexString<uint>(QIcon::Normal), &pm)) {
+        if (QPixmapCache::find(key % HexString<quint8>(QIcon::Normal), &pm)) {
             QPixmap active = pm;
             if (QGuiApplication *guiApp = qobject_cast<QGuiApplication *>(qApp))
                 active = static_cast<QGuiApplicationPrivate*>(QObjectPrivate::get(guiApp))->applyQIconStyleHelper(QIcon::Active, pm);
@@ -336,7 +367,7 @@ QPixmap QPixmapIconEngine::pixmap(const QSize &size, QIcon::Mode mode, QIcon::St
         }
     }
 
-    if (!QPixmapCache::find(key % HexString<uint>(mode), &pm)) {
+    if (!QPixmapCache::find(key % HexString<quint8>(mode), &pm)) {
         if (pm.size() != actualSize)
             pm = pm.scaled(actualSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
         if (pe->mode != mode && mode != QIcon::Normal) {
@@ -346,7 +377,8 @@ QPixmap QPixmapIconEngine::pixmap(const QSize &size, QIcon::Mode mode, QIcon::St
             if (!generated.isNull())
                 pm = generated;
         }
-        QPixmapCache::insert(key % HexString<uint>(mode), pm);
+        pm.setDevicePixelRatio(calculatedDpr);
+        QPixmapCache::insert(key % HexString<quint8>(mode), pm);
     }
     return pm;
 }
@@ -354,22 +386,40 @@ QPixmap QPixmapIconEngine::pixmap(const QSize &size, QIcon::Mode mode, QIcon::St
 QSize QPixmapIconEngine::actualSize(const QSize &size, QIcon::Mode mode, QIcon::State state)
 {
     QSize actualSize;
-    if (QPixmapIconEngineEntry *pe = bestMatch(size, mode, state, true))
+
+    // The returned actual size is the size in device independent pixels,
+    // so we limit the search to scale 1 and assume that e.g. @2x versions
+    // does not proviode extra actual sizes not also provided by the 1x versions.
+    qreal scale = 1;
+
+    if (QPixmapIconEngineEntry *pe = bestMatch(size, scale, mode, state))
         actualSize = pe->size;
 
-    if (actualSize.isNull())
-        return actualSize;
+    return adjustSize(size, actualSize);
+}
 
-    if (!actualSize.isNull() && (actualSize.width() > size.width() || actualSize.height() > size.height()))
-        actualSize.scale(size, Qt::KeepAspectRatio);
-    return actualSize;
+QList<QSize> QPixmapIconEngine::availableSizes(QIcon::Mode mode, QIcon::State state)
+{
+    QList<QSize> sizes;
+    for (QPixmapIconEngineEntry &pe : pixmaps) {
+        if (pe.mode != mode || pe.state != state)
+            continue;
+        if (pe.size.isEmpty() && pe.pixmap.isNull()) {
+            pe.pixmap = QPixmap(pe.fileName);
+            pe.size = pe.pixmap.size();
+        }
+        if (!pe.size.isEmpty() && !sizes.contains(pe.size))
+            sizes.push_back(pe.size);
+    }
+    return sizes;
 }
 
 void QPixmapIconEngine::addPixmap(const QPixmap &pixmap, QIcon::Mode mode, QIcon::State state)
 {
     if (!pixmap.isNull()) {
-        QPixmapIconEngineEntry *pe = tryMatch(pixmap.size(), mode, state);
-        if(pe && pe->size == pixmap.size()) {
+        QPixmapIconEngineEntry *pe = tryMatch(pixmap.size() / pixmap.devicePixelRatio(),
+                                              pixmap.devicePixelRatio(), mode, state);
+        if (pe && pe->size == pixmap.size() && pe->pixmap.devicePixelRatio() == pixmap.devicePixelRatio()) {
             pe->pixmap = pixmap;
             pe->fileName.clear();
         } else {
@@ -385,48 +435,20 @@ static inline int origIcoDepth(const QImage &image)
     return s.isEmpty() ? 32 : s.toInt();
 }
 
-static inline int findBySize(const QVector<QImage> &images, const QSize &size)
+static inline int findBySize(const QList<QImage> &images, const QSize &size)
 {
-    for (int i = 0; i < images.size(); ++i) {
+    for (qsizetype i = 0; i < images.size(); ++i) {
         if (images.at(i).size() == size)
             return i;
     }
     return -1;
 }
 
-// Convenience class providing a bool read() function.
-namespace {
-class ImageReader
-{
-public:
-    ImageReader(const QString &fileName) : m_reader(fileName), m_atEnd(false) {}
-
-    QByteArray format() const { return m_reader.format(); }
-
-    bool read(QImage *image)
-    {
-        if (m_atEnd)
-            return false;
-        *image = m_reader.read();
-        if (!image->size().isValid()) {
-            m_atEnd = true;
-            return false;
-        }
-        m_atEnd = !m_reader.jumpToNextImage();
-        return true;
-    }
-
-private:
-    QImageReader m_reader;
-    bool m_atEnd;
-};
-} // namespace
-
 void QPixmapIconEngine::addFile(const QString &fileName, const QSize &size, QIcon::Mode mode, QIcon::State state)
 {
     if (fileName.isEmpty())
         return;
-    const QString abs = fileName.startsWith(QLatin1Char(':')) ? fileName : QFileInfo(fileName).absoluteFilePath();
+    const QString abs = fileName.startsWith(u':') ? fileName : QFileInfo(fileName).absoluteFilePath();
     const bool ignoreSize = !size.isValid();
     ImageReader imageReader(abs);
     const QByteArray format = imageReader.format();
@@ -435,13 +457,16 @@ void QPixmapIconEngine::addFile(const QString &fileName, const QSize &size, QIco
     QImage image;
     if (format != "ico") {
         if (ignoreSize) { // No size specified: Add all images.
-            while (imageReader.read(&image))
-                pixmaps += QPixmapIconEngineEntry(abs, image, mode, state);
+            if (imageReader.supportsReadSize()) {
+                do {
+                    pixmaps += QPixmapIconEngineEntry(abs, imageReader.size(), mode, state);
+                } while (imageReader.jumpToNextImage());
+            } else {
+                while (imageReader.read(&image))
+                    pixmaps += QPixmapIconEngineEntry(abs, image, mode, state);
+            }
         } else {
-            // Try to match size. If that fails, add a placeholder with the filename and empty pixmap for the size.
-            while (imageReader.read(&image) && image.size() != size) {}
-            pixmaps += image.size() == size ?
-                QPixmapIconEngineEntry(abs, image, mode, state) : QPixmapIconEngineEntry(abs, size, mode, state);
+            pixmaps += QPixmapIconEngineEntry(abs, size, mode, state);
         }
         return;
     }
@@ -449,7 +474,7 @@ void QPixmapIconEngine::addFile(const QString &fileName, const QSize &size, QIco
     // these files may contain low-resolution images. As this information is lost,
     // ICOReader sets the original format as an image text key value. Read all matching
     // images into a list trying to find the highest quality per size.
-    QVector<QImage> icoImages;
+    QList<QImage> icoImages;
     while (imageReader.read(&image)) {
         if (ignoreSize || image.size() == size) {
             const int position = findBySize(icoImages, image.size());
@@ -461,15 +486,20 @@ void QPixmapIconEngine::addFile(const QString &fileName, const QSize &size, QIco
             }
         }
     }
-    for (const QImage &i : qAsConst(icoImages))
+    for (const QImage &i : std::as_const(icoImages))
         pixmaps += QPixmapIconEngineEntry(abs, i, mode, state);
     if (icoImages.isEmpty() && !ignoreSize) // Add placeholder with the filename and empty pixmap for the size.
         pixmaps += QPixmapIconEngineEntry(abs, size, mode, state);
 }
 
+bool QPixmapIconEngine::isNull()
+{
+    return pixmaps.isEmpty();
+}
+
 QString QPixmapIconEngine::key() const
 {
-    return QLatin1String("QPixmapIconEngine");
+    return "QPixmapIconEngine"_L1;
 }
 
 QIconEngine *QPixmapIconEngine::clone() const
@@ -525,35 +555,12 @@ bool QPixmapIconEngine::write(QDataStream &out) const
     return true;
 }
 
-void QPixmapIconEngine::virtual_hook(int id, void *data)
-{
-    switch (id) {
-    case QIconEngine::AvailableSizesHook: {
-        QIconEngine::AvailableSizesArgument &arg =
-            *reinterpret_cast<QIconEngine::AvailableSizesArgument*>(data);
-        arg.sizes.clear();
-        for (int i = 0; i < pixmaps.size(); ++i) {
-            QPixmapIconEngineEntry &pe = pixmaps[i];
-            if (pe.size == QSize() && pe.pixmap.isNull()) {
-                pe.pixmap = QPixmap(pe.fileName);
-                pe.size = pe.pixmap.size();
-            }
-            if (pe.mode == arg.mode && pe.state == arg.state && !pe.size.isEmpty())
-                arg.sizes.push_back(pe.size);
-        }
-        break;
-    }
-    default:
-        QIconEngine::virtual_hook(id, data);
-    }
-}
-
-Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
-    (QIconEngineFactoryInterface_iid, QLatin1String("/iconengines"), Qt::CaseInsensitive))
+Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, iceLoader,
+    (QIconEngineFactoryInterface_iid, "/iconengines"_L1, Qt::CaseInsensitive))
 
 QFactoryLoader *qt_iconEngineFactoryLoader()
 {
-    return loader();
+    return iceLoader();
 }
 
 
@@ -569,15 +576,26 @@ QFactoryLoader *qt_iconEngineFactoryLoader()
 
   A QIcon can generate smaller, larger, active, and disabled pixmaps
   from the set of pixmaps it is given. Such pixmaps are used by Qt
-  widgets to show an icon representing a particular action.
+  UI components to show an icon representing a particular action.
 
-  The simplest use of QIcon is to create one from a QPixmap file or
-  resource, and then use it, allowing Qt to work out all the required
-  icon styles and sizes. For example:
+  \section1 Creating an icon from image files
+
+  The simplest way to construct a QIcon is to create one from one or
+  several image files or resources. For example:
 
   \snippet code/src_gui_image_qicon.cpp 0
 
-  To undo a QIcon, simply set a null icon in its place:
+  QIcon can store several images for different states, and Qt will
+  select the image that is the closest match for the action's current
+  state.
+
+  \snippet code/src_gui_image_qicon.cpp addFile
+
+  Qt will generate the required icon styles and sizes when needed,
+  e.g. the pixmap for the QIcon::Disabled state might be generated by
+  graying out one of the provided pixmaps.
+
+  To clear the icon, simply set a null icon in its place:
 
   \snippet code/src_gui_image_qicon.cpp 1
 
@@ -585,19 +603,49 @@ QFactoryLoader *qt_iconEngineFactoryLoader()
   QImageWriter::supportedImageFormats() functions to retrieve a
   complete list of the supported file formats.
 
-  When you retrieve a pixmap using pixmap(QSize, Mode, State), and no
-  pixmap for this given size, mode and state has been added with
-  addFile() or addPixmap(), then QIcon will generate one on the
-  fly. This pixmap generation happens in a QIconEngine. The default
-  engine scales pixmaps down if required, but never up, and it uses
-  the current style to calculate a disabled appearance. By using
-  custom icon engines, you can customize every aspect of generated
+  \section1 Creating an icon from a theme or icon library
+
+  The most convenient way to construct an icon is by using the
+  \l{QIcon::}{fromTheme()} factory function. Qt implements access to
+  the native icon library on platforms that support the
+  \l {Freedesktop Icon Theme Specification}. Since Qt 6.7, Qt also
+  provides access to the native icon library on macOS, iOS, and
+  Windows 10 and 11. On Android, Qt can access icons from the Material
+  design system as long as the
+  \l{https://github.com/google/material-design-icons/tree/master/font}
+  {MaterialIcons-Regular} font is available on the system, or bundled
+  as a resource at \c{:/qt-project.org/icons/MaterialIcons-Regular.ttf}
+  with the application.
+
+  \snippet code/src_gui_image_qicon.cpp fromTheme
+
+  Applications can use the same theming specification to provide
+  their own icon library. See below for an example theme description
+  and the corresponding directory structure for the image files.
+  Icons from an application-provided theme take precedence over the
+  native icon library.
+
+  \section1 Icon Engines
+
+  Internally, QIcon instantiates an \l {QIconEngine} {icon engine}
+  backend to handle and render the icon images. The type of icon
+  engine is determined by the first file or pixmap or theme added to a
+  QIcon object. Additional files or pixmaps will then be handled by
+  the same engine.
+
+  Icon engines differ in the way they handle and render icons. The
+  default pixmap-based engine only deals with fixed images, while the
+  QtSvg module provides an icon engine that can re-render the provided
+  vector graphics files at the requested size for better quality. The
+  theme icon engines will typically only provide images from native
+  platform icon library, and ignore any added files or pixmaps.
+
+  In addition, it is possible to provide custom icon engines. This
+  allows applications to customize every aspect of generated
   icons. With QIconEnginePlugin it is possible to register different
   icon engines for different file suffixes, making it possible for
   third parties to provide additional icon engines to those included
   with Qt.
-
-  \note Since Qt 4.2, an icon engine that supports SVG is included.
 
   \section1 Making Classes that Use QIcon
 
@@ -605,10 +653,18 @@ QFactoryLoader *qt_iconEngineFactoryLoader()
   pixmap, consider allowing a QIcon to be set for that pixmap.  The
   Qt class QToolButton is an example of such a widget.
 
-  Provide a method to set a QIcon, and when you draw the icon, choose
-  whichever pixmap is appropriate for the current state of your widget.
-  For example:
+  Provide a method to set a QIcon, and paint the QIcon with
+  \l{QIcon::}{paint}, choosing the appropriate parameters based
+  on the current state of your widget. For example:
+
   \snippet code/src_gui_image_qicon.cpp 2
+
+  When you retrieve a pixmap using pixmap(QSize, Mode, State), and no
+  pixmap for this given size, mode and state has been added with
+  addFile() or addPixmap(), then QIcon will generate one on the
+  fly. This pixmap generation happens in a QIconEngine. The default
+  engine scales pixmaps down if required, but never up, and it uses
+  the current style to calculate a disabled appearance.
 
   You might also make use of the \c Active mode, perhaps making your
   widget \c Active when the mouse is over the widget (see \l
@@ -623,17 +679,19 @@ QFactoryLoader *qt_iconEngineFactoryLoader()
 
   \section1 High DPI Icons
 
-  There are two ways that QIcon supports \l {High DPI Displays}{high DPI}
-  icons: via \l addFile() and \l fromTheme().
+  Icons that are provided by the native icon library are usually based
+  on vector graphics, and will automatically be rendered in the appropriate
+  resolution.
 
-  \l addFile() is useful if you have your own custom directory structure and do
-  not need to use the \l {Icon Theme Specification}{freedesktop.org Icon Theme
-  Specification}. Icons created via this approach use Qt's \l {High Resolution
-  Versions of Images}{"@nx" high DPI syntax}.
+  When providing your own image files via \l addFile(), then QIcon will
+  use Qt's \l {High Resolution Versions of Images}{"@nx" high DPI syntax}.
+  This is useful if you have your own custom directory structure and do not
+  use follow \l {Freedesktop Icon Theme Specification}.
 
-  Using \l fromTheme() is necessary if you plan on following the Icon Theme
-  Specification. To make QIcon use the high DPI version of an image, add an
-  additional entry to the appropriate \c index.theme file:
+  When providing an application theme, then you need to follow the Icon Theme
+  Specification to specify which files to use for different resolutions.
+  To make QIcon use the high DPI version of an image, add an additional entry
+  to the appropriate \c index.theme file:
 
   \badcode
   [Icon Theme]
@@ -665,8 +723,6 @@ QFactoryLoader *qt_iconEngineFactoryLoader()
     │       └── appointment-new.png
     └── index.theme
   \endcode
-
-  \sa {fowler}{GUI Design Handbook: Iconic Label}, {Icons Example}
 */
 
 
@@ -771,10 +827,7 @@ QIcon &QIcon::operator=(const QIcon &other)
 
 /*!
     \fn void QIcon::swap(QIcon &other)
-    \since 4.8
-
-    Swaps icon \a other with this icon. This operation is very
-    fast and never fails.
+    \memberswap{icon}
 */
 
 /*!
@@ -782,32 +835,13 @@ QIcon &QIcon::operator=(const QIcon &other)
 */
 QIcon::operator QVariant() const
 {
-    return QVariant(QMetaType::QIcon, this);
+    return QVariant::fromValue(*this);
 }
-
-/*! \fn int QIcon::serialNumber() const
-    \obsolete
-
-    Returns a number that identifies the contents of this
-    QIcon object. Distinct QIcon objects can have
-    the same serial number if they refer to the same contents
-    (but they don't have to). Also, the serial number of
-    a QIcon object may change during its lifetime.
-
-    Use cacheKey() instead.
-
-    A null icon always has a serial number of 0.
-
-    Serial numbers are mostly useful in conjunction with caching.
-
-    \sa QPixmap::serialNumber()
-*/
 
 /*!
     Returns a number that identifies the contents of this QIcon
     object. Distinct QIcon objects can have the same key if
     they refer to the same contents.
-    \since 4.3
 
     The cacheKey() will change when the icon is altered via
     addPixmap() or addFile().
@@ -826,11 +860,8 @@ qint64 QIcon::cacheKey() const
 /*!
   Returns a pixmap with the requested \a size, \a mode, and \a
   state, generating one if necessary. The pixmap might be smaller than
-  requested, but never larger.
-
-  Setting the Qt::AA_UseHighDpiPixmaps application attribute enables this
-  function to return pixmaps that are larger than the requested size. Such
-  images will have a devicePixelRatio larger than 1.
+  requested, but never larger, unless the device-pixel ratio of the returned
+  pixmap is larger than 1.
 
   \sa actualSize(), paint()
 */
@@ -838,7 +869,8 @@ QPixmap QIcon::pixmap(const QSize &size, Mode mode, State state) const
 {
     if (!d)
         return QPixmap();
-    return pixmap(nullptr, size, mode, state);
+    const qreal dpr = -1; // don't know target dpr
+    return pixmap(size, dpr, mode, state);
 }
 
 /*!
@@ -847,11 +879,8 @@ QPixmap QIcon::pixmap(const QSize &size, Mode mode, State state) const
     \overload
 
     Returns a pixmap of size QSize(\a w, \a h). The pixmap might be smaller than
-    requested, but never larger.
-
-    Setting the Qt::AA_UseHighDpiPixmaps application attribute enables this
-    function to return pixmaps that are larger than the requested size. Such
-    images will have a devicePixelRatio larger than 1.
+    requested, but never larger, unless the device-pixel ratio of the returned
+    pixmap is larger than 1.
 */
 
 /*!
@@ -860,12 +889,72 @@ QPixmap QIcon::pixmap(const QSize &size, Mode mode, State state) const
     \overload
 
     Returns a pixmap of size QSize(\a extent, \a extent). The pixmap might be smaller
-    than requested, but never larger.
-
-    Setting the Qt::AA_UseHighDpiPixmaps application attribute enables this
-    function to return pixmaps that are larger than the requested size. Such
-    images will have a devicePixelRatio larger than 1.
+    than requested, but never larger, unless the device-pixel ratio of the returned
+    pixmap is larger than 1.
 */
+
+/*!
+  \overload
+  \since 6.0
+
+  Returns a pixmap with the requested \a size, \a devicePixelRatio, \a mode, and \a
+  state, generating one with the given \a mode and \a state if necessary. The pixmap
+  might be smaller than requested, but never larger, unless the device-pixel ratio
+  of the returned pixmap is larger than 1.
+
+  \note Prior to Qt 6.8 this function wronlgy passed the device dependent pixmap size to
+  QIconEngine::scaledPixmap(), since Qt 6.8 it's the device independent size (not scaled
+  with the \a devicePixelRatio).
+
+  \sa  actualSize(), paint()
+*/
+QPixmap QIcon::pixmap(const QSize &size, qreal devicePixelRatio, Mode mode, State state) const
+{
+    if (!d)
+        return QPixmap();
+
+    // Use the global devicePixelRatio if the caller does not know the target dpr
+    if (devicePixelRatio == -1)
+        devicePixelRatio = qApp->devicePixelRatio();
+
+    // Handle the simple normal-dpi case
+    if (!(devicePixelRatio > 1.0)) {
+        QPixmap pixmap = d->engine->pixmap(size, mode, state);
+        pixmap.setDevicePixelRatio(1.0);
+        return pixmap;
+    }
+
+    // Try get a pixmap that is big enough to be displayed at device pixel resolution.
+    QPixmap pixmap = d->engine->scaledPixmap(size, mode, state, devicePixelRatio);
+    pixmap.setDevicePixelRatio(d->pixmapDevicePixelRatio(devicePixelRatio, size, pixmap.size()));
+    return pixmap;
+}
+
+#if QT_DEPRECATED_SINCE(6, 0)
+/*!
+  \since 5.1
+  \deprecated [6.0] Use pixmap(size, devicePixelRatio) instead.
+
+  Returns a pixmap with the requested \a window \a size, \a mode, and \a
+  state, generating one if necessary.
+
+  The pixmap can be smaller than the requested size. If \a window is on
+  a high-dpi display the pixmap can be larger. In that case it will have
+  a devicePixelRatio larger than 1.
+
+  \sa  actualSize(), paint()
+*/
+
+QPixmap QIcon::pixmap(QWindow *window, const QSize &size, Mode mode, State state) const
+{
+    if (!d)
+        return QPixmap();
+
+    qreal devicePixelRatio = window ? window->devicePixelRatio() : qApp->devicePixelRatio();
+    return pixmap(size, devicePixelRatio, mode, state);
+}
+#endif
+
 
 /*!  Returns the actual size of the icon for the requested \a size, \a
   mode, and \a state. The result might be smaller than requested, but
@@ -878,44 +967,21 @@ QSize QIcon::actualSize(const QSize &size, Mode mode, State state) const
 {
     if (!d)
         return QSize();
-    return actualSize(nullptr, size, mode, state);
-}
 
-/*!
-  \since 5.1
-
-  Returns a pixmap with the requested \a window \a size, \a mode, and \a
-  state, generating one if necessary.
-
-  The pixmap can be smaller than the requested size. If \a window is on
-  a high-dpi display the pixmap can be larger. In that case it will have
-  a devicePixelRatio larger than 1.
-
-  \sa  actualSize(), paint()
-*/
-QPixmap QIcon::pixmap(QWindow *window, const QSize &size, Mode mode, State state) const
-{
-    if (!d)
-        return QPixmap();
-
-    qreal devicePixelRatio = qt_effective_device_pixel_ratio(window);
+    const qreal devicePixelRatio = qApp->devicePixelRatio();
 
     // Handle the simple normal-dpi case:
-    if (!(devicePixelRatio > 1.0)) {
-        QPixmap pixmap = d->engine->pixmap(size, mode, state);
-        pixmap.setDevicePixelRatio(1.0);
-        return pixmap;
-    }
+    if (!(devicePixelRatio > 1.0))
+        return d->engine->actualSize(size, mode, state);
 
-    // Try get a pixmap that is big enough to be displayed at device pixel resolution.
-    QIconEngine::ScaledPixmapArgument scalePixmapArg = { size * devicePixelRatio, mode, state, devicePixelRatio, QPixmap() };
-    d->engine->virtual_hook(QIconEngine::ScaledPixmapHook, reinterpret_cast<void*>(&scalePixmapArg));
-    scalePixmapArg.pixmap.setDevicePixelRatio(d->pixmapDevicePixelRatio(devicePixelRatio, size, scalePixmapArg.pixmap.size()));
-    return scalePixmapArg.pixmap;
+    const QSize actualSize = d->engine->actualSize(size * devicePixelRatio, mode, state);
+    return actualSize / d->pixmapDevicePixelRatio(devicePixelRatio, size, actualSize);
 }
 
+#if QT_DEPRECATED_SINCE(6, 0)
 /*!
   \since 5.1
+  \deprecated [6.0] Use actualSize(size) instead.
 
   Returns the actual size of the icon for the requested \a window  \a size, \a
   mode, and \a state.
@@ -925,12 +991,13 @@ QPixmap QIcon::pixmap(QWindow *window, const QSize &size, Mode mode, State state
 
   \sa actualSize(), pixmap(), paint()
 */
+
 QSize QIcon::actualSize(QWindow *window, const QSize &size, Mode mode, State state) const
 {
     if (!d)
         return QSize();
 
-    qreal devicePixelRatio = qt_effective_device_pixel_ratio(window);
+    qreal devicePixelRatio = window ? window->devicePixelRatio() : qApp->devicePixelRatio();
 
     // Handle the simple normal-dpi case:
     if (!(devicePixelRatio > 1.0))
@@ -939,6 +1006,7 @@ QSize QIcon::actualSize(QWindow *window, const QSize &size, Mode mode, State sta
     QSize actualSize = d->engine->actualSize(size * devicePixelRatio, mode, state);
     return actualSize / d->pixmapDevicePixelRatio(devicePixelRatio, size, actualSize);
 }
+#endif
 
 /*!
     Uses the \a painter to paint the icon with specified \a alignment,
@@ -1042,9 +1110,9 @@ void QIcon::addPixmap(const QPixmap &pixmap, Mode mode, State state)
 static QIconEngine *iconEngineFromSuffix(const QString &fileName, const QString &suffix)
 {
     if (!suffix.isEmpty()) {
-        const int index = loader()->indexOf(suffix);
+        const int index = iceLoader()->indexOf(suffix);
         if (index != -1) {
-            if (QIconEnginePlugin *factory = qobject_cast<QIconEnginePlugin*>(loader()->instance(index))) {
+            if (QIconEnginePlugin *factory = qobject_cast<QIconEnginePlugin*>(iceLoader()->instance(index))) {
                 return factory->create(fileName);
             }
         }
@@ -1087,6 +1155,7 @@ void QIcon::addFile(const QString &fileName, const QSize &size, Mode mode, State
     if (fileName.isEmpty())
         return;
     detach();
+    bool alreadyAdded = false;
     if (!d) {
 
         QFileInfo info(fileName);
@@ -1096,10 +1165,15 @@ void QIcon::addFile(const QString &fileName, const QSize &size, Mode mode, State
             suffix = QMimeDatabase().mimeTypeForFile(info).preferredSuffix(); // determination from contents
 #endif // mimetype
         QIconEngine *engine = iconEngineFromSuffix(fileName, suffix);
+        if (engine)
+            alreadyAdded = !engine->isNull();
         d = new QIconPrivate(engine ? engine : new QPixmapIconEngine);
     }
+    if (!alreadyAdded)
+        d->engine->addFile(fileName, size, mode, state);
 
-    d->engine->addFile(fileName, size, mode, state);
+    if (d->engine->key() == "svg"_L1)   // not needed and also not supported
+        return;
 
     // Check if a "@Nx" file exists and add it.
     QString atNxFileName = qt_findAtNxFile(fileName, qApp->devicePixelRatio());
@@ -1108,8 +1182,6 @@ void QIcon::addFile(const QString &fileName, const QSize &size, Mode mode, State
 }
 
 /*!
-    \since 4.5
-
     Returns a list of available icon sizes for the specified \a mode and
     \a state.
 */
@@ -1121,15 +1193,12 @@ QList<QSize> QIcon::availableSizes(Mode mode, State state) const
 }
 
 /*!
-    \since 4.7
-
     Returns the name used to create the icon, if available.
 
     Depending on the way the icon was created, it may have an associated
-    name. This is the case for icons created with fromTheme() or icons
-    using a QIconEngine which supports the QIconEngine::IconNameHook.
+    name. This is the case for icons created with fromTheme().
 
-    \sa fromTheme(), QIconEngine
+    \sa fromTheme(), QIconEngine::iconName()
 */
 QString QIcon::name() const
 {
@@ -1139,9 +1208,11 @@ QString QIcon::name() const
 }
 
 /*!
-    \since 4.6
-
     Sets the search paths for icon themes to \a paths.
+
+    The content of \a paths should follow the theme format
+    documented by setThemeName().
+
     \sa themeSearchPaths(), fromTheme(), setThemeName()
 */
 void QIcon::setThemeSearchPaths(const QStringList &paths)
@@ -1150,20 +1221,12 @@ void QIcon::setThemeSearchPaths(const QStringList &paths)
 }
 
 /*!
-  \since 4.6
+    Returns the search paths for icon themes.
 
-  Returns the search paths for icon themes.
+    The default search paths will be defined by the platform.
+    All platforms will also have the resource directory \c{:\icons} as a fallback.
 
-  The default value will depend on the platform:
-
-  On X11, the search path will use the XDG_DATA_DIRS environment
-  variable if available.
-
-  By default all platforms will have the resource directory
-  \c{:\icons} as a fallback. You can use "rcc -project" to generate a
-  resource file from your icon theme.
-
-  \sa setThemeSearchPaths(), fromTheme(), setThemeName()
+    \sa setThemeSearchPaths(), fromTheme(), setThemeName()
 */
 QStringList QIcon::themeSearchPaths()
 {
@@ -1175,7 +1238,13 @@ QStringList QIcon::themeSearchPaths()
 
     Returns the fallback search paths for icons.
 
-    The default value will depend on the platform.
+    The fallback search paths are consulted for standalone
+    icon files if the \l{themeName()}{current icon theme}
+    or \l{fallbackThemeName()}{fallback icon theme} do
+    not provide results for an icon lookup.
+
+    If not set, the fallback search paths will be defined
+    by the platform.
 
     \sa setFallbackSearchPaths(), themeSearchPaths()
 */
@@ -1189,7 +1258,12 @@ QStringList QIcon::fallbackSearchPaths()
 
     Sets the fallback search paths for icons to \a paths.
 
-    \note To add some path without replacing existing ones:
+    The fallback search paths are consulted for standalone
+    icon files if the \l{themeName()}{current icon theme}
+    or \l{fallbackThemeName()}{fallback icon theme} do
+    not provide results for an icon lookup.
+
+    For example:
 
     \snippet code/src_gui_image_qicon.cpp 5
 
@@ -1201,15 +1275,17 @@ void QIcon::setFallbackSearchPaths(const QStringList &paths)
 }
 
 /*!
-    \since 4.6
-
     Sets the current icon theme to \a name.
 
-    The \a name should correspond to a directory name in the
-    themeSearchPath() containing an index.theme
-    file describing its contents.
+    The theme will be will be looked up in themeSearchPaths().
 
-    \sa themeSearchPaths(), themeName()
+    At the moment the only supported icon theme format is the
+    \l{Freedesktop Icon Theme Specification}. The \a name should
+    correspond to a directory name in the themeSearchPath()
+    containing an \c index.theme file describing its contents.
+
+    \sa themeSearchPaths(), themeName(),
+    {Freedesktop Icon Theme Specification}
 */
 void QIcon::setThemeName(const QString &name)
 {
@@ -1217,12 +1293,14 @@ void QIcon::setThemeName(const QString &name)
 }
 
 /*!
-    \since 4.6
-
     Returns the name of the current icon theme.
 
-    On X11, the current icon theme depends on your desktop
-    settings. On other platforms it is not set by default.
+    If not set, the current icon theme will be defined by the
+    platform.
+
+    \note Platform icon themes are only implemented on
+    \l{Freedesktop} based systems at the moment, and the
+    icon theme depends on your desktop settings.
 
     \sa setThemeName(), themeSearchPaths(), fromTheme(),
     hasThemeIcon()
@@ -1237,8 +1315,12 @@ QString QIcon::themeName()
 
     Returns the name of the fallback icon theme.
 
-    On X11, if not set, the fallback icon theme depends on your desktop
-    settings. On other platforms it is not set by default.
+    If not set, the fallback icon theme will be defined by the
+    platform.
+
+    \note Platform fallback icon themes are only implemented on
+    \l{Freedesktop} based systems at the moment, and the
+    icon theme depends on your desktop settings.
 
     \sa setFallbackThemeName(), themeName()
 */
@@ -1252,12 +1334,16 @@ QString QIcon::fallbackThemeName()
 
     Sets the fallback icon theme to \a name.
 
-    The \a name should correspond to a directory name in the
-    themeSearchPath() containing an index.theme
-    file describing its contents.
+    The fallback icon theme is consulted for icons not provided by
+    the \l{themeName()}{current icon theme}, or if the \l{themeName()}
+    {current icon theme} does not exist.
 
-    \note This should be done before creating \l QGuiApplication, to ensure
-    correct initialization.
+    The \a name should correspond to theme in the same format
+    as documented by setThemeName(), and will be looked up
+    in themeSearchPaths().
+
+    \note Fallback icon themes should be set before creating
+    QGuiApplication, to ensure correct initialization.
 
     \sa fallbackThemeName(), themeSearchPaths(), themeName()
 */
@@ -1267,69 +1353,63 @@ void QIcon::setFallbackThemeName(const QString &name)
 }
 
 /*!
-    \since 4.6
+    Returns the QIcon corresponding to \a name in the
+    \l{themeName()}{current icon theme}.
 
-    Returns the QIcon corresponding to \a name in the current
-    icon theme.
-
-    The latest version of the freedesktop icon specification and naming
-    specification can be obtained here:
-
-    \list
-    \li \l{http://standards.freedesktop.org/icon-theme-spec/icon-theme-spec-latest.html}
-    \li \l{http://standards.freedesktop.org/icon-naming-spec/icon-naming-spec-latest.html}
-    \endlist
+    If the current theme does not provide an icon for \a name,
+    the \l{fallbackThemeName()}{fallback icon theme} is consulted,
+    before falling back to looking up standalone icon files in the
+    \l{QIcon::fallbackSearchPaths()}{fallback icon search path}.
+    Finally, the platform's native icon library is consulted.
 
     To fetch an icon from the current icon theme:
 
-    \snippet code/src_gui_image_qicon.cpp 3
+    \snippet code/src_gui_image_qicon.cpp fromTheme
 
-    \note By default, only X11 will support themed icons. In order to
-    use themed icons on Mac and Windows, you will have to bundle a
-    compliant theme in one of your themeSearchPaths() and set the
-    appropriate themeName().
+    If an \l{themeName()}{icon theme} has not been explicitly
+    set via setThemeName() a platform defined icon theme will
+    be used.
 
-    \note Qt will make use of GTK's icon-theme.cache if present to speed up
-    the lookup. These caches can be generated using gtk-update-icon-cache:
-    \l{https://developer.gnome.org/gtk3/stable/gtk-update-icon-cache.html}.
-
-    \note If an icon can't be found in the current theme, then it will be
-    searched in fallbackSearchPaths() as an unthemed icon.
-
-    \sa themeName(), setThemeName(), themeSearchPaths(), fallbackSearchPaths()
+    \sa themeName(), fallbackThemeName(), setThemeName(), themeSearchPaths(), fallbackSearchPaths(),
+        {Freedesktop Icon Naming Specification}
 */
 QIcon QIcon::fromTheme(const QString &name)
 {
-    QIcon icon;
 
-    if (qtIconCache()->contains(name)) {
-        icon = *qtIconCache()->object(name);
-    } else if (QDir::isAbsolutePath(name)) {
+    if (QIcon *cachedIcon = qtIconCache()->object(name))
+        return *cachedIcon;
+
+    if (QDir::isAbsolutePath(name))
         return QIcon(name);
-    } else {
-        QPlatformTheme * const platformTheme = QGuiApplicationPrivate::platformTheme();
-        bool hasUserTheme = QIconLoader::instance()->hasUserTheme();
-        QIconEngine * const engine = (platformTheme && !hasUserTheme) ? platformTheme->createIconEngine(name)
-                                                   : new QIconLoaderEngine(name);
-        QIcon *cachedIcon  = new QIcon(engine);
-        icon = *cachedIcon;
-        qtIconCache()->insert(name, cachedIcon);
-    }
 
+    QIcon icon(new QThemeIconEngine(name));
+    qtIconCache()->insert(name, new QIcon(icon));
     return icon;
 }
 
 /*!
     \overload
 
-    Returns the QIcon corresponding to \a name in the current
-    icon theme. If no such icon is found in the current theme
-    \a fallback is returned instead.
+    Returns the QIcon corresponding to \a name in the
+    \l{themeName()}{current icon theme}.
 
-    If you want to provide a guaranteed fallback for platforms that
-    do not support theme icons, you can use the second argument:
+    If the current theme does not provide an icon for \a name,
+    the \l{fallbackThemeName()}{fallback icon theme} is consulted,
+    before falling back to looking up standalone icon files in the
+    \l{QIcon::fallbackSearchPaths()}{fallback icon search path}.
+    Finally, the platform's native icon library is consulted.
+
+    If no icon is found \a fallback is returned.
+
+    This is useful to provide a guaranteed fallback, regardless of
+    whether the current set of icon themes and fallbacks paths
+    support the requested icon.
+
+    For example:
 
     \snippet code/src_gui_image_qicon.cpp 4
+
+    \sa fallbackThemeName(), fallbackSearchPaths()
 */
 QIcon QIcon::fromTheme(const QString &name, const QIcon &fallback)
 {
@@ -1342,10 +1422,9 @@ QIcon QIcon::fromTheme(const QString &name, const QIcon &fallback)
 }
 
 /*!
-    \since 4.6
-
     Returns \c true if there is an icon available for \a name in the
-    current icon theme, otherwise returns \c false.
+    current icon theme or any of the fallbacks, as described by
+    fromTheme(), otherwise returns \c false.
 
     \sa themeSearchPaths(), fromTheme(), setThemeName()
 */
@@ -1354,6 +1433,401 @@ bool QIcon::hasThemeIcon(const QString &name)
     QIcon icon = fromTheme(name);
 
     return icon.name() == name;
+}
+
+static constexpr auto themeIconMapping = qOffsetStringArray(
+    "address-book-new",
+    "application-exit",
+    "appointment-new",
+    "call-start",
+    "call-stop",
+    "contact-new",
+    "document-new",
+    "document-open",
+    "document-open-recent",
+    "document-page-setup",
+    "document-print",
+    "document-print-preview",
+    "document-properties",
+    "document-revert",
+    "document-save",
+    "document-save-as",
+    "document-send",
+    "edit-clear",
+    "edit-copy",
+    "edit-cut",
+    "edit-delete",
+    "edit-find",
+    "edit-paste",
+    "edit-redo",
+    "edit-select-all",
+    "edit-undo",
+    "folder-new",
+    "format-indent-less",
+    "format-indent-more",
+    "format-justify-center",
+    "format-justify-fill",
+    "format-justify-left",
+    "format-justify-right",
+    "format-text-direction-ltr",
+    "format-text-direction-rtl",
+    "format-text-bold",
+    "format-text-italic",
+    "format-text-underline",
+    "format-text-strikethrough",
+    "go-down",
+    "go-home",
+    "go-next",
+    "go-previous",
+    "go-up",
+    "help-about",
+    "help-faq",
+    "insert-image",
+    "insert-link",
+    "insert-text",
+    "list-add",
+    "list-remove",
+    "mail-forward",
+    "mail-mark-important",
+    "mail-mark-read",
+    "mail-mark-unread",
+    "mail-message-new",
+    "mail-reply-all",
+    "mail-reply-sender",
+    "mail-send",
+    "media-eject",
+    "media-playback-pause",
+    "media-playback-start",
+    "media-playback-stop",
+    "media-record",
+    "media-seek-backward",
+    "media-seek-forward",
+    "media-skip-backward",
+    "media-skip-forward",
+    "object-rotate-left",
+    "object-rotate-right",
+    "process-stop",
+    "system-lock-screen",
+    "system-log-out",
+    "system-search",
+    "system-reboot",
+    "system-shutdown",
+    "tools-check-spelling",
+    "view-fullscreen",
+    "view-refresh",
+    "view-restore",
+    "window-close",
+    "window-new",
+    "zoom-fit-best",
+    "zoom-in",
+    "zoom-out",
+
+    "audio-card",
+    "audio-input-microphone",
+    "battery",
+    "camera-photo",
+    "camera-video",
+    "camera-web",
+    "computer",
+    "drive-harddisk",
+    "drive-optical",
+    "input-gaming",
+    "input-keyboard",
+    "input-mouse",
+    "input-tablet",
+    "media-flash",
+    "media-optical",
+    "media-tape",
+    "multimedia-player",
+    "network-wired",
+    "network-wireless",
+    "phone",
+    "printer",
+    "scanner",
+    "video-display",
+
+    "appointment-missed",
+    "appointment-soon",
+    "audio-volume-high",
+    "audio-volume-low",
+    "audio-volume-medium",
+    "audio-volume-muted",
+    "battery-caution",
+    "battery-low",
+    "dialog-error",
+    "dialog-information",
+    "dialog-password",
+    "dialog-question",
+    "dialog-warning",
+    "folder-drag-accept",
+    "folder-open",
+    "folder-visiting",
+    "image-loading",
+    "image-missing",
+    "mail-attachment",
+    "mail-unread",
+    "mail-read",
+    "mail-replied",
+    "media-playlist-repeat",
+    "media-playlist-shuffle",
+    "network-offline",
+    "printer-printing",
+    "security-high",
+    "security-low",
+    "software-update-available",
+    "software-update-urgent",
+    "sync-error",
+    "sync-synchronizing",
+    "user-available",
+    "user-offline",
+    "weather-clear",
+    "weather-clear-night",
+    "weather-few-clouds",
+    "weather-few-clouds-night",
+    "weather-fog",
+    "weather-showers",
+    "weather-snow",
+    "weather-storm"
+);
+static_assert(QIcon::ThemeIcon::NThemeIcons == QIcon::ThemeIcon(themeIconMapping.count()));
+
+static constexpr QLatin1StringView themeIconName(QIcon::ThemeIcon icon)
+{
+    using ThemeIconIndex = std::underlying_type_t<QIcon::ThemeIcon>;
+    const auto index = static_cast<ThemeIconIndex>(icon);
+    Q_ASSERT(index < themeIconMapping.count());
+    return QLatin1StringView(themeIconMapping.viewAt(index));
+}
+
+/*!
+    \enum QIcon::ThemeIcon
+    \since 6.7
+
+    This enum provides access to icons that are provided by most
+    icon theme implementations.
+
+    \value AddressBookNew       The icon for the action to create a new address book.
+    \value ApplicationExit      The icon for exiting an application.
+    \value AppointmentNew       The icon for the action to create a new appointment.
+    \value CallStart            The icon for initiating or accepting a call.
+    \value CallStop             The icon for stopping a current call.
+    \value ContactNew           The icon for the action to create a new contact.
+    \value DocumentNew          The icon for the action to create a new document.
+    \value DocumentOpen         The icon for the action to open a document.
+    \value DocumentOpenRecent   The icon for the action to open a document that was recently opened.
+    \value DocumentPageSetup    The icon for the \e{page setup} action.
+    \value DocumentPrint        The icon for the \e{print} action.
+    \value DocumentPrintPreview The icon for the \e{print preview} action.
+    \value DocumentProperties   The icon for the action to view the properties of a document.
+    \value DocumentRevert       The icon for the action of reverting to a previous version of a document.
+    \value DocumentSave         The icon for the \e{save} action.
+    \value DocumentSaveAs       The icon for the \e{save as} action.
+    \value DocumentSend         The icon for the \e{send} action.
+    \value EditClear            The icon for the \e{clear} action.
+    \value EditCopy             The icon for the \e{copy} action.
+    \value EditCut              The icon for the \e{cut} action.
+    \value EditDelete           The icon for the \e{delete} action.
+    \value EditFind             The icon for the \e{find} action.
+    \value EditPaste            The icon for the \e{paste} action.
+    \value EditRedo             The icon for the \e{redo} action.
+    \value EditSelectAll        The icon for the \e{select all} action.
+    \value EditUndo             The icon for the \e{undo} action.
+    \value FolderNew            The icon for creating a new folder.
+    \value FormatIndentLess     The icon for the \e{decrease indent formatting} action.
+    \value FormatIndentMore     The icon for the \e{increase indent formatting} action.
+    \value FormatJustifyCenter  The icon for the \e{center justification formatting} action.
+    \value FormatJustifyFill    The icon for the \e{fill justification formatting} action.
+    \value FormatJustifyLeft    The icon for the \e{left justification formatting} action.
+    \value FormatJustifyRight   The icon for the \e{right justification} action.
+    \value FormatTextDirectionLtr   The icon for the \e{left-to-right text formatting} action.
+    \value FormatTextDirectionRtl   The icon for the \e{right-to-left formatting} action.
+    \value FormatTextBold       The icon for the \e{bold text formatting} action.
+    \value FormatTextItalic     The icon for the \e{italic text formatting} action.
+    \value FormatTextUnderline  The icon for the \e{underlined text formatting} action.
+    \value FormatTextStrikethrough  The icon for the \e{strikethrough text formatting} action.
+    \value GoDown               The icon for the \e{go down in a list} action.
+    \value GoHome               The icon for the \e{go to home location} action.
+    \value GoNext               The icon for the \e{go to the next item in a list} action.
+    \value GoPrevious           The icon for the \e{go to the previous item in a list} action.
+    \value GoUp                 The icon for the \e{go up in a list} action.
+    \value HelpAbout            The icon for the \e{About} item in the Help menu.
+    \value HelpFaq              The icon for the \e{FAQ} item in the Help menu.
+    \value InsertImage          The icon for the \e{insert image} action of an application.
+    \value InsertLink           The icon for the \e{insert link} action of an application.
+    \value InsertText           The icon for the \e{insert text} action of an application.
+    \value ListAdd              The icon for the \e{add to list} action.
+    \value ListRemove           The icon for the \e{remove from list} action.
+    \value MailForward          The icon for the \e{forward} action.
+    \value MailMarkImportant    The icon for the \e{mark as important} action.
+    \value MailMarkRead         The icon for the \e{mark as read} action.
+    \value MailMarkUnread       The icon for the \e{mark as unread} action.
+    \value MailMessageNew       The icon for the \e{compose new mail} action.
+    \value MailReplyAll         The icon for the \e{reply to all} action.
+    \value MailReplySender      The icon for the \e{reply to sender} action.
+    \value MailSend             The icon for the \e{send} action.
+    \value MediaEject           The icon for the \e{eject} action of a media player or file manager.
+    \value MediaPlaybackPause   The icon for the \e{pause} action of a media player.
+    \value MediaPlaybackStart   The icon for the \e{start playback} action of a media player.
+    \value MediaPlaybackStop    The icon for the \e{stop} action of a media player.
+    \value MediaRecord          The icon for the \e{record} action of a media application.
+    \value MediaSeekBackward    The icon for the \e{seek backward} action of a media player.
+    \value MediaSeekForward     The icon for the \e{seek forward} action of a media player.
+    \value MediaSkipBackward    The icon for the \e{skip backward} action of a media player.
+    \value MediaSkipForward     The icon for the \e{skip forward} action of a media player.
+    \value ObjectRotateLeft     The icon for the \e{rotate left} action performed on an object.
+    \value ObjectRotateRight    The icon for the \e{rotate right} action performed on an object.
+    \value ProcessStop          The icon for the \e{stop action in applications with} actions that
+                                may take a while to process, such as web page loading in a browser.
+    \value SystemLockScreen     The icon for the \e{lock screen} action.
+    \value SystemLogOut         The icon for the \e{log out} action.
+    \value SystemSearch         The icon for the \e{search} action.
+    \value SystemReboot         The icon for the \e{reboot} action.
+    \value SystemShutdown       The icon for the \e{shutdown} action.
+    \value ToolsCheckSpelling   The icon for the \e{check spelling} action.
+    \value ViewFullscreen       The icon for the \e{fullscreen} action.
+    \value ViewRefresh          The icon for the \e{refresh} action.
+    \value ViewRestore          The icon for leaving the fullscreen view.
+    \value WindowClose          The icon for the \e{close window} action.
+    \value WindowNew            The icon for the \e{new window} action.
+    \value ZoomFitBest          The icon for the \e{best fit} action.
+    \value ZoomIn               The icon for the \e{zoom in} action.
+    \value ZoomOut              The icon for the \e{zoom out} action.
+
+    \value AudioCard            The icon for the audio rendering device.
+    \value AudioInputMicrophone The icon for the microphone audio input device.
+    \value Battery              The icon for the system battery device.
+    \value CameraPhoto          The icon for a digital still camera devices.
+    \value CameraVideo          The icon for a video camera device.
+    \value CameraWeb            The icon for a web camera device.
+    \value Computer             The icon for the computing device as a whole.
+    \value DriveHarddisk        The icon for hard disk drives.
+    \value DriveOptical         The icon for optical media drives such as CD and DVD.
+    \value InputGaming          The icon for the gaming input device.
+    \value InputKeyboard        The icon for the keyboard input device.
+    \value InputMouse           The icon for the mousing input device.
+    \value InputTablet          The icon for graphics tablet input devices.
+    \value MediaFlash           The icon for flash media, such as a memory stick.
+    \value MediaOptical         The icon for physical optical media such as CD and DVD.
+    \value MediaTape            The icon for generic physical tape media.
+    \value MultimediaPlayer     The icon for generic multimedia playing devices.
+    \value NetworkWired         The icon for wired network connections.
+    \value NetworkWireless      The icon for wireless network connections.
+    \value Phone                The icon for phone devices.
+    \value Printer              The icon for a printer device.
+    \value Scanner              The icon for a scanner device.
+    \value VideoDisplay         The icon for the monitor that video gets displayed on.
+
+    \value AppointmentMissed    The icon for when an appointment was missed.
+    \value AppointmentSoon      The icon for when an appointment will occur soon.
+    \value AudioVolumeHigh      The icon used to indicate high audio volume.
+    \value AudioVolumeLow       The icon used to indicate low audio volume.
+    \value AudioVolumeMedium    The icon used to indicate medium audio volume.
+    \value AudioVolumeMuted     The icon used to indicate the muted state for audio playback.
+    \value BatteryCaution       The icon used when the battery is below 40%.
+    \value BatteryLow           The icon used when the battery is below 20%.
+    \value DialogError          The icon used when a dialog is opened to explain an error
+                                condition to the user.
+    \value DialogInformation    The icon used when a dialog is opened to give information to the
+                                user that may be pertinent to the requested action.
+    \value DialogPassword       The icon used when a dialog requesting the authentication
+                                credentials for a user is opened.
+    \value DialogQuestion       The icon used when a dialog is opened to ask a simple question
+                                to the user.
+    \value DialogWarning        The icon used when a dialog is opened to warn the user of
+                                impending issues with the requested action.
+    \value FolderDragAccept     The icon used for a folder while an acceptable object is being
+                                dragged onto it.
+    \value FolderOpen           The icon used for folders, while their contents are being displayed
+                                within the same window.
+    \value FolderVisiting       The icon used for folders, while their contents are being displayed
+                                in another window.
+    \value ImageLoading         The icon used while another image is being loaded.
+    \value ImageMissing         The icon used when another image could not be loaded.
+    \value MailAttachment       The icon for a message that contains attachments.
+    \value MailUnread           The icon for an unread message.
+    \value MailRead             The icon for a read message.
+    \value MailReplied          The icon for a message that has been replied to.
+    \value MediaPlaylistRepeat  The icon for the repeat mode of a media player.
+    \value MediaPlaylistShuffle The icon for the shuffle mode of a media player.
+    \value NetworkOffline       The icon used to indicate that the device is not connected to the
+                                network.
+    \value PrinterPrinting      The icon used while a print job is successfully being spooled to a
+                                printing device.
+    \value SecurityHigh         The icon used to indicate that the security level of an item is
+                                known to be high.
+    \value SecurityLow          The icon used to indicate that the security level of an item is
+                                known to be low.
+    \value SoftwareUpdateAvailable  The icon used to indicate that an update is available.
+    \value SoftwareUpdateUrgent The icon used to indicate that an urgent update is available.
+    \value SyncError            The icon used when an error occurs while attempting to synchronize
+                                data across devices.
+    \value SyncSynchronizing    The icon used while data is successfully synchronizing across
+                                devices.
+    \value UserAvailable        The icon used to indicate that a user is available.
+    \value UserOffline          The icon used to indicate that a user is not available.
+    \value WeatherClear         The icon used to indicate that the sky is clear.
+    \value WeatherClearNight    The icon used to indicate that the sky is clear
+                                during the night.
+    \value WeatherFewClouds     The icon used to indicate that the sky is partly cloudy.
+    \value WeatherFewCloudsNight    The icon used to indicate that the sky is partly cloudy
+                                during the night.
+    \value WeatherFog           The icon used to indicate that the weather is foggy.
+    \value WeatherShowers       The icon used to indicate that rain showers are occurring.
+    \value WeatherSnow          The icon used to indicate that snow is falling.
+    \value WeatherStorm         The icon used to indicate that the weather is stormy.
+
+    \omitvalue NThemeIcons
+
+    \sa {QIcon#Creating an icon from a theme or icon library},
+        fromTheme()
+*/
+
+/*!
+    \since 6.7
+    \overload
+
+    Returns \c true if there is an icon available for \a icon in the
+    current icon theme or any of the fallbacks, as described by
+    fromTheme(), otherwise returns \c false.
+
+    \sa fromTheme()
+*/
+bool QIcon::hasThemeIcon(QIcon::ThemeIcon icon)
+{
+    return hasThemeIcon(themeIconName(icon));
+}
+
+/*!
+    \fn QIcon QIcon::fromTheme(QIcon::ThemeIcon icon)
+    \fn QIcon QIcon::fromTheme(QIcon::ThemeIcon icon, const QIcon &fallback)
+    \since 6.7
+    \overload
+
+    Returns the QIcon corresponding to \a icon in the
+    \l{themeName()}{current icon theme}.
+
+    If the current theme does not provide an icon for \a icon,
+    the \l{fallbackThemeName()}{fallback icon theme} is consulted,
+    before falling back to looking up standalone icon files in the
+    \l{QIcon::fallbackSearchPaths()}{fallback icon search path}.
+    Finally, the platform's native icon library is consulted.
+
+    If no icon is found and a \a fallback is provided, \a fallback is
+    returned. This is useful to provide a guaranteed fallback, regardless
+    of whether the current set of icon themes and fallbacks paths
+    support the requested icon.
+
+    If no icon is found and no \a fallback is provided, a default
+    constructed, empty QIcon is returned.
+*/
+QIcon QIcon::fromTheme(QIcon::ThemeIcon icon)
+{
+    return fromTheme(themeIconName(icon));
+}
+
+QIcon QIcon::fromTheme(QIcon::ThemeIcon icon, const QIcon &fallback)
+{
+    return fromTheme(themeIconName(icon), fallback);
 }
 
 /*!
@@ -1365,10 +1839,12 @@ bool QIcon::hasThemeIcon(const QString &name)
 */
 void QIcon::setIsMask(bool isMask)
 {
+    if (isMask == (d && d->is_mask))
+        return;
+
+    detach();
     if (!d)
         d = new QIconPrivate(new QPixmapIconEngine);
-    else
-        detach();
     d->is_mask = isMask;
 }
 
@@ -1395,7 +1871,6 @@ bool QIcon::isMask() const
 /*!
     \fn QDataStream &operator<<(QDataStream &stream, const QIcon &icon)
     \relates QIcon
-    \since 4.2
 
     Writes the given \a icon to the given \a stream as a PNG
     image. If the icon contains more than one image, all images will
@@ -1436,7 +1911,6 @@ QDataStream &operator<<(QDataStream &s, const QIcon &icon)
 /*!
     \fn QDataStream &operator>>(QDataStream &stream, QIcon &icon)
     \relates QIcon
-    \since 4.2
 
     Reads an image, or a set of images, from the given \a stream into
     the given \a icon.
@@ -1448,16 +1922,16 @@ QDataStream &operator>>(QDataStream &s, QIcon &icon)
         icon = QIcon();
         QString key;
         s >> key;
-        if (key == QLatin1String("QPixmapIconEngine")) {
+        if (key == "QPixmapIconEngine"_L1) {
             icon.d = new QIconPrivate(new QPixmapIconEngine);
             icon.d->engine->read(s);
-        } else if (key == QLatin1String("QIconLoaderEngine")) {
-            icon.d = new QIconPrivate(new QIconLoaderEngine());
+        } else if (key == "QIconLoaderEngine"_L1 || key == "QThemeIconEngine"_L1) {
+            icon.d = new QIconPrivate(new QThemeIconEngine);
             icon.d->engine->read(s);
         } else {
-            const int index = loader()->indexOf(key);
+            const int index = iceLoader()->indexOf(key);
             if (index != -1) {
-                if (QIconEnginePlugin *factory = qobject_cast<QIconEnginePlugin*>(loader()->instance(index))) {
+                if (QIconEnginePlugin *factory = qobject_cast<QIconEnginePlugin*>(iceLoader()->instance(index))) {
                     if (QIconEngine *engine= factory->create()) {
                         icon.d = new QIconPrivate(engine);
                         engine->read(s);
@@ -1548,17 +2022,17 @@ QString qt_findAtNxFile(const QString &baseFileName, qreal targetDevicePixelRati
     if (disableNxImageLoading)
         return baseFileName;
 
-    int dotIndex = baseFileName.lastIndexOf(QLatin1Char('.'));
+    int dotIndex = baseFileName.lastIndexOf(u'.');
     if (dotIndex == -1) { /* no dot */
         dotIndex = baseFileName.size(); /* append */
-    } else if (dotIndex >= 2 && baseFileName[dotIndex - 1] == QLatin1Char('9')
-        && baseFileName[dotIndex - 2] == QLatin1Char('.')) {
+    } else if (dotIndex >= 2 && baseFileName[dotIndex - 1] == u'9'
+        && baseFileName[dotIndex - 2] == u'.') {
         // If the file has a .9.* (9-patch image) extension, we must ensure that the @nx goes before it.
         dotIndex -= 2;
     }
 
     QString atNxfileName = baseFileName;
-    atNxfileName.insert(dotIndex, QLatin1String("@2x"));
+    atNxfileName.insert(dotIndex, "@2x"_L1);
     // Check for @Nx, ..., @3x, @2x file versions,
     for (int n = qMin(qCeil(targetDevicePixelRatio), 9); n > 1; --n) {
         atNxfileName[dotIndex + 1] = QLatin1Char('0' + n);

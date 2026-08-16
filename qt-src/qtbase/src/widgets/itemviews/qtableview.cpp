@@ -1,46 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtableview.h"
 
 #include <qheaderview.h>
-#include <qitemdelegate.h>
+#include <qabstractitemdelegate.h>
 #include <qapplication.h>
 #include <qpainter.h>
 #include <qstyle.h>
@@ -55,7 +19,7 @@
 #include <private/qtableview_p.h>
 #include <private/qheaderview_p.h>
 #include <private/qscrollbar_p.h>
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 #include <qaccessible.h>
 #endif
 
@@ -79,7 +43,7 @@ void QSpanCollection::addSpan(QSpanCollection::Span *span)
             const SubIndex previousList = it_y.value();
             for (Span *s : previousList) {
                 //If a subspans intersect the row, we need to split it into subspans
-                if(s->bottom() >= span->top())
+                if (s->bottom() >= span->top())
                     sub_index.insert(-s->left(), s);
             }
         }
@@ -90,7 +54,7 @@ void QSpanCollection::addSpan(QSpanCollection::Span *span)
     //insert the span as supspan in all the lists that intesects the span
     while(-it_y.key() <= span->bottom()) {
         (*it_y).insert(-span->left(), span);
-        if(it_y == index.begin())
+        if (it_y == index.begin())
             break;
         --it_y;
     }
@@ -112,7 +76,7 @@ void QSpanCollection::updateSpan(QSpanCollection::Span *span, int old_height)
         Q_ASSERT(it_y != index.end()); //it_y must exist since the span is in the list
         while (-it_y.key() <= span->bottom()) {
             (*it_y).insert(-span->left(), span);
-            if(it_y == index.begin())
+            if (it_y == index.begin())
                 break;
             --it_y;
         }
@@ -123,12 +87,13 @@ void QSpanCollection::updateSpan(QSpanCollection::Span *span, int old_height)
         while (-it_y.key() <= span->top() + old_height -1) {
             if (-it_y.key() > span->bottom()) {
                 int removed = (*it_y).remove(-span->left());
-                Q_ASSERT(removed == 1); Q_UNUSED(removed);
+                Q_ASSERT(removed == 1);
+                Q_UNUSED(removed);
                 if (it_y->isEmpty()) {
                     it_y = index.erase(it_y);
                 }
             }
-            if(it_y == index.begin())
+            if (it_y == index.begin())
                 break;
             --it_y;
         }
@@ -176,7 +141,7 @@ QSet<QSpanCollection::Span *> QSpanCollection::spansInRect(int x, int y, int w, 
 {
     QSet<Span *> list;
     Index::const_iterator it_y = index.lowerBound(-y);
-    if(it_y == index.end())
+    if (it_y == index.end())
         --it_y;
     while(-it_y.key() <= y + h) {
         SubIndex::const_iterator it_x = (*it_y).lowerBound(-x);
@@ -190,7 +155,7 @@ QSet<QSpanCollection::Span *> QSpanCollection::spansInRect(int x, int y, int w, 
                 break;
             --it_x;
         }
-        if(it_y == index.begin())
+        if (it_y == index.begin())
             break;
         --it_y;
     }
@@ -204,6 +169,13 @@ QDebug operator<<(QDebug str, const QSpanCollection::Span &span)
 {
     str << '(' << span.top() << ',' << span.left() << ',' << span.bottom() << ',' << span.right() << ')';
     return str;
+}
+
+QDebug operator<<(QDebug debug, const QSpanCollection::SpanList &spans)
+{
+    for (const auto *span : spans)
+        debug << span << *span;
+    return debug;
 }
 #endif
 
@@ -235,8 +207,7 @@ void QSpanCollection::updateInsertedRows(int start, int end)
 
 #ifdef DEBUG_SPAN_UPDATE
     qDebug("After");
-    foreach (QSpanCollection::Span *span, spans)
-        qDebug() << span << *span;
+    qDebug() << spans;
 #endif
 
     for (Index::iterator it_y = index.begin(); it_y != index.end(); ) {
@@ -282,8 +253,7 @@ void QSpanCollection::updateInsertedColumns(int start, int end)
 
 #ifdef DEBUG_SPAN_UPDATE
     qDebug("After");
-    foreach (QSpanCollection::Span *span, spans)
-        qDebug() << span << *span;
+    qDebug() << spans;
 #endif
 
     for (Index::iterator it_y = index.begin(); it_y != index.end(); ++it_y) {
@@ -387,8 +357,7 @@ void QSpanCollection::updateRemovedRows(int start, int end)
 
 #ifdef DEBUG_SPAN_UPDATE
     qDebug("After");
-    foreach (QSpanCollection::Span *span, spans)
-        qDebug() << span << *span;
+    qDebug() << spans;
 #endif
     if (spans.empty()) {
         qDeleteAll(spansToBeDeleted);
@@ -455,8 +424,7 @@ void QSpanCollection::updateRemovedRows(int start, int end)
 #ifdef DEBUG_SPAN_UPDATE
     qDebug() << index;
     qDebug("Deleted");
-    foreach (QSpanCollection::Span *span, spansToBeDeleted)
-        qDebug() << span << *span;
+    qDebug() << spansToBeDeleted;
 #endif
     qDeleteAll(spansToBeDeleted);
 }
@@ -514,8 +482,7 @@ void QSpanCollection::updateRemovedColumns(int start, int end)
 
 #ifdef DEBUG_SPAN_UPDATE
     qDebug("After");
-    foreach (QSpanCollection::Span *span, spans)
-        qDebug() << span << *span;
+    qDebug() << spans;
 #endif
     if (spans.empty()) {
         qDeleteAll(toBeDeleted);
@@ -534,8 +501,7 @@ void QSpanCollection::updateRemovedColumns(int start, int end)
 #ifdef DEBUG_SPAN_UPDATE
     qDebug() << index;
     qDebug("Deleted");
-    foreach (QSpanCollection::Span *span, toBeDeleted)
-        qDebug() << span << *span;
+    qDebug() << toBeDeleted;
 #endif
     qDeleteAll(toBeDeleted);
 }
@@ -589,7 +555,7 @@ public:
     QTableCornerButton(QWidget *parent) : QAbstractButton(parent) {}
     void paintEvent(QPaintEvent*) override {
         QStyleOptionHeader opt;
-        opt.init(this);
+        opt.initFrom(this);
         QStyle::State state = QStyle::State_None;
         if (isEnabled())
             state |= QStyle::State_Enabled;
@@ -627,7 +593,25 @@ void QTableViewPrivate::init()
 #if QT_CONFIG(abstractbutton)
     cornerWidget = new QTableCornerButton(q);
     cornerWidget->setFocusPolicy(Qt::NoFocus);
-    QObject::connect(cornerWidget, SIGNAL(clicked()), q, SLOT(selectAll()));
+    cornerWidgetConnection = QObject::connect(
+          cornerWidget, &QTableCornerButton::clicked,
+          q, &QTableView::selectAll);
+#endif
+}
+
+void QTableViewPrivate::clearConnections()
+{
+    for (const QMetaObject::Connection &connection : modelConnections)
+        QObject::disconnect(connection);
+    for (const QMetaObject::Connection &connection : verHeaderConnections)
+        QObject::disconnect(connection);
+    for (const QMetaObject::Connection &connection : horHeaderConnections)
+        QObject::disconnect(connection);
+    for (const QMetaObject::Connection &connection : dynHorHeaderConnections)
+        QObject::disconnect(connection);
+    QObject::disconnect(selectionmodelConnection);
+#if QT_CONFIG(abstractbutton)
+    QObject::disconnect(cornerWidgetConnection);
 #endif
 }
 
@@ -667,6 +651,52 @@ void QTableViewPrivate::trimHiddenSelections(QItemSelectionRange *range) const
     QModelIndex bottomRight = model->index(bottom, right, range->parent());
     QModelIndex topLeft = model->index(top, left, range->parent());
     *range = QItemSelectionRange(topLeft, bottomRight);
+}
+
+QRect QTableViewPrivate::intersectedRect(const QRect rect, const QModelIndex &topLeft, const QModelIndex &bottomRight) const
+{
+    Q_Q(const QTableView);
+
+    using minMaxPair = std::pair<int, int>;
+    const auto calcMinMax = [q](QHeaderView *hdr, int startIdx, int endIdx, minMaxPair bounds) -> minMaxPair
+    {
+        minMaxPair ret(std::numeric_limits<int>::max(), std::numeric_limits<int>::min());
+        if (hdr->sectionsMoved()) {
+            for (int i = startIdx; i <= endIdx; ++i) {
+                const int start = hdr->sectionViewportPosition(i);
+                const int end = start + hdr->sectionSize(i);
+                ret.first = std::min(start, ret.first);
+                ret.second = std::max(end, ret.second);
+                if (ret.first <= bounds.first && ret.second >= bounds.second)
+                    break;
+            }
+        } else {
+            if (q->isRightToLeft() && q->horizontalHeader() == hdr)
+                std::swap(startIdx, endIdx);
+            ret.first = hdr->sectionViewportPosition(startIdx);
+            ret.second = hdr->sectionViewportPosition(endIdx) +
+                         hdr->sectionSize(endIdx);
+        }
+        return ret;
+    };
+
+    const auto yVals = calcMinMax(verticalHeader, topLeft.row(), bottomRight.row(),
+                                  minMaxPair(rect.top(), rect.bottom()));
+    if (yVals.first == yVals.second) // all affected rows are hidden
+        return QRect();
+
+    // short circuit: check if no row is inside rect
+    const QRect colRect(QPoint(rect.left(), yVals.first),
+                        QPoint(rect.right(), yVals.second));
+    const QRect intersected = rect.intersected(colRect);
+    if (intersected.isNull())
+        return QRect();
+
+    const auto xVals = calcMinMax(horizontalHeader, topLeft.column(), bottomRight.column(),
+                                  minMaxPair(rect.left(), rect.right()));
+    const QRect updateRect(QPoint(xVals.first, yVals.first),
+                           QPoint(xVals.second, yVals.second));
+    return rect.intersected(updateRect);
 }
 
 /*!
@@ -871,13 +901,32 @@ void QTableViewPrivate::drawAndClipSpans(const QRegion &area, QPainter *painter,
         visibleSpans = spans.spansInRect(logicalColumn(firstVisualColumn), logicalRow(firstVisualRow),
                                          lastVisualColumn - firstVisualColumn + 1, lastVisualRow - firstVisualRow + 1);
     } else {
-        for(int x = firstVisualColumn; x <= lastVisualColumn; x++)
-            for(int y = firstVisualRow; y <= lastVisualRow; y++)
-                visibleSpans.insert(spans.spanAt(x,y));
-        visibleSpans.remove(nullptr);
+        // Any cell outside the viewport, on the top or left, can still end up visible inside the
+        // viewport if is has a span. Calculating if a spanned cell overlaps with the viewport is
+        // "easy" enough when the columns (or rows) in the view are aligned with the columns
+        // in the model; In that case you know that if a column is outside the viewport on the
+        // right, it cannot affect the drawing of the cells inside the viewport, even with a span.
+        // And under that assumption, the spansInRect() function can be used (which is optimized
+        // to only iterate the spans that are close to the viewport).
+        // But when the view has rearranged the columns (or rows), this is no longer true. In that
+        // case, even if a column, according to the model, is outside the viewport on the right, it
+        // can still overlap with the viewport. This can happen if it was moved to the left of the
+        // viewport and one of its cells has a span. In that case we need to take the theoretically
+        // slower route and iterate through all the spans, and check if any of them overlaps with
+        // the viewport.
+        const auto spanList = spans.spans;
+        for (QSpanCollection::Span *span : spanList) {
+            const int spanVisualLeft = visualColumn(span->left());
+            const int spanVisualTop = visualRow(span->top());
+            const int spanVisualRight = spanVisualLeft + span->width() - 1;
+            const int spanVisualBottom = spanVisualTop + span->height() - 1;
+            if ((spanVisualLeft <= lastVisualColumn && spanVisualRight >= firstVisualColumn)
+                    && (spanVisualTop <= lastVisualRow && spanVisualBottom >= firstVisualRow))
+                visibleSpans.insert(span);
+        }
     }
 
-    for (QSpanCollection::Span *span : qAsConst(visibleSpans)) {
+    for (QSpanCollection::Span *span : std::as_const(visibleSpans)) {
         int row = span->top();
         int col = span->left();
         QModelIndex index = model->index(row, col, root);
@@ -926,9 +975,9 @@ void QTableViewPrivate::drawAndClipSpans(const QRegion &area, QPainter *painter,
   \internal
   Updates spans after row insertion.
 */
-void QTableViewPrivate::_q_updateSpanInsertedRows(const QModelIndex &parent, int start, int end)
+void QTableViewPrivate::updateSpanInsertedRows(const QModelIndex &parent, int start, int end)
 {
-    Q_UNUSED(parent)
+    Q_UNUSED(parent);
     spans.updateInsertedRows(start, end);
 }
 
@@ -936,9 +985,9 @@ void QTableViewPrivate::_q_updateSpanInsertedRows(const QModelIndex &parent, int
   \internal
   Updates spans after column insertion.
 */
-void QTableViewPrivate::_q_updateSpanInsertedColumns(const QModelIndex &parent, int start, int end)
+void QTableViewPrivate::updateSpanInsertedColumns(const QModelIndex &parent, int start, int end)
 {
-    Q_UNUSED(parent)
+    Q_UNUSED(parent);
     spans.updateInsertedColumns(start, end);
 }
 
@@ -946,9 +995,9 @@ void QTableViewPrivate::_q_updateSpanInsertedColumns(const QModelIndex &parent, 
   \internal
   Updates spans after row removal.
 */
-void QTableViewPrivate::_q_updateSpanRemovedRows(const QModelIndex &parent, int start, int end)
+void QTableViewPrivate::updateSpanRemovedRows(const QModelIndex &parent, int start, int end)
 {
-    Q_UNUSED(parent)
+    Q_UNUSED(parent);
     spans.updateRemovedRows(start, end);
 }
 
@@ -956,9 +1005,9 @@ void QTableViewPrivate::_q_updateSpanRemovedRows(const QModelIndex &parent, int 
   \internal
   Updates spans after column removal.
 */
-void QTableViewPrivate::_q_updateSpanRemovedColumns(const QModelIndex &parent, int start, int end)
+void QTableViewPrivate::updateSpanRemovedColumns(const QModelIndex &parent, int start, int end)
 {
-    Q_UNUSED(parent)
+    Q_UNUSED(parent);
     spans.updateRemovedColumns(start, end);
 }
 
@@ -966,7 +1015,7 @@ void QTableViewPrivate::_q_updateSpanRemovedColumns(const QModelIndex &parent, i
   \internal
   Sort the model when the header sort indicator changed
 */
-void QTableViewPrivate::_q_sortIndicatorChanged(int column, Qt::SortOrder order)
+void QTableViewPrivate::sortIndicatorChanged(int column, Qt::SortOrder order)
 {
     model->sort(column, order);
 }
@@ -1003,7 +1052,7 @@ void QTableViewPrivate::drawCell(QPainter *painter, const QStyleOptionViewItem &
 
     q->style()->drawPrimitive(QStyle::PE_PanelItemViewRow, &opt, painter, q);
 
-    q->itemDelegate(index)->paint(painter, opt, index);
+    q->itemDelegateForIndex(index)->paint(painter, opt, index);
 }
 
 /*!
@@ -1013,6 +1062,7 @@ void QTableViewPrivate::drawCell(QPainter *painter, const QStyleOptionViewItem &
 int QTableViewPrivate::widthHintForIndex(const QModelIndex &index, int hint, const QStyleOptionViewItem &option) const
 {
     Q_Q(const QTableView);
+    const int oldHint = hint;
     QWidget *editor = editorForIndex(index).widget.data();
     if (editor && persistent.contains(editor)) {
         hint = qMax(hint, editor->sizeHint().width());
@@ -1020,7 +1070,18 @@ int QTableViewPrivate::widthHintForIndex(const QModelIndex &index, int hint, con
         int max = editor->maximumSize().width();
         hint = qBound(min, hint, max);
     }
-    hint = qMax(hint, q->itemDelegate(index)->sizeHint(option, index).width());
+    hint = qMax(hint, q->itemDelegateForIndex(index)->sizeHint(option, index).width());
+
+    if (hasSpans()) {
+        auto span = spans.spanAt(index.column(), index.row());
+        if (span && span->m_left == index.column() && span->m_top == index.row()) {
+            // spans are screwed up when sections are moved
+            const auto left = logicalColumn(span->m_left);
+            for (int i = 1; i <= span->width(); ++i)
+               hint -= q->columnWidth(visualColumn(left + i));
+        }
+        hint = std::max(hint, oldHint);
+    }
     return hint;
 }
 
@@ -1042,7 +1103,7 @@ int QTableViewPrivate::heightHintForIndex(const QModelIndex &index, int hint, QS
     if (wrapItemText) {// for wrapping boundaries
         option.rect.setY(q->rowViewportPosition(index.row()));
         int height = q->rowHeight(index.row());
-        // if the option.height == 0 then q->itemDelegate(index)->sizeHint(option, index) will be wrong.
+        // if the option.height == 0 then q->itemDelegateForIndex(index)->sizeHint(option, index) will be wrong.
         // The option.height == 0 is used to conclude that the text is not wrapped, and hence it will
         // (exactly like widthHintForIndex) return a QSize with a long width (that we don't use) -
         // and the height of the text if it was/is on one line.
@@ -1053,11 +1114,16 @@ int QTableViewPrivate::heightHintForIndex(const QModelIndex &index, int hint, QS
         option.rect.setHeight(height);
         option.rect.setX(q->columnViewportPosition(index.column()));
         option.rect.setWidth(q->columnWidth(index.column()));
+        if (hasSpans()) {
+            auto span = spans.spanAt(index.column(), index.row());
+            if (span && span->m_left == index.column() && span->m_top == index.row())
+                option.rect.setWidth(std::max(option.rect.width(), visualSpanRect(*span).width()));
+        }
         // 1px less space when grid is shown (see drawCell)
         if (showGrid)
             option.rect.setWidth(option.rect.width() - 1);
     }
-    hint = qMax(hint, q->itemDelegate(index)->sizeHint(option, index).height());
+    hint = qMax(hint, q->itemDelegateForIndex(index)->sizeHint(option, index).height());
     return hint;
 }
 
@@ -1072,7 +1138,7 @@ int QTableViewPrivate::heightHintForIndex(const QModelIndex &index, int hint, QS
     \ingroup advanced
     \inmodule QtWidgets
 
-    \image windows-tableview.png
+    \image fusion-tableview.png
 
     A QTableView implements a table view that displays items from a
     model. This class is used to provide standard tables that were
@@ -1101,6 +1167,8 @@ int QTableViewPrivate::heightHintForIndex(const QModelIndex &index, int hint, QS
     table can be found by using rowHeight(); similarly, the width of
     columns can be found using columnWidth().  Since both of these are plain
     widgets, you can hide either of them using their hide() functions.
+    Each header is configured with its \l{QHeaderView::}{highlightSections}
+    and \l{QHeaderView::}{sectionsClickable} properties set to \c true.
 
     Rows and columns can be hidden and shown with hideRow(), hideColumn(),
     showRow(), and showColumn(). They can be selected with selectRow()
@@ -1139,7 +1207,7 @@ int QTableViewPrivate::heightHintForIndex(const QModelIndex &index, int hint, QS
     operations between x-coordinates and column indexes.
 
     \sa QTableWidget, {View Classes}, QAbstractItemModel, QAbstractItemView,
-        {Chart Example}, {Pixelator Example}, {Table Model Example}
+        {Table Model Example}
 */
 
 /*!
@@ -1170,6 +1238,8 @@ QTableView::QTableView(QTableViewPrivate &dd, QWidget *parent)
 */
 QTableView::~QTableView()
 {
+    Q_D(QTableView);
+    d->clearConnections();
 }
 
 /*!
@@ -1193,28 +1263,23 @@ void QTableView::setModel(QAbstractItemModel *model)
         return;
     //let's disconnect from the old model
     if (d->model && d->model != QAbstractItemModelPrivate::staticEmptyModel()) {
-        disconnect(d->model, SIGNAL(rowsInserted(QModelIndex,int,int)),
-                this, SLOT(_q_updateSpanInsertedRows(QModelIndex,int,int)));
-        disconnect(d->model, SIGNAL(columnsInserted(QModelIndex,int,int)),
-                this, SLOT(_q_updateSpanInsertedColumns(QModelIndex,int,int)));
-        disconnect(d->model, SIGNAL(rowsRemoved(QModelIndex,int,int)),
-                this, SLOT(_q_updateSpanRemovedRows(QModelIndex,int,int)));
-        disconnect(d->model, SIGNAL(columnsRemoved(QModelIndex,int,int)),
-                this, SLOT(_q_updateSpanRemovedColumns(QModelIndex,int,int)));
+        for (const QMetaObject::Connection &connection : d->modelConnections)
+              disconnect(connection);
     }
     if (d->selectionModel) { // support row editing
-        disconnect(d->selectionModel, SIGNAL(currentRowChanged(QModelIndex,QModelIndex)),
-                   d->model, SLOT(submit()));
+        disconnect(d->selectionmodelConnection);
     }
     if (model) { //and connect to the new one
-        connect(model, SIGNAL(rowsInserted(QModelIndex,int,int)),
-                this, SLOT(_q_updateSpanInsertedRows(QModelIndex,int,int)));
-        connect(model, SIGNAL(columnsInserted(QModelIndex,int,int)),
-                this, SLOT(_q_updateSpanInsertedColumns(QModelIndex,int,int)));
-        connect(model, SIGNAL(rowsRemoved(QModelIndex,int,int)),
-                this, SLOT(_q_updateSpanRemovedRows(QModelIndex,int,int)));
-        connect(model, SIGNAL(columnsRemoved(QModelIndex,int,int)),
-                this, SLOT(_q_updateSpanRemovedColumns(QModelIndex,int,int)));
+        d->modelConnections = {
+            QObjectPrivate::connect(model, &QAbstractItemModel::rowsInserted,
+                                    d, &QTableViewPrivate::updateSpanInsertedRows),
+            QObjectPrivate::connect(model, &QAbstractItemModel::columnsInserted,
+                                    d, &QTableViewPrivate::updateSpanInsertedColumns),
+            QObjectPrivate::connect(model, &QAbstractItemModel::rowsRemoved,
+                                    d, &QTableViewPrivate::updateSpanRemovedRows),
+            QObjectPrivate::connect(model, &QAbstractItemModel::columnsRemoved,
+                                    d, &QTableViewPrivate::updateSpanRemovedColumns)
+        };
     }
     d->verticalHeader->setModel(model);
     d->horizontalHeader->setModel(model);
@@ -1256,8 +1321,7 @@ void QTableView::setSelectionModel(QItemSelectionModel *selectionModel)
     Q_ASSERT(selectionModel);
     if (d->selectionModel) {
         // support row editing
-        disconnect(d->selectionModel, SIGNAL(currentRowChanged(QModelIndex,QModelIndex)),
-                   d->model, SLOT(submit()));
+        disconnect(d->selectionmodelConnection);
     }
 
     d->verticalHeader->setSelectionModel(selectionModel);
@@ -1266,8 +1330,9 @@ void QTableView::setSelectionModel(QItemSelectionModel *selectionModel)
 
     if (d->selectionModel) {
         // support row editing
-        connect(d->selectionModel, SIGNAL(currentRowChanged(QModelIndex,QModelIndex)),
-                d->model, SLOT(submit()));
+        d->selectionmodelConnection =
+            connect(d->selectionModel, &QItemSelectionModel::currentRowChanged,
+                    d->model, &QAbstractItemModel::submit);
     }
 }
 
@@ -1304,6 +1369,8 @@ void QTableView::setHorizontalHeader(QHeaderView *header)
 
     if (!header || header == d->horizontalHeader)
         return;
+    for (const QMetaObject::Connection &connection : d->horHeaderConnections)
+        disconnect(connection);
     if (d->horizontalHeader && d->horizontalHeader->parent() == this)
         delete d->horizontalHeader;
     d->horizontalHeader = header;
@@ -1315,18 +1382,18 @@ void QTableView::setHorizontalHeader(QHeaderView *header)
             d->horizontalHeader->setSelectionModel(d->selectionModel);
     }
 
-    connect(d->horizontalHeader,SIGNAL(sectionResized(int,int,int)),
-            this, SLOT(columnResized(int,int,int)));
-    connect(d->horizontalHeader, SIGNAL(sectionMoved(int,int,int)),
-            this, SLOT(columnMoved(int,int,int)));
-    connect(d->horizontalHeader, SIGNAL(sectionCountChanged(int,int)),
-            this, SLOT(columnCountChanged(int,int)));
-    connect(d->horizontalHeader, SIGNAL(sectionPressed(int)), this, SLOT(selectColumn(int)));
-    connect(d->horizontalHeader, SIGNAL(sectionEntered(int)), this, SLOT(_q_selectColumn(int)));
-    connect(d->horizontalHeader, SIGNAL(sectionHandleDoubleClicked(int)),
-            this, SLOT(resizeColumnToContents(int)));
-    connect(d->horizontalHeader, SIGNAL(geometriesChanged()), this, SLOT(updateGeometries()));
-
+    d->horHeaderConnections = {
+        connect(d->horizontalHeader,&QHeaderView::sectionResized,
+                this, &QTableView::columnResized),
+        connect(d->horizontalHeader, &QHeaderView::sectionMoved,
+                this, &QTableView::columnMoved),
+        connect(d->horizontalHeader, &QHeaderView::sectionCountChanged,
+                this, &QTableView::columnCountChanged),
+        connect(d->horizontalHeader, &QHeaderView::sectionHandleDoubleClicked,
+                this, &QTableView::resizeColumnToContents),
+        connect(d->horizontalHeader, &QHeaderView::geometriesChanged,
+                this, &QTableView::updateGeometries),
+    };
     //update the sorting enabled states on the new header
     setSortingEnabled(d->sortingEnabled);
 }
@@ -1342,6 +1409,8 @@ void QTableView::setVerticalHeader(QHeaderView *header)
 
     if (!header || header == d->verticalHeader)
         return;
+    for (const QMetaObject::Connection &connection : d->verHeaderConnections)
+        disconnect(connection);
     if (d->verticalHeader && d->verticalHeader->parent() == this)
         delete d->verticalHeader;
     d->verticalHeader = header;
@@ -1353,21 +1422,26 @@ void QTableView::setVerticalHeader(QHeaderView *header)
             d->verticalHeader->setSelectionModel(d->selectionModel);
     }
 
-    connect(d->verticalHeader, SIGNAL(sectionResized(int,int,int)),
-            this, SLOT(rowResized(int,int,int)));
-    connect(d->verticalHeader, SIGNAL(sectionMoved(int,int,int)),
-            this, SLOT(rowMoved(int,int,int)));
-    connect(d->verticalHeader, SIGNAL(sectionCountChanged(int,int)),
-            this, SLOT(rowCountChanged(int,int)));
-    connect(d->verticalHeader, SIGNAL(sectionPressed(int)), this, SLOT(selectRow(int)));
-    connect(d->verticalHeader, SIGNAL(sectionEntered(int)), this, SLOT(_q_selectRow(int)));
-    connect(d->verticalHeader, SIGNAL(sectionHandleDoubleClicked(int)),
-            this, SLOT(resizeRowToContents(int)));
-    connect(d->verticalHeader, SIGNAL(geometriesChanged()), this, SLOT(updateGeometries()));
+    d->verHeaderConnections = {
+        connect(d->verticalHeader, &QHeaderView::sectionResized,
+                this, &QTableView::rowResized),
+        connect(d->verticalHeader, &QHeaderView::sectionMoved,
+                this, &QTableView::rowMoved),
+        connect(d->verticalHeader, &QHeaderView::sectionCountChanged,
+                this, &QTableView::rowCountChanged),
+        connect(d->verticalHeader, &QHeaderView::sectionPressed,
+                this, &QTableView::selectRow),
+        connect(d->verticalHeader, &QHeaderView::sectionHandleDoubleClicked,
+                this, &QTableView::resizeRowToContents),
+        connect(d->verticalHeader, &QHeaderView::geometriesChanged,
+                this, &QTableView::updateGeometries),
+        connect(d->verticalHeader, &QHeaderView::sectionEntered,
+                this, [d](int row) { d->selectRow(row, false); })
+    };
 }
 
 /*!
-    \internal
+    \reimp
 
     Scroll the contents of the table view by (\a dx, \a dy).
 */
@@ -1412,11 +1486,10 @@ void QTableView::scrollContentsBy(int dx, int dy)
 /*!
   \reimp
 */
-QStyleOptionViewItem QTableView::viewOptions() const
+void QTableView::initViewItemOption(QStyleOptionViewItem *option) const
 {
-    QStyleOptionViewItem option = QAbstractItemView::viewOptions();
-    option.showDecorationSelected = true;
-    return option;
+    QAbstractItemView::initViewItemOption(option);
+    option->showDecorationSelected = true;
 }
 
 /*!
@@ -1426,13 +1499,14 @@ void QTableView::paintEvent(QPaintEvent *event)
 {
     Q_D(QTableView);
     // setup temp variables for the painting
-    QStyleOptionViewItem option = d->viewOptionsV1();
+    QStyleOptionViewItem option;
+    initViewItemOption(&option);
     const QPoint offset = d->scrollDelayOffset;
     const bool showGrid = d->showGrid;
     const int gridSize = showGrid ? 1 : 0;
     const int gridHint = style()->styleHint(QStyle::SH_Table_GridLineColor, &option, this);
     const QColor gridColor = QColor::fromRgba(static_cast<QRgb>(gridHint));
-    const QPen gridPen = QPen(gridColor, 0, d->gridStyle);
+    const QPen gridPen = QPen(gridColor, 1, d->gridStyle);
     const QHeaderView *verticalHeader = d->verticalHeader;
     const QHeaderView *horizontalHeader = d->horizontalHeader;
     const bool alternate = d->alternatingColors;
@@ -1566,7 +1640,8 @@ void QTableView::paintEvent(QPaintEvent *event)
                 int rowY = rowViewportPosition(row);
                 rowY += offset.y();
                 int rowh = rowHeight(row) - gridSize;
-                painter.drawLine(dirtyArea.left(), rowY + rowh, dirtyArea.right(), rowY + rowh);
+                QLineF line(dirtyArea.left(), rowY + rowh, dirtyArea.right(), rowY + rowh);
+                painter.drawLine(line.translated(0.5, 0.5));
             }
 
             // Paint each column
@@ -1578,7 +1653,30 @@ void QTableView::paintEvent(QPaintEvent *event)
                 colp += offset.x();
                 if (!rightToLeft)
                     colp +=  columnWidth(col) - gridSize;
-                painter.drawLine(colp, dirtyArea.top(), colp, dirtyArea.bottom());
+                QLineF line(colp, dirtyArea.top(), colp, dirtyArea.bottom());
+                painter.drawLine(line.translated(0.5, 0.5));
+            }
+            const bool drawWhenHidden = style()->styleHint(QStyle::SH_Table_AlwaysDrawLeftTopGridLines,
+                                                           &option, this);
+            if (drawWhenHidden && horizontalHeader->isHidden()) {
+                const int row = verticalHeader->logicalIndex(top);
+                if (!verticalHeader->isSectionHidden(row)) {
+                    const int rowY = rowViewportPosition(row) + offset.y();
+                    if (rowY == dirtyArea.top())
+                        painter.drawLine(dirtyArea.left(), rowY, dirtyArea.right(), rowY);
+                }
+            }
+            if (drawWhenHidden && verticalHeader->isHidden()) {
+                const int col = horizontalHeader->logicalIndex(left);
+                if (!horizontalHeader->isSectionHidden(col)) {
+                    int colX = columnViewportPosition(col) + offset.x();
+                    if (!isLeftToRight())
+                        colX += columnWidth(left) - 1;
+                    if (isLeftToRight() && colX == dirtyArea.left())
+                        painter.drawLine(colX, dirtyArea.top(), colX, dirtyArea.bottom());
+                    if (!isLeftToRight() && colX == dirtyArea.right())
+                        painter.drawLine(colX, dirtyArea.top(), colX, dirtyArea.bottom());
+                }
             }
             painter.setPen(old);
         }
@@ -1911,27 +2009,35 @@ void QTableView::setSelection(const QRect &rect, QItemSelectionModel::SelectionF
     if (!d->selectionModel || !tl.isValid() || !br.isValid() || !d->isIndexEnabled(tl) || !d->isIndexEnabled(br))
         return;
 
-    bool verticalMoved = verticalHeader()->sectionsMoved();
-    bool horizontalMoved = horizontalHeader()->sectionsMoved();
+    const bool verticalMoved = verticalHeader()->sectionsMoved();
+    const bool horizontalMoved = horizontalHeader()->sectionsMoved();
 
     QItemSelection selection;
+    int top = tl.row();
+    int bottom = br.row();
+    int left = tl.column();
+    int right = br.column();
 
     if (d->hasSpans()) {
         bool expanded;
-        int top = qMin(d->visualRow(tl.row()), d->visualRow(br.row()));
-        int left = qMin(d->visualColumn(tl.column()), d->visualColumn(br.column()));
-        int bottom = qMax(d->visualRow(tl.row()), d->visualRow(br.row()));
-        int right = qMax(d->visualColumn(tl.column()), d->visualColumn(br.column()));
+        // when the current selection does not intersect with any spans of merged cells,
+        // the range of selected cells must be the same as if there were no merged cells
+        bool intersectsSpan = false;
+        top = qMin(d->visualRow(tl.row()), d->visualRow(br.row()));
+        left = qMin(d->visualColumn(tl.column()), d->visualColumn(br.column()));
+        bottom = qMax(d->visualRow(tl.row()), d->visualRow(br.row()));
+        right = qMax(d->visualColumn(tl.column()), d->visualColumn(br.column()));
         do {
             expanded = false;
             for (QSpanCollection::Span *it : d->spans.spans) {
                 const QSpanCollection::Span &span = *it;
-                int t = d->visualRow(span.top());
-                int l = d->visualColumn(span.left());
-                int b = d->visualRow(d->rowSpanEndLogical(span.top(), span.height()));
-                int r = d->visualColumn(d->columnSpanEndLogical(span.left(), span.width()));
+                const int t = d->visualRow(span.top());
+                const int l = d->visualColumn(span.left());
+                const int b = d->visualRow(d->rowSpanEndLogical(span.top(), span.height()));
+                const int r = d->visualColumn(d->columnSpanEndLogical(span.left(), span.width()));
                 if ((t > bottom) || (l > right) || (top > b) || (left > r))
                     continue; // no intersect
+                intersectsSpan = true;
                 if (t < top) {
                     top = t;
                     expanded = true;
@@ -1952,20 +2058,34 @@ void QTableView::setSelection(const QRect &rect, QItemSelectionModel::SelectionF
                     break;
             }
         } while (expanded);
-         selection.reserve((right - left + 1) * (bottom - top + 1));
-         for (int horizontal = left; horizontal <= right; ++horizontal) {
-             int column = d->logicalColumn(horizontal);
-             for (int vertical = top; vertical <= bottom; ++vertical) {
-                 int row = d->logicalRow(vertical);
-                 QModelIndex index = d->model->index(row, column, d->root);
-                 selection.append(QItemSelectionRange(index));
-             }
-         }
+        if (!intersectsSpan) {
+            top = tl.row();
+            bottom = br.row();
+            left = tl.column();
+            right = br.column();
+        } else if (!verticalMoved && !horizontalMoved) {
+            // top/left/bottom/right are visual, update indexes
+            tl = d->model->index(top, left, d->root);
+            br = d->model->index(bottom, right, d->root);
+        }
     } else if (verticalMoved && horizontalMoved) {
-         int top = d->visualRow(tl.row());
-         int left = d->visualColumn(tl.column());
-         int bottom = d->visualRow(br.row());
-         int right = d->visualColumn(br.column());
+         top = d->visualRow(tl.row());
+         bottom = d->visualRow(br.row());
+         left = d->visualColumn(tl.column());
+         right = d->visualColumn(br.column());
+    } else if (horizontalMoved) {
+        top = tl.row();
+        bottom = br.row();
+        left = d->visualColumn(tl.column());
+        right = d->visualColumn(br.column());
+    } else if (verticalMoved) {
+        top = d->visualRow(tl.row());
+        bottom = d->visualRow(br.row());
+        left = tl.column();
+        right = br.column();
+    }
+
+    if (horizontalMoved && verticalMoved) {
          selection.reserve((right - left + 1) * (bottom - top + 1));
          for (int horizontal = left; horizontal <= right; ++horizontal) {
              int column = d->logicalColumn(horizontal);
@@ -1976,23 +2096,19 @@ void QTableView::setSelection(const QRect &rect, QItemSelectionModel::SelectionF
              }
          }
     } else if (horizontalMoved) {
-        int left = d->visualColumn(tl.column());
-        int right = d->visualColumn(br.column());
         selection.reserve(right - left + 1);
         for (int visual = left; visual <= right; ++visual) {
             int column = d->logicalColumn(visual);
-            QModelIndex topLeft = d->model->index(tl.row(), column, d->root);
-            QModelIndex bottomRight = d->model->index(br.row(), column, d->root);
+            QModelIndex topLeft = d->model->index(top, column, d->root);
+            QModelIndex bottomRight = d->model->index(bottom, column, d->root);
             selection.append(QItemSelectionRange(topLeft, bottomRight));
         }
     } else if (verticalMoved) {
-        int top = d->visualRow(tl.row());
-        int bottom = d->visualRow(br.row());
         selection.reserve(bottom - top + 1);
         for (int visual = top; visual <= bottom; ++visual) {
             int row = d->logicalRow(visual);
-            QModelIndex topLeft = d->model->index(row, tl.column(), d->root);
-            QModelIndex bottomRight = d->model->index(row, br.column(), d->root);
+            QModelIndex topLeft = d->model->index(row, left, d->root);
+            QModelIndex bottomRight = d->model->index(row, right, d->root);
             selection.append(QItemSelectionRange(topLeft, bottomRight));
         }
     } else { // nothing moved
@@ -2005,7 +2121,7 @@ void QTableView::setSelection(const QRect &rect, QItemSelectionModel::SelectionF
 }
 
 /*!
-    \internal
+    \reimp
 
     Returns the rectangle from the viewport of the items in the given
     \a selection.
@@ -2114,7 +2230,7 @@ QModelIndexList QTableView::selectedIndexes() const
     QModelIndexList modelSelected;
     if (d->selectionModel)
         modelSelected = d->selectionModel->selectedIndexes();
-    for (int i = 0; i < modelSelected.count(); ++i) {
+    for (int i = 0; i < modelSelected.size(); ++i) {
         QModelIndex index = modelSelected.at(i);
         if (!isIndexHidden(index) && index.parent() == d->root)
             viewSelected.append(index);
@@ -2305,7 +2421,8 @@ int QTableView::sizeHintForRow(int row) const
     if (right == -1) // the table don't have enough columns to fill the viewport
         right = d->model->columnCount(d->root) - 1;
 
-    QStyleOptionViewItem option = d->viewOptionsV1();
+    QStyleOptionViewItem option;
+    initViewItemOption(&option);
 
     int hint = 0;
     QModelIndex index;
@@ -2323,12 +2440,12 @@ int QTableView::sizeHintForRow(int row) const
             break;
     }
 
-    int actualRight = d->model->columnCount(d->root) - 1;
+    const int actualRight = d->model->columnCount(d->root) - 1;
     int idxLeft = left;
     int idxRight = column - 1;
 
-    if (maximumProcessCols == 0)
-        columnsProcessed = 0; // skip the while loop
+    if (maximumProcessCols == 0 || actualRight < idxLeft)
+        columnsProcessed = maximumProcessCols; // skip the while loop
 
     while (columnsProcessed != maximumProcessCols && (idxLeft > 0 || idxRight < actualRight)) {
         int logicalIdx  = -1;
@@ -2352,11 +2469,10 @@ int QTableView::sizeHintForRow(int row) const
                 break;
             }
         }
-        if (logicalIdx < 0)
-            continue;
-
-        index = d->model->index(row, logicalIdx, d->root);
-        hint = d->heightHintForIndex(index, hint, option);
+        if (logicalIdx >= 0) {
+            index = d->model->index(row, logicalIdx, d->root);
+            hint = d->heightHintForIndex(index, hint, option);
+        }
         ++columnsProcessed;
     }
 
@@ -2393,7 +2509,8 @@ int QTableView::sizeHintForColumn(int column) const
     if (!isVisible() || bottom == -1) // the table don't have enough rows to fill the viewport
         bottom = d->model->rowCount(d->root) - 1;
 
-    QStyleOptionViewItem option = d->viewOptionsV1();
+    QStyleOptionViewItem option;
+    initViewItemOption(&option);
 
     int hint = 0;
     int rowsProcessed = 0;
@@ -2411,12 +2528,12 @@ int QTableView::sizeHintForColumn(int column) const
             break;
     }
 
-    int actualBottom = d->model->rowCount(d->root) - 1;
+    const int actualBottom = d->model->rowCount(d->root) - 1;
     int idxTop = top;
     int idxBottom = row - 1;
 
-    if (maximumProcessRows == 0)
-        rowsProcessed = 0;  // skip the while loop
+    if (maximumProcessRows == 0 || actualBottom < idxTop)
+        rowsProcessed = maximumProcessRows;  // skip the while loop
 
     while (rowsProcessed != maximumProcessRows && (idxTop > 0 || idxBottom < actualBottom)) {
         int logicalIdx  = -1;
@@ -2440,11 +2557,10 @@ int QTableView::sizeHintForColumn(int column) const
                 break;
             }
         }
-        if (logicalIdx < 0)
-            continue;
-
-        index = d->model->index(logicalIdx, column, d->root);
-        hint = d->widthHintForIndex(index, hint, option);
+        if (logicalIdx >= 0) {
+            index = d->model->index(logicalIdx, column, d->root);
+            hint = d->widthHintForIndex(index, hint, option);
+        }
         ++rowsProcessed;
     }
 
@@ -2619,24 +2735,25 @@ void QTableView::setSortingEnabled(bool enable)
 {
     Q_D(QTableView);
     horizontalHeader()->setSortIndicatorShown(enable);
+    for (const QMetaObject::Connection &connection : d->dynHorHeaderConnections)
+        disconnect(connection);
+    d->dynHorHeaderConnections.clear();
     if (enable) {
-        disconnect(d->horizontalHeader, SIGNAL(sectionEntered(int)),
-                   this, SLOT(_q_selectColumn(int)));
-        disconnect(horizontalHeader(), SIGNAL(sectionPressed(int)),
-                   this, SLOT(selectColumn(int)));
         //sortByColumn has to be called before we connect or set the sortingEnabled flag
         // because otherwise it will not call sort on the model.
-        sortByColumn(horizontalHeader()->sortIndicatorSection(),
-                     horizontalHeader()->sortIndicatorOrder());
-        connect(horizontalHeader(), SIGNAL(sortIndicatorChanged(int,Qt::SortOrder)),
-                this, SLOT(_q_sortIndicatorChanged(int,Qt::SortOrder)), Qt::UniqueConnection);
+        sortByColumn(d->horizontalHeader->sortIndicatorSection(),
+                     d->horizontalHeader->sortIndicatorOrder());
+        d->dynHorHeaderConnections = {
+            QObjectPrivate::connect(d->horizontalHeader, &QHeaderView::sortIndicatorChanged,
+                                    d, &QTableViewPrivate::sortIndicatorChanged)
+        };
     } else {
-        connect(d->horizontalHeader, SIGNAL(sectionEntered(int)),
-                this, SLOT(_q_selectColumn(int)), Qt::UniqueConnection);
-        connect(horizontalHeader(), SIGNAL(sectionPressed(int)),
-                this, SLOT(selectColumn(int)), Qt::UniqueConnection);
-        disconnect(horizontalHeader(), SIGNAL(sortIndicatorChanged(int,Qt::SortOrder)),
-                   this, SLOT(_q_sortIndicatorChanged(int,Qt::SortOrder)));
+        d->dynHorHeaderConnections = {
+            connect(d->horizontalHeader, &QHeaderView::sectionPressed,
+                    this, &QTableView::selectColumn),
+            connect(d->horizontalHeader, &QHeaderView::sectionEntered,
+                    this, [d](int column) {d->selectColumn(column, false); })
+        };
     }
     d->sortingEnabled = enable;
 }
@@ -2746,7 +2863,7 @@ bool QTableView::isCornerButtonEnabled() const
 #endif
 
 /*!
-    \internal
+    \reimp
 
     Returns the rectangle on the viewport occupied by the given \a
     index.
@@ -2776,9 +2893,9 @@ QRect QTableView::visualRect(const QModelIndex &index) const
 }
 
 /*!
-    \internal
+    \reimp
 
-    Makes sure that the given \a item is visible in the table view,
+    Makes sure that the given \a index is visible in the table view,
     scrolling if necessary.
 */
 void QTableView::scrollTo(const QModelIndex &index, ScrollHint hint)
@@ -2944,6 +3061,8 @@ void QTableView::timerEvent(QTimerEvent *event)
             updateGeometries();
             killTimer(d->columnResizeTimerID);
             d->columnResizeTimerID = 0;
+        } else {
+            updateEditorGeometries();
         }
 
         QRect rect;
@@ -2972,6 +3091,8 @@ void QTableView::timerEvent(QTimerEvent *event)
             updateGeometries();
             killTimer(d->rowResizeTimerID);
             d->rowResizeTimerID = 0;
+        } else {
+            updateEditorGeometries();
         }
 
         int viewportHeight = d->viewport->height();
@@ -2994,6 +3115,71 @@ void QTableView::timerEvent(QTimerEvent *event)
     QAbstractItemView::timerEvent(event);
 }
 
+#if QT_CONFIG(draganddrop)
+/*! \reimp */
+void QTableView::dropEvent(QDropEvent *event)
+{
+    Q_D(QTableView);
+    if (event->source() == this && (event->dropAction() == Qt::MoveAction ||
+                                    dragDropMode() == QAbstractItemView::InternalMove)) {
+        QModelIndex topIndex;
+        int col = -1;
+        int row = -1;
+        // check whether a subclass has already accepted the event, ie. moved the data
+        if (!event->isAccepted() && d->dropOn(event, &row, &col, &topIndex) && !topIndex.isValid() && col != -1) {
+            // Drop between items (reordering) - can only happen with setDragDropOverwriteMode(false)
+            const QModelIndexList indexes = selectedIndexes();
+            QList<QPersistentModelIndex> persIndexes;
+            persIndexes.reserve(indexes.size());
+
+            bool topIndexDropped = false;
+            for (const auto &index : indexes) {
+                // Reorder entire rows
+                QPersistentModelIndex firstColIndex = index.siblingAtColumn(0);
+                if (!persIndexes.contains(firstColIndex))
+                    persIndexes.append(firstColIndex);
+                if (index.row() == topIndex.row()) {
+                    topIndexDropped = true;
+                    break;
+                }
+            }
+            if (!topIndexDropped) {
+                std::sort(persIndexes.begin(), persIndexes.end()); // The dropped items will remain in the same visual order.
+
+                QPersistentModelIndex dropRow = model()->index(row, col, topIndex);
+
+                int r = row == -1 ? model()->rowCount() : (dropRow.row() >= 0 ? dropRow.row() : row);
+                bool dataMoved = false;
+                for (int i = 0; i < persIndexes.size(); ++i) {
+                    const QPersistentModelIndex &pIndex = persIndexes.at(i);
+                    // only generate a move when not same row or behind itself
+                    if (r != pIndex.row() && r != pIndex.row() + 1) {
+                        // try to move (preserves selection)
+                        const bool moved = model()->moveRow(QModelIndex(), pIndex.row(), QModelIndex(), r);
+                        if (!moved)
+                            continue; // maybe it'll work for other rows
+                        dataMoved = true; // success
+                    } else {
+                        // move onto itself is blocked, don't delete anything
+                        dataMoved = true;
+                    }
+                    r = pIndex.row() + 1;   // Dropped items are inserted contiguously and in the right order.
+                }
+                if (dataMoved) {
+                    d->dropEventMoved = true;
+                    event->accept();
+                }
+            }
+        }
+    }
+
+    if (!event->isAccepted()) {
+        // moveRows not implemented, fall back to default
+        QAbstractItemView::dropEvent(event);
+    }
+}
+#endif
+
 /*!
     This slot is called to change the index of the given \a row in the
     table view. The old index is specified by \a oldIndex, and the new
@@ -3001,8 +3187,9 @@ void QTableView::timerEvent(QTimerEvent *event)
 
     \sa columnMoved()
 */
-void QTableView::rowMoved(int, int oldIndex, int newIndex)
+void QTableView::rowMoved(int row, int oldIndex, int newIndex)
 {
+    Q_UNUSED(row);
     Q_D(QTableView);
 
     updateGeometries();
@@ -3029,8 +3216,9 @@ void QTableView::rowMoved(int, int oldIndex, int newIndex)
 
     \sa rowMoved()
 */
-void QTableView::columnMoved(int, int oldIndex, int newIndex)
+void QTableView::columnMoved(int column, int oldIndex, int newIndex)
 {
+    Q_UNUSED(column);
     Q_D(QTableView);
 
     updateGeometries();
@@ -3173,22 +3361,6 @@ void QTableView::resizeColumnsToContents()
     d->horizontalHeader->resizeSections(QHeaderView::ResizeToContents);
 }
 
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-  \obsolete
-  \overload
-
-  This function is deprecated. Use
-  sortByColumn(int column, Qt::SortOrder order) instead.
-  Sorts the model by the values in the given \a column.
-*/
-void QTableView::sortByColumn(int column)
-{
-    Q_D(QTableView);
-    sortByColumn(column, d->horizontalHeader->sortIndicatorOrder());
-}
-#endif
-
 /*!
   \since 4.2
 
@@ -3306,16 +3478,6 @@ void QTableView::clearSpans()
     d->viewport->update();
 }
 
-void QTableViewPrivate::_q_selectRow(int row)
-{
-    selectRow(row, false);
-}
-
-void QTableViewPrivate::_q_selectColumn(int column)
-{
-    selectColumn(column, false);
-}
-
 void QTableViewPrivate::selectRow(int row, bool anchor)
 {
     Q_Q(QTableView);
@@ -3329,10 +3491,17 @@ void QTableViewPrivate::selectRow(int row, bool anchor)
         int column = horizontalHeader->logicalIndexAt(q->isRightToLeft() ? viewport->width() : 0);
         QModelIndex index = model->index(row, column, root);
         QItemSelectionModel::SelectionFlags command = q->selectionCommand(index);
-        selectionModel->setCurrentIndex(index, QItemSelectionModel::NoUpdate);
+
+        {
+            // currentSelectionStartIndex gets modified inside QAbstractItemView::currentChanged()
+            const auto startIndex = currentSelectionStartIndex;
+            selectionModel->setCurrentIndex(index, QItemSelectionModel::NoUpdate);
+            currentSelectionStartIndex = startIndex;
+        }
+
         if ((anchor && !(command & QItemSelectionModel::Current))
             || (q->selectionMode() == QTableView::SingleSelection))
-            rowSectionAnchor = row;
+            currentSelectionStartIndex = model->index(row, column, root);
 
         if (q->selectionMode() != QTableView::SingleSelection
             && command.testFlag(QItemSelectionModel::Toggle)) {
@@ -3345,6 +3514,7 @@ void QTableViewPrivate::selectRow(int row, bool anchor)
                 command |= QItemSelectionModel::Current;
         }
 
+        const auto rowSectionAnchor = currentSelectionStartIndex.row();
         QModelIndex upper = model->index(qMin(rowSectionAnchor, row), column, root);
         QModelIndex lower = model->index(qMax(rowSectionAnchor, row), column, root);
         if ((verticalHeader->sectionsMoved() && upper.row() != lower.row())) {
@@ -3368,15 +3538,22 @@ void QTableViewPrivate::selectColumn(int column, bool anchor)
         int row = verticalHeader->logicalIndexAt(0);
         QModelIndex index = model->index(row, column, root);
         QItemSelectionModel::SelectionFlags command = q->selectionCommand(index);
-        selectionModel->setCurrentIndex(index, QItemSelectionModel::NoUpdate);
+
+        {
+            // currentSelectionStartIndex gets modified inside QAbstractItemView::currentChanged()
+            const auto startIndex = currentSelectionStartIndex;
+            selectionModel->setCurrentIndex(index, QItemSelectionModel::NoUpdate);
+            currentSelectionStartIndex = startIndex;
+        }
+
         if ((anchor && !(command & QItemSelectionModel::Current))
             || (q->selectionMode() == QTableView::SingleSelection))
-            columnSectionAnchor = column;
+            currentSelectionStartIndex = model->index(row, column, root);
 
         if (q->selectionMode() != QTableView::SingleSelection
             && command.testFlag(QItemSelectionModel::Toggle)) {
             if (anchor)
-                ctrlDragSelectionFlag = horizontalHeader->selectionModel()->selectedColumns().contains(index)
+                ctrlDragSelectionFlag = horizontalHeader->selectionModel()->selectedColumns(row).contains(index)
                                     ? QItemSelectionModel::Deselect : QItemSelectionModel::Select;
             command &= ~QItemSelectionModel::Toggle;
             command |= ctrlDragSelectionFlag;
@@ -3384,6 +3561,7 @@ void QTableViewPrivate::selectColumn(int column, bool anchor)
                 command |= QItemSelectionModel::Current;
         }
 
+        const auto columnSectionAnchor = currentSelectionStartIndex.column();
         QModelIndex left = model->index(row, qMin(columnSectionAnchor, column), root);
         QModelIndex right = model->index(row, qMax(columnSectionAnchor, column), root);
         if ((horizontalHeader->sectionsMoved() && left.column() != right.column())) {
@@ -3399,9 +3577,9 @@ void QTableViewPrivate::selectColumn(int column, bool anchor)
  */
 void QTableView::currentChanged(const QModelIndex &current, const QModelIndex &previous)
 {
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     if (QAccessible::isActive()) {
-        if (current.isValid()) {
+        if (current.isValid() && hasFocus()) {
             Q_D(QTableView);
             int entry = d->accessibleTable2Index(current);
             QAccessibleEvent event(this, QAccessible::Focus);
@@ -3420,8 +3598,8 @@ void QTableView::selectionChanged(const QItemSelection &selected,
                                   const QItemSelection &deselected)
 {
     Q_D(QTableView);
-    Q_UNUSED(d)
-#ifndef QT_NO_ACCESSIBILITY
+    Q_UNUSED(d);
+#if QT_CONFIG(accessibility)
     if (QAccessible::isActive()) {
         // ### does not work properly for selection ranges.
         QModelIndex sel = selected.indexes().value(0);

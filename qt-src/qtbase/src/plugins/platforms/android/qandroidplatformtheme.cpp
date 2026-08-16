@@ -1,45 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "androidjnimain.h"
 #include "androidjnimenu.h"
 #include "qandroidplatformtheme.h"
+#include "qandroidplatformiconengine.h"
 #include "qandroidplatformmenubar.h"
 #include "qandroidplatformmenu.h"
 #include "qandroidplatformmenuitem.h"
@@ -58,6 +23,10 @@
 
 QT_BEGIN_NAMESPACE
 
+Q_LOGGING_CATEGORY(lcQpaMenus, "qt.qpa.menus")
+
+using namespace Qt::StringLiterals;
+
 namespace {
     const int textStyle_bold = 1;
     const int textStyle_italic = 2;
@@ -69,44 +38,44 @@ namespace {
 
 static int fontType(const QString &androidControl)
 {
-    if (androidControl == QLatin1String("defaultStyle"))
+    if (androidControl == "defaultStyle"_L1)
         return QPlatformTheme::SystemFont;
-    if (androidControl == QLatin1String("textViewStyle"))
+    if (androidControl == "textViewStyle"_L1)
         return QPlatformTheme::LabelFont;
-    else if (androidControl == QLatin1String("buttonStyle"))
+    else if (androidControl == "buttonStyle"_L1)
         return QPlatformTheme::PushButtonFont;
-    else if (androidControl == QLatin1String("checkboxStyle"))
+    else if (androidControl == "checkboxStyle"_L1)
         return QPlatformTheme::CheckBoxFont;
-    else if (androidControl == QLatin1String("radioButtonStyle"))
+    else if (androidControl == "radioButtonStyle"_L1)
         return QPlatformTheme::RadioButtonFont;
-    else if (androidControl == QLatin1String("simple_list_item_single_choice"))
+    else if (androidControl == "simple_list_item_single_choice"_L1)
         return QPlatformTheme::ItemViewFont;
-    else if (androidControl == QLatin1String("simple_spinner_dropdown_item"))
+    else if (androidControl == "simple_spinner_dropdown_item"_L1)
         return QPlatformTheme::ComboMenuItemFont;
-    else if (androidControl == QLatin1String("spinnerStyle"))
+    else if (androidControl == "spinnerStyle"_L1)
         return QPlatformTheme::ComboLineEditFont;
-    else if (androidControl == QLatin1String("simple_list_item"))
+    else if (androidControl == "simple_list_item"_L1)
         return QPlatformTheme::ListViewFont;
     return -1;
 }
 
 static int paletteType(const QString &androidControl)
 {
-    if (androidControl == QLatin1String("defaultStyle"))
+    if (androidControl == "defaultStyle"_L1)
         return QPlatformTheme::SystemPalette;
-    if (androidControl == QLatin1String("textViewStyle"))
+    if (androidControl == "textViewStyle"_L1)
         return QPlatformTheme::LabelPalette;
-    else if (androidControl == QLatin1String("buttonStyle"))
+    else if (androidControl == "buttonStyle"_L1)
         return QPlatformTheme::ButtonPalette;
-    else if (androidControl == QLatin1String("checkboxStyle"))
+    else if (androidControl == "checkboxStyle"_L1)
         return QPlatformTheme::CheckBoxPalette;
-    else if (androidControl == QLatin1String("radioButtonStyle"))
+    else if (androidControl == "radioButtonStyle"_L1)
         return QPlatformTheme::RadioButtonPalette;
-    else if (androidControl == QLatin1String("simple_list_item_single_choice"))
+    else if (androidControl == "simple_list_item_single_choice"_L1)
         return QPlatformTheme::ItemViewPalette;
-    else if (androidControl == QLatin1String("editTextStyle"))
+    else if (androidControl == "editTextStyle"_L1)
         return QPlatformTheme::TextLineEditPalette;
-    else if (androidControl == QLatin1String("spinnerStyle"))
+    else if (androidControl == "spinnerStyle"_L1)
         return QPlatformTheme::ComboBoxPalette;
     return -1;
 }
@@ -118,17 +87,17 @@ static void setPaletteColor(const QVariantMap &object,
     // QPalette::Active -> ENABLED_FOCUSED_WINDOW_FOCUSED_STATE_SET
     palette.setColor(QPalette::Active,
                      role,
-                     QRgb(object.value(QLatin1String("ENABLED_FOCUSED_WINDOW_FOCUSED_STATE_SET")).toInt()));
+                     QRgb(object.value("ENABLED_FOCUSED_WINDOW_FOCUSED_STATE_SET"_L1).toInt()));
 
     // QPalette::Inactive -> ENABLED_STATE_SET
     palette.setColor(QPalette::Inactive,
                      role,
-                     QRgb(object.value(QLatin1String("ENABLED_STATE_SET")).toInt()));
+                     QRgb(object.value("ENABLED_STATE_SET"_L1).toInt()));
 
     // QPalette::Disabled -> EMPTY_STATE_SET
     palette.setColor(QPalette::Disabled,
                      role,
-                     QRgb(object.value(QLatin1String("EMPTY_STATE_SET")).toInt()));
+                     QRgb(object.value("EMPTY_STATE_SET"_L1).toInt()));
 
     palette.setColor(QPalette::Current, role, palette.color(QPalette::Active, role));
 
@@ -137,17 +106,17 @@ static void setPaletteColor(const QVariantMap &object,
         // QPalette::Active -> PRESSED_ENABLED_FOCUSED_WINDOW_FOCUSED_STATE_SET
         palette.setColor(QPalette::Active,
                          QPalette::BrightText,
-                         QRgb(object.value(QLatin1String("PRESSED_ENABLED_FOCUSED_WINDOW_FOCUSED_STATE_SET")).toInt()));
+                         QRgb(object.value("PRESSED_ENABLED_FOCUSED_WINDOW_FOCUSED_STATE_SET"_L1).toInt()));
 
         // QPalette::Inactive -> PRESSED_ENABLED_STATE_SET
         palette.setColor(QPalette::Inactive,
                          QPalette::BrightText,
-                         QRgb(object.value(QLatin1String("PRESSED_ENABLED_STATE_SET")).toInt()));
+                         QRgb(object.value("PRESSED_ENABLED_STATE_SET"_L1).toInt()));
 
         // QPalette::Disabled -> PRESSED_STATE_SET
         palette.setColor(QPalette::Disabled,
                          QPalette::BrightText,
-                         QRgb(object.value(QLatin1String("PRESSED_STATE_SET")).toInt()));
+                         QRgb(object.value("PRESSED_STATE_SET"_L1).toInt()));
 
         palette.setColor(QPalette::Current, QPalette::BrightText, palette.color(QPalette::Active, QPalette::BrightText));
 
@@ -155,17 +124,17 @@ static void setPaletteColor(const QVariantMap &object,
         // QPalette::Active -> ENABLED_SELECTED_WINDOW_FOCUSED_STATE_SET
         palette.setColor(QPalette::Active,
                          QPalette::HighlightedText,
-                         QRgb(object.value(QLatin1String("ENABLED_SELECTED_WINDOW_FOCUSED_STATE_SET")).toInt()));
+                         QRgb(object.value("ENABLED_SELECTED_WINDOW_FOCUSED_STATE_SET"_L1).toInt()));
 
         // QPalette::Inactive -> ENABLED_SELECTED_STATE_SET
         palette.setColor(QPalette::Inactive,
                          QPalette::HighlightedText,
-                         QRgb(object.value(QLatin1String("ENABLED_SELECTED_STATE_SET")).toInt()));
+                         QRgb(object.value("ENABLED_SELECTED_STATE_SET"_L1).toInt()));
 
         // QPalette::Disabled -> SELECTED_STATE_SET
         palette.setColor(QPalette::Disabled,
                          QPalette::HighlightedText,
-                         QRgb(object.value(QLatin1String("SELECTED_STATE_SET")).toInt()));
+                         QRgb(object.value("SELECTED_STATE_SET"_L1).toInt()));
 
         palette.setColor(QPalette::Current,
                          QPalette::HighlightedText,
@@ -187,25 +156,20 @@ static void setPaletteColor(const QVariantMap &object,
 
 QJsonObject AndroidStyle::loadStyleData()
 {
-    QString stylePath(QLatin1String(qgetenv("MINISTRO_ANDROID_STYLE_PATH")));
+    QString stylePath(QLatin1StringView(qgetenv("ANDROID_STYLE_PATH")));
     const QLatin1Char slashChar('/');
     if (!stylePath.isEmpty() && !stylePath.endsWith(slashChar))
         stylePath += slashChar;
 
-    QString androidTheme = QLatin1String(qgetenv("QT_ANDROID_THEME"));
-    if (!androidTheme.isEmpty() && !androidTheme.endsWith(slashChar))
-        androidTheme += slashChar;
+    const Qt::ColorScheme colorScheme = QAndroidPlatformTheme::instance()
+                                      ? QAndroidPlatformTheme::instance()->colorScheme()
+                                      : QAndroidPlatformIntegration::colorScheme();
+    if (colorScheme == Qt::ColorScheme::Dark)
+        stylePath += "darkUiMode/"_L1;
 
-    if (stylePath.isEmpty()) {
-        stylePath = QLatin1String("/data/data/org.kde.necessitas.ministro/files/dl/style/")
-                  + QLatin1String(qgetenv("QT_ANDROID_THEME_DISPLAY_DPI")) + slashChar;
-    }
     Q_ASSERT(!stylePath.isEmpty());
 
-    if (!androidTheme.isEmpty() && QFileInfo::exists(stylePath + androidTheme + QLatin1String("style.json")))
-        stylePath += androidTheme;
-
-    QFile f(stylePath + QLatin1String("style.json"));
+    QFile f(stylePath + "style.json"_L1);
     if (!f.open(QIODevice::ReadOnly))
         return QJsonObject();
 
@@ -223,13 +187,27 @@ QJsonObject AndroidStyle::loadStyleData()
     return document.object();
 }
 
-static std::shared_ptr<AndroidStyle> loadAndroidStyle(QPalette *defaultPalette)
+static void loadAndroidStyle(QPalette *defaultPalette, std::shared_ptr<AndroidStyle> &style)
 {
     double pixelDensity = QHighDpiScaling::isActive() ? QtAndroid::pixelDensity() : 1.0;
-    std::shared_ptr<AndroidStyle> style = std::make_shared<AndroidStyle>();
+    if (style) {
+        style->m_standardPalette = QPalette();
+        style->m_palettes.clear();
+        style->m_fonts.clear();
+        style->m_QWidgetsFonts.clear();
+    } else {
+        style = std::make_shared<AndroidStyle>();
+    }
+
     style->m_styleData = AndroidStyle::loadStyleData();
+
     if (style->m_styleData.isEmpty())
-        return std::shared_ptr<AndroidStyle>();
+        return;
+
+    {
+        QFont font("Droid Sans Mono"_L1, 14.0 * 100 / 72);
+        style->m_fonts.insert(QPlatformTheme::FixedFont, font);
+    }
 
     for (QJsonObject::const_iterator objectIterator = style->m_styleData.constBegin();
          objectIterator != style->m_styleData.constEnd();
@@ -241,7 +219,7 @@ static std::shared_ptr<AndroidStyle> loadAndroidStyle(QPalette *defaultPalette)
             continue;
         }
         QJsonObject item = value.toObject();
-        QJsonObject::const_iterator attributeIterator = item.find(QLatin1String("qtClass"));
+        QJsonObject::const_iterator attributeIterator = item.find("qtClass"_L1);
         QByteArray qtClassName;
         if (attributeIterator != item.constEnd()) {
             // The item has palette and font information for a specific Qt Class (e.g. QWidget, QPushButton, etc.)
@@ -253,12 +231,12 @@ static std::shared_ptr<AndroidStyle> loadAndroidStyle(QPalette *defaultPalette)
             QFont font;
 
             // Font size (in pixels)
-            attributeIterator = item.find(QLatin1String("TextAppearance_textSize"));
+            attributeIterator = item.find("TextAppearance_textSize"_L1);
             if (attributeIterator != item.constEnd())
                 font.setPixelSize(int(attributeIterator.value().toDouble() / pixelDensity));
 
             // Font style
-            attributeIterator = item.find(QLatin1String("TextAppearance_textStyle"));
+            attributeIterator = item.find("TextAppearance_textStyle"_L1);
             if (attributeIterator != item.constEnd()) {
                 const int style = int(attributeIterator.value().toDouble());
                 font.setBold(style & textStyle_bold);
@@ -266,7 +244,7 @@ static std::shared_ptr<AndroidStyle> loadAndroidStyle(QPalette *defaultPalette)
             }
 
             // Font typeface
-            attributeIterator = item.find(QLatin1String("TextAppearance_typeface"));
+            attributeIterator = item.find("TextAppearance_typeface"_L1);
             if (attributeIterator != item.constEnd()) {
                 QFont::StyleHint styleHint = QFont::AnyStyle;
                 switch (int(attributeIterator.value().toDouble())) {
@@ -298,23 +276,23 @@ static std::shared_ptr<AndroidStyle> loadAndroidStyle(QPalette *defaultPalette)
             // Extract palette information
             QPalette palette = *defaultPalette;
 
-            attributeIterator = item.find(QLatin1String("defaultTextColorPrimary"));
+            attributeIterator = item.find("defaultTextColorPrimary"_L1);
             if (attributeIterator != item.constEnd())
                 palette.setColor(QPalette::WindowText, QRgb(int(attributeIterator.value().toDouble())));
 
-            attributeIterator = item.find(QLatin1String("defaultBackgroundColor"));
+            attributeIterator = item.find("defaultBackgroundColor"_L1);
             if (attributeIterator != item.constEnd())
-                palette.setColor(QPalette::Background, QRgb(int(attributeIterator.value().toDouble())));
+                palette.setColor(QPalette::Window, QRgb(int(attributeIterator.value().toDouble())));
 
-            attributeIterator = item.find(QLatin1String("TextAppearance_textColor"));
+            attributeIterator = item.find("TextAppearance_textColor"_L1);
             if (attributeIterator != item.constEnd())
                 setPaletteColor(attributeIterator.value().toObject().toVariantMap(), palette, QPalette::WindowText);
 
-            attributeIterator = item.find(QLatin1String("TextAppearance_textColorLink"));
+            attributeIterator = item.find("TextAppearance_textColorLink"_L1);
             if (attributeIterator != item.constEnd())
                 setPaletteColor(attributeIterator.value().toObject().toVariantMap(), palette, QPalette::Link);
 
-            attributeIterator = item.find(QLatin1String("TextAppearance_textColorHighlight"));
+            attributeIterator = item.find("TextAppearance_textColorHighlight"_L1);
             if (attributeIterator != item.constEnd())
                 palette.setColor(QPalette::Highlight, QRgb(int(attributeIterator.value().toDouble())));
 
@@ -326,11 +304,43 @@ static std::shared_ptr<AndroidStyle> loadAndroidStyle(QPalette *defaultPalette)
             // Extract palette information
         }
     }
-    return style;
+}
+
+QAndroidPlatformTheme *QAndroidPlatformTheme::m_instance = nullptr;
+
+QAndroidPlatformTheme *QAndroidPlatformTheme::instance(
+    QAndroidPlatformNativeInterface *androidPlatformNativeInterface)
+{
+    if (androidPlatformNativeInterface && !m_instance) {
+        m_instance = new QAndroidPlatformTheme(androidPlatformNativeInterface);
+    }
+    return m_instance;
 }
 
 QAndroidPlatformTheme::QAndroidPlatformTheme(QAndroidPlatformNativeInterface *androidPlatformNativeInterface)
 {
+    updateStyle();
+
+    androidPlatformNativeInterface->m_androidStyle = m_androidStyleData;
+
+    // default in case the style has not set a font
+    m_systemFont = QFont("Roboto"_L1, 14.0 * 100 / 72); // keep default size the same after changing from 100 dpi to 72 dpi
+}
+
+QAndroidPlatformTheme::~QAndroidPlatformTheme()
+{
+    m_instance = nullptr;
+}
+
+void QAndroidPlatformTheme::updateColorScheme()
+{
+    updateStyle();
+    QWindowSystemInterface::handleThemeChange();
+}
+
+void QAndroidPlatformTheme::updateStyle()
+{
+    QColor windowText = Qt::black;
     QColor background(229, 229, 229);
     QColor light = background.lighter(150);
     QColor mid(background.darker(130));
@@ -347,7 +357,27 @@ QAndroidPlatformTheme::QAndroidPlatformTheme(QAndroidPlatformNativeInterface *an
     QColor highlight(148, 210, 231);
     QColor disabledShadow = shadow.lighter(150);
 
-    m_defaultPalette = QPalette(Qt::black,background,light,dark,mid,text,base);
+    if (colorScheme() == Qt::ColorScheme::Dark) {
+        // Colors were prepared based on Theme.DeviceDefault.DayNight
+        windowText = QColor(250, 250, 250);
+        background = QColor(48, 48, 48);
+        light = background.darker(150);
+        mid = background.lighter(130);
+        midLight = mid.darker(110);
+        base = background;
+        disabledBase = background;
+        dark = background.darker(150);
+        darkDisabled = dark.darker(110);
+        text = QColor(250, 250, 250);
+        highlightedText = QColor(250, 250, 250);
+        disabledText = QColor(96, 96, 96);
+        button = QColor(48, 48, 48);
+        shadow = QColor(32, 32, 32);
+        highlight = QColor(102, 178, 204);
+        disabledShadow = shadow.darker(150);
+    }
+
+    m_defaultPalette = QPalette(windowText,background,light,dark,mid,text,base);
     m_defaultPalette.setBrush(QPalette::Midlight, midLight);
     m_defaultPalette.setBrush(QPalette::Button, button);
     m_defaultPalette.setBrush(QPalette::Shadow, shadow);
@@ -363,32 +393,50 @@ QAndroidPlatformTheme::QAndroidPlatformTheme(QAndroidPlatformNativeInterface *an
     m_defaultPalette.setBrush(QPalette::Active, QPalette::Highlight, highlight);
     m_defaultPalette.setBrush(QPalette::Inactive, QPalette::Highlight, highlight);
     m_defaultPalette.setBrush(QPalette::Disabled, QPalette::Highlight, highlight.lighter(150));
-    m_androidStyleData = loadAndroidStyle(&m_defaultPalette);
-    QGuiApplication::setPalette(m_defaultPalette);
-    androidPlatformNativeInterface->m_androidStyle = m_androidStyleData;
 
-    // default in case the style has not set a font
-    m_systemFont = QFont(QLatin1String("Roboto"), 14.0 * 100 / 72); // keep default size the same after changing from 100 dpi to 72 dpi
+    loadAndroidStyle(&m_defaultPalette, m_androidStyleData);
 }
 
 QPlatformMenuBar *QAndroidPlatformTheme::createPlatformMenuBar() const
 {
-    return new QAndroidPlatformMenuBar;
+    auto *menuBar = new QAndroidPlatformMenuBar;
+    qCDebug(lcQpaMenus) << "Created" << menuBar;
+    return menuBar;
 }
 
 QPlatformMenu *QAndroidPlatformTheme::createPlatformMenu() const
 {
-    return new QAndroidPlatformMenu;
+    auto *menu = new QAndroidPlatformMenu;
+    qCDebug(lcQpaMenus) << "Created" << menu;
+    return menu;
 }
 
 QPlatformMenuItem *QAndroidPlatformTheme::createPlatformMenuItem() const
 {
-    return new QAndroidPlatformMenuItem;
+    auto *menuItem = new QAndroidPlatformMenuItem;
+    qCDebug(lcQpaMenus) << "Created" << menuItem;
+    return menuItem;
 }
 
 void QAndroidPlatformTheme::showPlatformMenuBar()
 {
+    qCDebug(lcQpaMenus) << "Showing platform menu bar";
     QtAndroidMenu::openOptionsMenu();
+}
+
+Qt::ColorScheme QAndroidPlatformTheme::colorScheme() const
+{
+    if (m_colorSchemeOverride != Qt::ColorScheme::Unknown)
+        return m_colorSchemeOverride;
+    return QAndroidPlatformIntegration::colorScheme();
+}
+
+void QAndroidPlatformTheme::requestColorScheme(Qt::ColorScheme scheme)
+{
+    m_colorSchemeOverride = scheme;
+    QMetaObject::invokeMethod(qGuiApp, [this]{
+        updateColorScheme();
+    });
 }
 
 static inline int paletteType(QPlatformTheme::Palette type)
@@ -456,15 +504,20 @@ const QFont *QAndroidPlatformTheme::font(Font type) const
     return 0;
 }
 
+QIconEngine *QAndroidPlatformTheme::createIconEngine(const QString &iconName) const
+{
+    return new QAndroidPlatformIconEngine(iconName);
+}
+
 QVariant QAndroidPlatformTheme::themeHint(ThemeHint hint) const
 {
     switch (hint) {
     case StyleNames:
         if (qEnvironmentVariableIntValue("QT_USE_ANDROID_NATIVE_STYLE")
                 && m_androidStyleData) {
-            return QStringList(QLatin1String("android"));
+            return QStringList("android"_L1);
         }
-        return QStringList(QLatin1String("fusion"));
+        return QStringList("Fusion"_L1);
     case DialogButtonBoxLayout:
         return QVariant(QPlatformDialogHelper::AndroidLayout);
     case MouseDoubleClickDistance:

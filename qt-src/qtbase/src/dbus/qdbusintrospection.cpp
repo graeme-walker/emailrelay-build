@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdbusintrospection_p.h"
 #include "qdbusxmlparser_p.h"
@@ -56,6 +20,9 @@ QT_BEGIN_NAMESPACE
 
     But they may prove useful if the XML data was obtained through other means (like parsing a file).
 */
+
+QDBusIntrospection::DiagnosticsReporter::~DiagnosticsReporter()
+    = default;
 
 /*!
     \class QDBusIntrospection::Argument
@@ -333,11 +300,11 @@ QT_BEGIN_NAMESPACE
     If there are multiple interfaces in this XML data, it is undefined which one will be
     returned.
 */
-QDBusIntrospection::Interface
-QDBusIntrospection::parseInterface(const QString &xml)
+QDBusIntrospection::Interface QDBusIntrospection::parseInterface(const QString &xml,
+                                                                 DiagnosticsReporter *reporter)
 {
     // be lazy
-    Interfaces ifs = parseInterfaces(xml);
+    Interfaces ifs = parseInterfaces(xml, reporter);
     if (ifs.isEmpty())
         return Interface();
 
@@ -351,11 +318,11 @@ QDBusIntrospection::parseInterface(const QString &xml)
     If the first element tag in this document fragment is \<node\>, the interfaces parsed will
     be those found as child elements of the \<node\> tag.
 */
-QDBusIntrospection::Interfaces
-QDBusIntrospection::parseInterfaces(const QString &xml)
+QDBusIntrospection::Interfaces QDBusIntrospection::parseInterfaces(const QString &xml,
+                                                                   DiagnosticsReporter *reporter)
 {
     QString null;
-    QDBusXmlParser parser(null, null, xml);
+    QDBusXmlParser parser(null, null, xml, reporter);
     return parser.interfaces();
 }
 
@@ -370,10 +337,12 @@ QDBusIntrospection::parseInterfaces(const QString &xml)
     This function does not parse the interfaces contained in the node, nor sub-object's contents.
     It will only list their names.
 */
-QDBusIntrospection::Object
-QDBusIntrospection::parseObject(const QString &xml, const QString &service, const QString &path)
+QDBusIntrospection::Object QDBusIntrospection::parseObject(const QString &xml,
+                                                           const QString &service,
+                                                           const QString &path,
+                                                           DiagnosticsReporter *reporter)
 {
-    QDBusXmlParser parser(service, path, xml);
+    QDBusXmlParser parser(service, path, xml, reporter);
     QSharedDataPointer<QDBusIntrospection::Object> retval = parser.object();
     if (!retval)
         return QDBusIntrospection::Object();

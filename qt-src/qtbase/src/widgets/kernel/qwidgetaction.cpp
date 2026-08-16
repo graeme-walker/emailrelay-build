@@ -1,46 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwidgetaction.h"
+#include "qwidget.h"
 #include "qdebug.h"
 
-#ifndef QT_NO_ACTION
+#include <QtWidgets/private/qwidget_p.h>
+
 #include "qwidgetaction_p.h"
 
 QT_BEGIN_NAMESPACE
@@ -118,9 +84,9 @@ QWidgetAction::QWidgetAction(QObject *parent)
 QWidgetAction::~QWidgetAction()
 {
     Q_D(QWidgetAction);
-    for (int i = 0; i < d->createdWidgets.count(); ++i)
-        disconnect(d->createdWidgets.at(i), SIGNAL(destroyed(QObject*)),
-                   this, SLOT(_q_widgetDestroyed(QObject*)));
+    for (QWidget *w : std::as_const(d->createdWidgets))
+        QObjectPrivate::disconnect(w, &QWidget::destroyed,
+                                   d, &QWidgetActionPrivate::widgetDestroyed);
     QList<QWidget *> widgetsToDelete = d->createdWidgets;
     d->createdWidgets.clear();
     qDeleteAll(widgetsToDelete);
@@ -144,7 +110,7 @@ void QWidgetAction::setDefaultWidget(QWidget *widget)
     if (!widget)
         return;
 
-    setVisible(!(widget->isHidden() && widget->testAttribute(Qt::WA_WState_ExplicitShowHide)));
+    setVisible(!QWidgetPrivate::get(widget)->isExplicitlyHidden());
     d->defaultWidget->hide();
     d->defaultWidget->setParent(nullptr);
     d->defaultWidgetInUse = false;
@@ -183,8 +149,8 @@ QWidget *QWidgetAction::requestWidget(QWidget *parent)
         return d->defaultWidget;
     }
 
-    connect(w, SIGNAL(destroyed(QObject*)),
-            this, SLOT(_q_widgetDestroyed(QObject*)));
+    QObjectPrivate::connect(w, &QWidget::destroyed,
+                            d, &QWidgetActionPrivate::widgetDestroyed);
     d->createdWidgets.append(w);
     return w;
 }
@@ -211,8 +177,8 @@ void QWidgetAction::releaseWidget(QWidget *widget)
     if (!d->createdWidgets.contains(widget))
         return;
 
-    disconnect(widget, SIGNAL(destroyed(QObject*)),
-               this, SLOT(_q_widgetDestroyed(QObject*)));
+    QObjectPrivate::disconnect(widget, &QWidget::destroyed,
+                               d, &QWidgetActionPrivate::widgetDestroyed);
     d->createdWidgets.removeAll(widget);
     deleteWidget(widget);
 }
@@ -226,7 +192,7 @@ bool QWidgetAction::event(QEvent *event)
     if (event->type() == QEvent::ActionChanged) {
         if (d->defaultWidget)
             d->defaultWidget->setEnabled(isEnabled());
-        for (int i = 0; i < d->createdWidgets.count(); ++i)
+        for (int i = 0; i < d->createdWidgets.size(); ++i)
             d->createdWidgets.at(i)->setEnabled(isEnabled());
     }
     return QAction::event(event);
@@ -250,7 +216,7 @@ bool QWidgetAction::eventFilter(QObject *obj, QEvent *event)
 */
 QWidget *QWidgetAction::createWidget(QWidget *parent)
 {
-    Q_UNUSED(parent)
+    Q_UNUSED(parent);
     return nullptr;
 }
 
@@ -282,5 +248,3 @@ QList<QWidget *> QWidgetAction::createdWidgets() const
 QT_END_NAMESPACE
 
 #include "moc_qwidgetaction.cpp"
-
-#endif // QT_NO_ACTION

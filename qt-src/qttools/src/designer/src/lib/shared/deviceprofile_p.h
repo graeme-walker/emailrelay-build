@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 //
 //  W A R N I N G
@@ -42,6 +17,7 @@
 
 #include "shared_global_p.h"
 
+#include <QtCore/qcompare.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qshareddata.h>
 
@@ -101,8 +77,6 @@ public:
     static void systemResolution(int *dpiX, int *dpiY);
     static void widgetResolution(const QWidget *w, int *dpiX, int *dpiY);
 
-    bool equals(const DeviceProfile& rhs) const;
-
     // Apply to form/preview (using font inheritance)
     enum ApplyMode {
         /* Pre-Apply to parent widget of form being edited: Apply font
@@ -123,16 +97,14 @@ public:
     bool fromXml(const QString &xml, QString *errorMessage);
 
 private:
+    friend QDESIGNER_SHARED_EXPORT bool comparesEqual(const DeviceProfile &lhs,
+                                                      const DeviceProfile &rhs) noexcept;
+    Q_DECLARE_EQUALITY_COMPARABLE(DeviceProfile)
+
     QSharedDataPointer<DeviceProfileData> m_d;
 };
 
-inline bool operator==(const DeviceProfile &s1, const DeviceProfile &s2)
-    { return s1.equals(s2); }
-inline bool operator!=(const DeviceProfile &s1, const DeviceProfile &s2)
-    { return !s1.equals(s2); }
-
-}
-
+} // namespace qdesigner_internal
 
 QT_END_NAMESPACE
 

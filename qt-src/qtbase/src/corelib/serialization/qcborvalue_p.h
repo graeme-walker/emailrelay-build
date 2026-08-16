@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCBORVALUE_P_H
 #define QCBORVALUE_P_H
@@ -53,14 +17,23 @@
 
 #include "qcborvalue.h"
 
+#if QT_CONFIG(cborstreamreader)
+#  include "qcborstreamreader.h"
+#endif
+
 #include <private/qglobal_p.h>
-#include <private/qutfcodec_p.h>
+#include <private/qstringconverter_p.h>
 
 #include <math.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace QtCbor {
+enum class Comparison {
+    ForEquality,
+    ForOrdering,
+};
+
 struct Undefined {};
 struct Element
 {
@@ -95,7 +68,7 @@ struct Element
     }
 };
 Q_DECLARE_OPERATORS_FOR_FLAGS(Element::ValueFlags)
-Q_STATIC_ASSERT(sizeof(Element) == 16);
+static_assert(sizeof(Element) == 16);
 
 struct ByteData
 {
@@ -111,12 +84,13 @@ struct ByteData
     QString toUtf8String() const    { return QString::fromUtf8(byte(), len); }
 
     QByteArray asByteArrayView() const { return QByteArray::fromRawData(byte(), len); }
-    QLatin1String asLatin1() const  { return QLatin1String(byte(), len); }
+    QLatin1StringView asLatin1() const  { return {byte(), len}; }
+    QUtf8StringView asUtf8StringView() const { return QUtf8StringView(byte(), len); }
     QStringView asStringView() const{ return QStringView(utf16(), len / 2); }
     QString asQStringRaw() const    { return QString::fromRawData(utf16(), len / 2); }
 };
-Q_STATIC_ASSERT(std::is_trivial<ByteData>::value);
-Q_STATIC_ASSERT(std::is_standard_layout<ByteData>::value);
+static_assert(std::is_trivial<ByteData>::value);
+static_assert(std::is_standard_layout<ByteData>::value);
 } // namespace QtCbor
 
 Q_DECLARE_TYPEINFO(QtCbor::Element, Q_PRIMITIVE_TYPE);
@@ -131,32 +105,33 @@ public:
 
     QByteArray::size_type usedData = 0;
     QByteArray data;
-    QVector<QtCbor::Element> elements;
+    QList<QtCbor::Element> elements;
 
     void deref() { if (!ref.deref()) delete this; }
-    void compact(qsizetype reserved);
+    void compact();
     static QCborContainerPrivate *clone(QCborContainerPrivate *d, qsizetype reserved = -1);
     static QCborContainerPrivate *detach(QCborContainerPrivate *d, qsizetype reserved);
     static QCborContainerPrivate *grow(QCborContainerPrivate *d, qsizetype index);
 
-    qptrdiff addByteData(const char *block, qsizetype len)
+    static qptrdiff addByteDataImpl(QByteArray &target, QByteArray::size_type &targetUsed,
+                                    const char *block, qsizetype len)
     {
         // This function does not do overflow checking, since the len parameter
         // is expected to be trusted. There's another version of this function
         // in decodeStringFromCbor(), which checks.
 
-        qptrdiff offset = data.size();
+        qptrdiff offset = target.size();
 
         // align offset
-        offset += Q_ALIGNOF(QtCbor::ByteData) - 1;
-        offset &= ~(Q_ALIGNOF(QtCbor::ByteData) - 1);
+        offset += alignof(QtCbor::ByteData) - 1;
+        offset &= ~(alignof(QtCbor::ByteData) - 1);
 
         qptrdiff increment = qptrdiff(sizeof(QtCbor::ByteData)) + len;
 
-        usedData += increment;
-        data.resize(offset + increment);
+        targetUsed += increment;
+        target.resize(offset + increment);
 
-        char *ptr = data.begin() + offset;
+        char *ptr = target.begin() + offset;
         auto b = new (ptr) QtCbor::ByteData;
         b->len = len;
         if (block)
@@ -165,13 +140,18 @@ public:
         return offset;
     }
 
+    qptrdiff addByteData(const char *block, qsizetype len)
+    {
+        return addByteDataImpl(data, usedData, block, len);
+    }
+
     const QtCbor::ByteData *byteData(QtCbor::Element e) const
     {
         if ((e.flags & QtCbor::Element::HasByteData) == 0)
             return nullptr;
 
         size_t offset = size_t(e.value);
-        Q_ASSERT((offset % Q_ALIGNOF(QtCbor::ByteData)) == 0);
+        Q_ASSERT((offset % alignof(QtCbor::ByteData)) == 0);
         Q_ASSERT(offset + sizeof(QtCbor::ByteData) <= size_t(data.size()));
 
         auto b = reinterpret_cast<const QtCbor::ByteData *>(data.constData() + offset);
@@ -215,7 +195,7 @@ public:
     }
     void insertAt(qsizetype idx, const QCborValue &value, ContainerDisposition disp = CopyContainer)
     {
-        replaceAt_internal(*elements.insert(elements.begin() + idx, {}), value, disp);
+        replaceAt_internal(*elements.insert(idx, {}), value, disp);
     }
 
     void append(QtCbor::Undefined)
@@ -236,31 +216,38 @@ public:
         elements.append(QtCbor::Element(addByteData(data, len), type,
                                         QtCbor::Element::HasByteData | extraFlags));
     }
-    void append(QLatin1String s)
+    void appendAsciiString(const QString &s);
+    void appendAsciiString(const char *str, qsizetype len)
+    {
+        appendByteData(str, len, QCborValue::String, QtCbor::Element::StringIsAscii);
+    }
+    void appendUtf8String(const char *str, qsizetype len)
+    {
+        appendByteData(str, len, QCborValue::String);
+    }
+    void append(QLatin1StringView s)
     {
         if (!QtPrivate::isAscii(s))
-            return append(QString(s));
+            return appendNonAsciiString(QString(s));
 
         // US-ASCII is a subset of UTF-8, so we can keep in 8-bit
         appendByteData(s.latin1(), s.size(), QCborValue::String,
                        QtCbor::Element::StringIsAscii);
     }
     void appendAsciiString(QStringView s);
+    void appendNonAsciiString(QStringView s);
 
-#if QT_STRINGVIEW_LEVEL < 2
     void append(const QString &s)
     {
         append(qToStringViewIgnoringNull(s));
     }
-#endif
 
     void append(QStringView s)
     {
         if (QtPrivate::isAscii(s))
             appendAsciiString(s);
         else
-            appendByteData(reinterpret_cast<const char *>(s.utf16()), s.size() * 2,
-                           QCborValue::String, QtCbor::Element::StringIsUtf16);
+            appendNonAsciiString(s);
     }
     void append(const QCborValue &v)
     {
@@ -353,18 +340,18 @@ public:
         return e;
     }
 
-    static int compareUtf8(const QtCbor::ByteData *b, const QLatin1String &s)
+    static int compareUtf8(const QtCbor::ByteData *b, QLatin1StringView s)
     {
-        return QUtf8::compareUtf8(b->byte(), b->len, s);
+        return QUtf8::compareUtf8(QByteArrayView(b->byte(), b->len), s);
     }
 
     static int compareUtf8(const QtCbor::ByteData *b, QStringView s)
     {
-        return QUtf8::compareUtf8(b->byte(), b->len, s.data(), s.size());
+        return QUtf8::compareUtf8(QByteArrayView(b->byte(), b->len), s);
     }
 
     template<typename String>
-    int stringCompareElement(const QtCbor::Element &e, String s) const
+    int stringCompareElement(const QtCbor::Element &e, String s, QtCbor::Comparison mode) const
     {
         if (e.type != QCborValue::String)
             return int(e.type) - int(QCborValue::String);
@@ -373,15 +360,18 @@ public:
         if (!b)
             return s.isEmpty() ? 0 : -1;
 
-        if (e.flags & QtCbor::Element::StringIsUtf16)
-            return QtPrivate::compareStrings(b->asStringView(), s);
+        if (e.flags & QtCbor::Element::StringIsUtf16) {
+            if (mode == QtCbor::Comparison::ForEquality)
+                return b->asStringView() == s ? 0 : 1;
+            return b->asStringView().compare(s);
+        }
         return compareUtf8(b, s);
     }
 
     template<typename String>
     bool stringEqualsElement(const QtCbor::Element &e, String s) const
     {
-        return stringCompareElement(e, s) == 0;
+        return stringCompareElement(e, s, QtCbor::Comparison::ForEquality) == 0;
     }
 
     template<typename String>
@@ -391,12 +381,13 @@ public:
     }
 
     static int compareElement_helper(const QCborContainerPrivate *c1, QtCbor::Element e1,
-                                     const QCborContainerPrivate *c2, QtCbor::Element e2);
-    int compareElement(qsizetype idx, const QCborValue &value) const
+                                     const QCborContainerPrivate *c2, QtCbor::Element e2,
+                                     QtCbor::Comparison mode) noexcept;
+    int compareElement(qsizetype idx, const QCborValue &value, QtCbor::Comparison mode) const
     {
         auto &e1 = elements.at(idx);
         auto e2 = elementFromValue(value);
-        return compareElement_helper(this, e1, value.container, e2);
+        return compareElement_helper(this, e1, value.container, e2, mode);
     }
 
     void removeAt(qsizetype idx)
@@ -405,9 +396,67 @@ public:
         elements.remove(idx);
     }
 
-    void decodeValueFromCbor(QCborStreamReader &reader, int remainiingStackDepth);
+    // doesn't apply to JSON
+    template <typename KeyType> QCborValueConstRef findCborMapKey(KeyType key)
+    {
+        qsizetype i = 0;
+        for ( ; i < elements.size(); i += 2) {
+            const auto &e = elements.at(i);
+            bool equals;
+            if constexpr (std::is_same_v<std::decay_t<KeyType>, QCborValue>) {
+                equals = (compareElement(i, key, QtCbor::Comparison::ForEquality) == 0);
+            } else if constexpr (std::is_integral_v<KeyType>) {
+                equals = (e.type == QCborValue::Integer && e.value == key);
+            } else {
+                // assume it's a string
+                equals = stringEqualsElement(i, key);
+            }
+            if (equals)
+                break;
+        }
+        return { this, i + 1 };
+    }
+    template <typename KeyType> static QCborValue findCborMapKey(const QCborValue &self, KeyType key)
+    {
+        if (self.isMap() && self.container) {
+            qsizetype idx = self.container->findCborMapKey(key).i;
+            if (idx < self.container->elements.size())
+                return self.container->valueAt(idx);
+        }
+        return QCborValue();
+    }
+    template <typename KeyType> static QCborValueRef
+    findOrAddMapKey(QCborContainerPrivate *container, KeyType key)
+    {
+        qsizetype size = 0;
+        qsizetype index = size + 1;
+        if (container) {
+            size = container->elements.size();
+            index = container->findCborMapKey<KeyType>(key).i; // returns size + 1 if not found
+        }
+        Q_ASSERT(index & 1);
+        Q_ASSERT((size & 1) == 0);
+
+        container = detach(container, qMax(index + 1, size));
+        Q_ASSERT(container);
+        Q_ASSERT((container->elements.size() & 1) == 0);
+
+        if (index >= size) {
+            container->append(key);
+            container->append(QCborValue());
+        }
+        Q_ASSERT(index < container->elements.size());
+        return { container, index };
+    }
+    template <typename KeyType> static QCborValueRef findOrAddMapKey(QCborMap &map, KeyType key);
+    template <typename KeyType> static QCborValueRef findOrAddMapKey(QCborValue &self, KeyType key);
+    template <typename KeyType> static QCborValueRef findOrAddMapKey(QCborValueRef self, KeyType key);
+
+#if QT_CONFIG(cborstreamreader)
+    void decodeValueFromCbor(QCborStreamReader &reader, int remainingStackDepth);
     void decodeStringFromCbor(QCborStreamReader &reader);
     static inline void setErrorInReader(QCborStreamReader &reader, QCborError error);
+#endif
 };
 
 QT_END_NAMESPACE

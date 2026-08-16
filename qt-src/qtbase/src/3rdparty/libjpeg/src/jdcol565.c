@@ -5,7 +5,7 @@
  * Copyright (C) 1991-1997, Thomas G. Lane.
  * Modifications:
  * Copyright (C) 2013, Linaro Limited.
- * Copyright (C) 2014-2015, D. R. Commander.
+ * Copyright (C) 2014-2015, 2022, D. R. Commander.
  * For conditions of distribution and use, see the accompanying README.ijg
  * file.
  *
@@ -17,18 +17,19 @@
 
 INLINE
 LOCAL(void)
-ycc_rgb565_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
-                            JDIMENSION input_row, JSAMPARRAY output_buf,
+ycc_rgb565_convert_internal(j_decompress_ptr cinfo, _JSAMPIMAGE input_buf,
+                            JDIMENSION input_row, _JSAMPARRAY output_buf,
                             int num_rows)
 {
+#if BITS_IN_JSAMPLE != 16
   my_cconvert_ptr cconvert = (my_cconvert_ptr)cinfo->cconvert;
   register int y, cb, cr;
-  register JSAMPROW outptr;
-  register JSAMPROW inptr0, inptr1, inptr2;
+  register _JSAMPROW outptr;
+  register _JSAMPROW inptr0, inptr1, inptr2;
   register JDIMENSION col;
   JDIMENSION num_cols = cinfo->output_width;
   /* copy these pointers into registers if possible */
-  register JSAMPLE *range_limit = cinfo->sample_range_limit;
+  register _JSAMPLE *range_limit = (_JSAMPLE *)cinfo->sample_range_limit;
   register int *Crrtab = cconvert->Cr_r_tab;
   register int *Cbbtab = cconvert->Cb_b_tab;
   register JLONG *Crgtab = cconvert->Cr_g_tab;
@@ -45,9 +46,9 @@ ycc_rgb565_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
     outptr = *output_buf++;
 
     if (PACK_NEED_ALIGNMENT(outptr)) {
-      y  = GETJSAMPLE(*inptr0++);
-      cb = GETJSAMPLE(*inptr1++);
-      cr = GETJSAMPLE(*inptr2++);
+      y  = *inptr0++;
+      cb = *inptr1++;
+      cr = *inptr2++;
       r = range_limit[y + Crrtab[cr]];
       g = range_limit[y + ((int)RIGHT_SHIFT(Cbgtab[cb] + Crgtab[cr],
                                             SCALEBITS))];
@@ -58,18 +59,18 @@ ycc_rgb565_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
       num_cols--;
     }
     for (col = 0; col < (num_cols >> 1); col++) {
-      y  = GETJSAMPLE(*inptr0++);
-      cb = GETJSAMPLE(*inptr1++);
-      cr = GETJSAMPLE(*inptr2++);
+      y  = *inptr0++;
+      cb = *inptr1++;
+      cr = *inptr2++;
       r = range_limit[y + Crrtab[cr]];
       g = range_limit[y + ((int)RIGHT_SHIFT(Cbgtab[cb] + Crgtab[cr],
                                             SCALEBITS))];
       b = range_limit[y + Cbbtab[cb]];
       rgb = PACK_SHORT_565(r, g, b);
 
-      y  = GETJSAMPLE(*inptr0++);
-      cb = GETJSAMPLE(*inptr1++);
-      cr = GETJSAMPLE(*inptr2++);
+      y  = *inptr0++;
+      cb = *inptr1++;
+      cr = *inptr2++;
       r = range_limit[y + Crrtab[cr]];
       g = range_limit[y + ((int)RIGHT_SHIFT(Cbgtab[cb] + Crgtab[cr],
                                             SCALEBITS))];
@@ -80,9 +81,9 @@ ycc_rgb565_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
       outptr += 4;
     }
     if (num_cols & 1) {
-      y  = GETJSAMPLE(*inptr0);
-      cb = GETJSAMPLE(*inptr1);
-      cr = GETJSAMPLE(*inptr2);
+      y  = *inptr0;
+      cb = *inptr1;
+      cr = *inptr2;
       r = range_limit[y + Crrtab[cr]];
       g = range_limit[y + ((int)RIGHT_SHIFT(Cbgtab[cb] + Crgtab[cr],
                                             SCALEBITS))];
@@ -91,23 +92,27 @@ ycc_rgb565_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
       *(INT16 *)outptr = (INT16)rgb;
     }
   }
+#else
+  ERREXIT(cinfo, JERR_CONVERSION_NOTIMPL);
+#endif
 }
 
 
 INLINE
 LOCAL(void)
-ycc_rgb565D_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
-                             JDIMENSION input_row, JSAMPARRAY output_buf,
+ycc_rgb565D_convert_internal(j_decompress_ptr cinfo, _JSAMPIMAGE input_buf,
+                             JDIMENSION input_row, _JSAMPARRAY output_buf,
                              int num_rows)
 {
+#if BITS_IN_JSAMPLE != 16
   my_cconvert_ptr cconvert = (my_cconvert_ptr)cinfo->cconvert;
   register int y, cb, cr;
-  register JSAMPROW outptr;
-  register JSAMPROW inptr0, inptr1, inptr2;
+  register _JSAMPROW outptr;
+  register _JSAMPROW inptr0, inptr1, inptr2;
   register JDIMENSION col;
   JDIMENSION num_cols = cinfo->output_width;
   /* copy these pointers into registers if possible */
-  register JSAMPLE *range_limit = cinfo->sample_range_limit;
+  register _JSAMPLE *range_limit = (_JSAMPLE *)cinfo->sample_range_limit;
   register int *Crrtab = cconvert->Cr_r_tab;
   register int *Cbbtab = cconvert->Cb_b_tab;
   register JLONG *Crgtab = cconvert->Cr_g_tab;
@@ -125,9 +130,9 @@ ycc_rgb565D_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
     input_row++;
     outptr = *output_buf++;
     if (PACK_NEED_ALIGNMENT(outptr)) {
-      y  = GETJSAMPLE(*inptr0++);
-      cb = GETJSAMPLE(*inptr1++);
-      cr = GETJSAMPLE(*inptr2++);
+      y  = *inptr0++;
+      cb = *inptr1++;
+      cr = *inptr2++;
       r = range_limit[DITHER_565_R(y + Crrtab[cr], d0)];
       g = range_limit[DITHER_565_G(y +
                                    ((int)RIGHT_SHIFT(Cbgtab[cb] + Crgtab[cr],
@@ -139,9 +144,9 @@ ycc_rgb565D_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
       num_cols--;
     }
     for (col = 0; col < (num_cols >> 1); col++) {
-      y  = GETJSAMPLE(*inptr0++);
-      cb = GETJSAMPLE(*inptr1++);
-      cr = GETJSAMPLE(*inptr2++);
+      y  = *inptr0++;
+      cb = *inptr1++;
+      cr = *inptr2++;
       r = range_limit[DITHER_565_R(y + Crrtab[cr], d0)];
       g = range_limit[DITHER_565_G(y +
                                    ((int)RIGHT_SHIFT(Cbgtab[cb] + Crgtab[cr],
@@ -150,9 +155,9 @@ ycc_rgb565D_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
       d0 = DITHER_ROTATE(d0);
       rgb = PACK_SHORT_565(r, g, b);
 
-      y  = GETJSAMPLE(*inptr0++);
-      cb = GETJSAMPLE(*inptr1++);
-      cr = GETJSAMPLE(*inptr2++);
+      y  = *inptr0++;
+      cb = *inptr1++;
+      cr = *inptr2++;
       r = range_limit[DITHER_565_R(y + Crrtab[cr], d0)];
       g = range_limit[DITHER_565_G(y +
                                    ((int)RIGHT_SHIFT(Cbgtab[cb] + Crgtab[cr],
@@ -165,9 +170,9 @@ ycc_rgb565D_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
       outptr += 4;
     }
     if (num_cols & 1) {
-      y  = GETJSAMPLE(*inptr0);
-      cb = GETJSAMPLE(*inptr1);
-      cr = GETJSAMPLE(*inptr2);
+      y  = *inptr0;
+      cb = *inptr1;
+      cr = *inptr2;
       r = range_limit[DITHER_565_R(y + Crrtab[cr], d0)];
       g = range_limit[DITHER_565_G(y +
                                    ((int)RIGHT_SHIFT(Cbgtab[cb] + Crgtab[cr],
@@ -177,17 +182,20 @@ ycc_rgb565D_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
       *(INT16 *)outptr = (INT16)rgb;
     }
   }
+#else
+  ERREXIT(cinfo, JERR_CONVERSION_NOTIMPL);
+#endif
 }
 
 
 INLINE
 LOCAL(void)
-rgb_rgb565_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
-                            JDIMENSION input_row, JSAMPARRAY output_buf,
+rgb_rgb565_convert_internal(j_decompress_ptr cinfo, _JSAMPIMAGE input_buf,
+                            JDIMENSION input_row, _JSAMPARRAY output_buf,
                             int num_rows)
 {
-  register JSAMPROW outptr;
-  register JSAMPROW inptr0, inptr1, inptr2;
+  register _JSAMPROW outptr;
+  register _JSAMPROW inptr0, inptr1, inptr2;
   register JDIMENSION col;
   JDIMENSION num_cols = cinfo->output_width;
   SHIFT_TEMPS
@@ -202,32 +210,32 @@ rgb_rgb565_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
     input_row++;
     outptr = *output_buf++;
     if (PACK_NEED_ALIGNMENT(outptr)) {
-      r = GETJSAMPLE(*inptr0++);
-      g = GETJSAMPLE(*inptr1++);
-      b = GETJSAMPLE(*inptr2++);
+      r = *inptr0++;
+      g = *inptr1++;
+      b = *inptr2++;
       rgb = PACK_SHORT_565(r, g, b);
       *(INT16 *)outptr = (INT16)rgb;
       outptr += 2;
       num_cols--;
     }
     for (col = 0; col < (num_cols >> 1); col++) {
-      r = GETJSAMPLE(*inptr0++);
-      g = GETJSAMPLE(*inptr1++);
-      b = GETJSAMPLE(*inptr2++);
+      r = *inptr0++;
+      g = *inptr1++;
+      b = *inptr2++;
       rgb = PACK_SHORT_565(r, g, b);
 
-      r = GETJSAMPLE(*inptr0++);
-      g = GETJSAMPLE(*inptr1++);
-      b = GETJSAMPLE(*inptr2++);
+      r = *inptr0++;
+      g = *inptr1++;
+      b = *inptr2++;
       rgb = PACK_TWO_PIXELS(rgb, PACK_SHORT_565(r, g, b));
 
       WRITE_TWO_ALIGNED_PIXELS(outptr, rgb);
       outptr += 4;
     }
     if (num_cols & 1) {
-      r = GETJSAMPLE(*inptr0);
-      g = GETJSAMPLE(*inptr1);
-      b = GETJSAMPLE(*inptr2);
+      r = *inptr0;
+      g = *inptr1;
+      b = *inptr2;
       rgb = PACK_SHORT_565(r, g, b);
       *(INT16 *)outptr = (INT16)rgb;
     }
@@ -237,14 +245,14 @@ rgb_rgb565_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
 
 INLINE
 LOCAL(void)
-rgb_rgb565D_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
-                             JDIMENSION input_row, JSAMPARRAY output_buf,
+rgb_rgb565D_convert_internal(j_decompress_ptr cinfo, _JSAMPIMAGE input_buf,
+                             JDIMENSION input_row, _JSAMPARRAY output_buf,
                              int num_rows)
 {
-  register JSAMPROW outptr;
-  register JSAMPROW inptr0, inptr1, inptr2;
+  register _JSAMPROW outptr;
+  register _JSAMPROW inptr0, inptr1, inptr2;
   register JDIMENSION col;
-  register JSAMPLE *range_limit = cinfo->sample_range_limit;
+  register _JSAMPLE *range_limit = (_JSAMPLE *)cinfo->sample_range_limit;
   JDIMENSION num_cols = cinfo->output_width;
   JLONG d0 = dither_matrix[cinfo->output_scanline & DITHER_MASK];
   SHIFT_TEMPS
@@ -259,24 +267,24 @@ rgb_rgb565D_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
     input_row++;
     outptr = *output_buf++;
     if (PACK_NEED_ALIGNMENT(outptr)) {
-      r = range_limit[DITHER_565_R(GETJSAMPLE(*inptr0++), d0)];
-      g = range_limit[DITHER_565_G(GETJSAMPLE(*inptr1++), d0)];
-      b = range_limit[DITHER_565_B(GETJSAMPLE(*inptr2++), d0)];
+      r = range_limit[DITHER_565_R(*inptr0++, d0)];
+      g = range_limit[DITHER_565_G(*inptr1++, d0)];
+      b = range_limit[DITHER_565_B(*inptr2++, d0)];
       rgb = PACK_SHORT_565(r, g, b);
       *(INT16 *)outptr = (INT16)rgb;
       outptr += 2;
       num_cols--;
     }
     for (col = 0; col < (num_cols >> 1); col++) {
-      r = range_limit[DITHER_565_R(GETJSAMPLE(*inptr0++), d0)];
-      g = range_limit[DITHER_565_G(GETJSAMPLE(*inptr1++), d0)];
-      b = range_limit[DITHER_565_B(GETJSAMPLE(*inptr2++), d0)];
+      r = range_limit[DITHER_565_R(*inptr0++, d0)];
+      g = range_limit[DITHER_565_G(*inptr1++, d0)];
+      b = range_limit[DITHER_565_B(*inptr2++, d0)];
       d0 = DITHER_ROTATE(d0);
       rgb = PACK_SHORT_565(r, g, b);
 
-      r = range_limit[DITHER_565_R(GETJSAMPLE(*inptr0++), d0)];
-      g = range_limit[DITHER_565_G(GETJSAMPLE(*inptr1++), d0)];
-      b = range_limit[DITHER_565_B(GETJSAMPLE(*inptr2++), d0)];
+      r = range_limit[DITHER_565_R(*inptr0++, d0)];
+      g = range_limit[DITHER_565_G(*inptr1++, d0)];
+      b = range_limit[DITHER_565_B(*inptr2++, d0)];
       d0 = DITHER_ROTATE(d0);
       rgb = PACK_TWO_PIXELS(rgb, PACK_SHORT_565(r, g, b));
 
@@ -284,9 +292,9 @@ rgb_rgb565D_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
       outptr += 4;
     }
     if (num_cols & 1) {
-      r = range_limit[DITHER_565_R(GETJSAMPLE(*inptr0), d0)];
-      g = range_limit[DITHER_565_G(GETJSAMPLE(*inptr1), d0)];
-      b = range_limit[DITHER_565_B(GETJSAMPLE(*inptr2), d0)];
+      r = range_limit[DITHER_565_R(*inptr0, d0)];
+      g = range_limit[DITHER_565_G(*inptr1, d0)];
+      b = range_limit[DITHER_565_B(*inptr2, d0)];
       rgb = PACK_SHORT_565(r, g, b);
       *(INT16 *)outptr = (INT16)rgb;
     }
@@ -296,11 +304,11 @@ rgb_rgb565D_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
 
 INLINE
 LOCAL(void)
-gray_rgb565_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
-                             JDIMENSION input_row, JSAMPARRAY output_buf,
+gray_rgb565_convert_internal(j_decompress_ptr cinfo, _JSAMPIMAGE input_buf,
+                             JDIMENSION input_row, _JSAMPARRAY output_buf,
                              int num_rows)
 {
-  register JSAMPROW inptr, outptr;
+  register _JSAMPROW inptr, outptr;
   register JDIMENSION col;
   JDIMENSION num_cols = cinfo->output_width;
 
@@ -336,13 +344,13 @@ gray_rgb565_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
 
 INLINE
 LOCAL(void)
-gray_rgb565D_convert_internal(j_decompress_ptr cinfo, JSAMPIMAGE input_buf,
-                              JDIMENSION input_row, JSAMPARRAY output_buf,
+gray_rgb565D_convert_internal(j_decompress_ptr cinfo, _JSAMPIMAGE input_buf,
+                              JDIMENSION input_row, _JSAMPARRAY output_buf,
                               int num_rows)
 {
-  register JSAMPROW inptr, outptr;
+  register _JSAMPROW inptr, outptr;
   register JDIMENSION col;
-  register JSAMPLE *range_limit = cinfo->sample_range_limit;
+  register _JSAMPLE *range_limit = (_JSAMPLE *)cinfo->sample_range_limit;
   JDIMENSION num_cols = cinfo->output_width;
   JLONG d0 = dither_matrix[cinfo->output_scanline & DITHER_MASK];
 

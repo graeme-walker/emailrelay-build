@@ -1,89 +1,68 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page qtdesigner-manual.html
 
-    \title Qt Designer Manual
+    \title Qt Widgets Designer Manual
     \ingroup qttools
-    \keyword Qt Designer
+    \keyword Qt Widgets Designer
 
     \QD is the Qt tool for designing and building graphical user
-    interfaces (GUIs) with \l {Qt Widgets}. You can compose and customize your
-    windows or dialogs in a what-you-see-is-what-you-get (WYSIWYG) manner, and
-    test them using different styles and resolutions.
+    interfaces (GUIs) with \l {Qt Widgets}. For user interface design with
+    \l {Qt Quick}, see \l {Qt Design Studio Manual} {Qt Design Studio}.
 
-    Widgets and forms created with \QD integrate seamlessly with programmed
-    code, using Qt's signals and slots mechanism, so that you can easily assign
-    behavior to graphical elements. All properties set in \QD can be changed
-    dynamically within the code. Furthermore, features like widget promotion
-    and custom plugins allow you to use your own components with \QD.
+    You can compose and customize your windows or dialogs in a
+    what-you-see-is-what-you-get (WYSIWYG) manner, and test them using different
+    styles and resolutions. Widgets and forms created with \QD integrate
+    seamlessly with programmed code, using Qt's signals and slots mechanism, so
+    that you can easily assign behavior to graphical elements. All properties
+    set in \QD can be changed dynamically within the code. Furthermore, features
+    like widget promotion and custom plugins allow you to use your own
+    components with \QD.
 
-    \note You have the option of using \l {Qt Quick} for user interface
+    \note You have the option of using \l {Qt Quick} and
+    \l {Qt Design Studio Manual}{Qt Design Studio} for user interface
     design rather than widgets. It is a much easier way to write many kinds of
     applications. It enables a completely customizable appearance,
-    touch-reactive elements, and smooth animated transitions, backed up by the
-    power of OpenGL graphics acceleration.
+    touch-reactive elements, and smooth animated transitions, taking advantage
+    of hardware acceleration.
 
     If you are new to \QD, you can take a look at the
-    \l{Getting To Know Qt Designer} document. For a quick tutorial on how to
-    use \QD, refer to \l{A Quick Start to Qt Designer}.
+    \l{Getting To Know Qt Widgets Designer} document. For a quick tutorial on how to
+    use \QD, refer to \l{A Quick Start to Qt Widgets Designer}.
 
     \image designer-multiple-screenshot.png
 
     \section1 Table of Contents
 
     \list
-        \li  \l{A Quick Start to Qt Designer}
-        \li  \l{Qt Designer's Editing Modes}
+        \li  \l{A Quick Start to Qt Widgets Designer}
+        \li  \l{Qt Widgets Designer's Editing Modes}
             \list
-                \li  \l{Qt Designer's Widget Editing Mode}{Widget Editing Mode}
-                \li  \l{Qt Designer's Signals and Slots Editing Mode}
+                \li  \l{Qt Widgets Designer's Widget Editing Mode}{Widget Editing Mode}
+                \li  \l{Qt Widgets Designer's Signals and Slots Editing Mode}
                       {Signals and Slots Editing Mode}
-                \li  \l{Qt Designer's Buddy Editing Mode}
+                \li  \l{Qt Widgets Designer's Buddy Editing Mode}
                       {Buddy Editing Mode}
-                \li  \l{Qt Designer's Tab Order Editing Mode}
+                \li  \l{Qt Widgets Designer's Tab Order Editing Mode}
                       {Tab Order Editing Mode}
             \endlist
-        \li  \l{Using Layouts in Qt Designer}
-        \li  \l{Saving, Previewing and Printing Forms in Qt Designer}
-        \li  \l{Using Containers in Qt Designer}
-        \li  \l{Creating Main Windows in Qt Designer}
-        \li  \l{Editing Resources with Qt Designer}
-        \li  \l{Using Stylesheets with Qt Designer}
+        \li  \l{Using Layouts in Qt Widgets Designer}
+        \li  \l{Saving, Previewing and Printing Forms in Qt Widgets Designer}
+        \li  \l{Using Containers in Qt Widgets Designer}
+        \li  \l{Creating Main Windows in Qt Widgets Designer}
+        \li  \l{Editing Resources with Qt Widgets Designer}
+        \li  \l{Using Stylesheets with Qt Widgets Designer}
         \li  \l{Using a Designer UI File in Your C++ Application}
         \li  \l{Using a Designer UI File in Your Qt for Python Application}
     \li Advanced Use
     \list
-        \li  \l{Customizing Qt Designer Forms}
-        \li  \l{Using Custom Widgets with Qt Designer}
-        \li  \l{Creating Custom Widgets for Qt Designer}
+        \li  \l{Customizing Qt Widgets Designer Forms}
+        \li  \l{Using Custom Widgets with Qt Widgets Designer}
+        \li  \l{Creating Custom Widgets for Qt Widgets Designer}
         \li  \l{Creating Custom Widget Extensions}
-        \li  \l{Qt Designer's UI File Format}
+        \li  \l{Qt Widgets Designer's UI File Format}
     \endlist
     \endlist
 */
@@ -93,7 +72,7 @@
     \page designer-to-know.html
 
 
-    \title Getting to Know Qt Designer
+    \title Getting to Know Qt Widgets Designer
 
     \image designer-screenshot.png
 
@@ -129,7 +108,7 @@
     \table
         \row
             \li \inlineimage designer-main-window.png
-            \li \b{Qt Designer's Main Window}
+            \li \b{Qt Widgets Designer's Main Window}
 
         The menu bar provides all the standard actions for managing forms,
         using the clipboard, and accessing application-specific help.
@@ -153,7 +132,7 @@
     \table
         \row
             \li \inlineimage designer-widget-box.png
-            \li \b{Qt Designer's Widget Box}
+            \li \b{Qt Widgets Designer's Widget Box}
 
         The widget box provides a selection of standard Qt widgets, layouts,
         and other objects that can be used to create user interfaces on forms.
@@ -162,7 +141,7 @@
 
         You can display all of the available objects in a category by clicking
         on the handle next to the category label. When in
-        \l{Qt Designer's Widget Editing Mode}{Widget Editing
+        \l{Qt Widgets Designer's Widget Editing Mode}{Widget Editing
         Mode}, you can add objects to a form by dragging the appropriate items
         from the widget box onto the form, and dropping them in the required
         locations.
@@ -260,7 +239,7 @@
     \page designer-quick-start.html
 
 
-    \title A Quick Start to Qt Designer
+    \title A Quick Start to Qt Widgets Designer
 
     Using \QD involves \b four basic steps:
 
@@ -396,15 +375,15 @@
 
 /*!
     \page designer-editing-mode.html
-    \previouspage Getting to Know Qt Designer
-    \nextpage Using Layouts in Qt Designer
+    \previouspage Getting to Know Qt Widgets Designer
+    \nextpage Using Layouts in Qt Widgets Designer
 
-    \title Qt Designer's Editing Modes
+    \title Qt Widgets Designer's Editing Modes
 
-    \QD provides four editing modes: \l{Qt Designer's Widget Editing Mode}
-    {Widget Editing Mode}, \l{Qt Designer's Signals and Slots Editing Mode}
-    {Signals and Slots Editing Mode}, \l{Qt Designer's Buddy Editing Mode}
-    {Buddy Editing Mode} and \l{Qt Designer's Tab Order Editing Mode}
+    \QD provides four editing modes: \l{Qt Widgets Designer's Widget Editing Mode}
+    {Widget Editing Mode}, \l{Qt Widgets Designer's Signals and Slots Editing Mode}
+    {Signals and Slots Editing Mode}, \l{Qt Widgets Designer's Buddy Editing Mode}
+    {Buddy Editing Mode} and \l{Qt Widgets Designer's Tab Order Editing Mode}
     {Tab Order Editing Mode}. When working with \QD, you will always be in one
     of these four modes. To switch between modes, simply select it from the
     \gui{Edit} menu or the toolbar. The table below describes these modes in
@@ -414,27 +393,27 @@
         \header \li  \li  \b{Editing Modes}
         \row
             \li  \inlineimage designer-widget-tool.png
-            \li  In \l{Qt Designer's Widget Editing Mode}{Edit} mode, we can
+            \li  In \l{Qt Widgets Designer's Widget Editing Mode}{Edit} mode, we can
                 change the appearance of the form, add layouts, and edit the
                 properties of each widget. To switch to this mode, press
                 \key{F3}. This is \QD's default mode.
 
         \row
             \li  \inlineimage designer-connection-tool.png
-            \li  In \l{Qt Designer's Signals and Slots Editing Mode}
+            \li  In \l{Qt Widgets Designer's Signals and Slots Editing Mode}
                 {Signals and Slots} mode, we can connect widgets together using
                 Qt's signals and slots mechanism. To switch to this mode, press
                 \key{F4}.
 
         \row
             \li  \inlineimage designer-buddy-tool.png
-            \li  In \l{Qt Designer's Buddy Editing Mode}{Buddy Editing Mode},
+            \li  In \l{Qt Widgets Designer's Buddy Editing Mode}{Buddy Editing Mode},
                 buddy widgets can be assigned to label widgets to help them
                 handle keyboard focus correctly.
 
         \row
             \li  \inlineimage designer-tab-order-tool.png
-            \li  In \l{Qt Designer's Tab Order Editing Mode}
+            \li  In \l{Qt Widgets Designer's Tab Order Editing Mode}
                 {Tab Order Editing Mode}, we can set the order in which widgets
                 receive the keyboard focus.
     \endtable
@@ -444,10 +423,10 @@
 
 /*!
     \page designer-widget-mode.html
-    \previouspage Qt Designer's Editing Modes
-    \nextpage Qt Designer's Signals and Slots Editing Mode
+    \previouspage Qt Widgets Designer's Editing Modes
+    \nextpage Qt Widgets Designer's Signals and Slots Editing Mode
 
-    \title Qt Designer's Widget Editing Mode
+    \title Qt Widgets Designer's Widget Editing Mode
 
     \image designer-editing-mode.png
 
@@ -458,8 +437,6 @@
     for simple operations, yet it still supports Qt's powerful layout
     facilities.
 
-
-    \tableofcontents
 
     To create and edit new forms, open the \gui File menu and select
     \gui{New Form...} or press \key{Ctrl+N}. Existing forms can also be edited
@@ -490,7 +467,7 @@
     The widget box contains objects in a number of different categories, all of
     which can be placed on the form as required. The only objects that require
     a little more preparation are the \gui Container widgets. These are
-    described in further detail in the \l{Using Containers in Qt Designer}
+    described in further detail in the \l{Using Containers in Qt Widgets Designer}
     chapter.
 
 
@@ -683,10 +660,10 @@
 
 /*!
     \page designer-layouts.html
-    \previouspage Qt Designer's Widget Editing Mode
-    \nextpage Qt Designer's Signals and Slots Editing Mode
+    \previouspage Qt Widgets Designer's Widget Editing Mode
+    \nextpage Qt Widgets Designer's Signals and Slots Editing Mode
 
-    \title Using Layouts in Qt Designer
+    \title Using Layouts in Qt Widgets Designer
 
     Before a form can be used, the objects on the form need to be placed into
     layouts. This ensures that the objects will be displayed properly when the
@@ -707,8 +684,6 @@
 
     To break a layout, press \key{Ctrl+0} or choose \gui{Break Layout} from
     the form's context menu, the \gui Form menu or the main toolbar.
-
-    \tableofcontents
 
     \section1 Setting A Top Level Layout
 
@@ -829,7 +804,7 @@
     Although QSplitter is a container widget, \QD treats splitter objects as
     layouts that are applied to existing widgets. To place a group of widgets
     into a splitter, select them
-    \l{Qt Designer's Widget Editing Mode#SelectingObjects}{as described here}
+    \l{Qt Widgets Designer's Widget Editing Mode#SelectingObjects}{as described here}
     then apply the splitter layout by using the appropriate toolbar button,
     keyboard shortcut, or \gui{Lay out} context menu entry.
 
@@ -886,9 +861,9 @@
 
 /*!
     \page designer-preview.html
-    \previouspage Using Layouts in Qt Designer
-    \nextpage Qt Designer's Buddy Editing Mode
-    \title Saving, Previewing and Printing Forms in Qt Designer
+    \previouspage Using Layouts in Qt Widgets Designer
+    \nextpage Qt Widgets Designer's Buddy Editing Mode
+    \title Saving, Previewing and Printing Forms in Qt Widgets Designer
 
     Although \QD's forms are accurate representations of the components being
     edited, it is useful to preview the final appearance while editing. This
@@ -966,11 +941,11 @@
 
 /*!
     \page designer-connection-mode.html
-    \previouspage Using Layouts in Qt Designer
-    \nextpage Qt Designer's Buddy Editing Mode
+    \previouspage Using Layouts in Qt Widgets Designer
+    \nextpage Qt Widgets Designer's Buddy Editing Mode
 
 
-    \title Qt Designer's Signals and Slots Editing Mode
+    \title Qt Widgets Designer's Signals and Slots Editing Mode
 
     \image designer-connection-mode.png
 
@@ -981,8 +956,6 @@
     connections are preserved so that they will be ready for use when your
     project is built.
 
-
-    \tableofcontents
 
     For more information on Qt's signals and sltos mechanism, refer to the
     \l{Signals and Slots} document.
@@ -1099,10 +1072,10 @@
 
 /*!
     \page designer-buddy-mode.html
-    \previouspage Qt Designer's Signals and Slots Editing Mode
-    \nextpage Qt Designer's Tab Order Editing Mode
+    \previouspage Qt Widgets Designer's Signals and Slots Editing Mode
+    \nextpage Qt Widgets Designer's Tab Order Editing Mode
 
-    \title Qt Designer's Buddy Editing Mode
+    \title Qt Widgets Designer's Buddy Editing Mode
 
     \image designer-buddy-mode.png
 
@@ -1116,7 +1089,7 @@
 
     To enter buddy editing mode, open the \gui Edit menu and select
     \gui{Edit Buddies}. This mode presents the widgets on the form in a similar
-    way to \l{Qt Designer's Signals and Slots Editing Mode}{signals and slots
+    way to \l{Qt Widgets Designer's Signals and Slots Editing Mode}{signals and slots
     editing mode} but in this mode, connections must start at label widgets.
     Ideally, you should connect each label widget that provides a shortcut with
     a suitable input widget, such as a QLineEdit.
@@ -1152,10 +1125,10 @@
 
 /*!
     \page designer-tab-order.html
-    \previouspage Qt Designer's Buddy Editing Mode
-    \nextpage Using Containers in Qt Designer
+    \previouspage Qt Widgets Designer's Buddy Editing Mode
+    \nextpage Using Containers in Qt Widgets Designer
 
-    \title Qt Designer's Tab Order Editing Mode
+    \title Qt Widgets Designer's Tab Order Editing Mode
 
     \image designer-tab-order-mode.png
 
@@ -1200,11 +1173,11 @@
 
 /*!
     \page designer-using-containers.html
-    \previouspage Qt Designer's Tab Order Editing Mode
-    \nextpage Creating Main Windows in Qt Designer
+    \previouspage Qt Widgets Designer's Tab Order Editing Mode
+    \nextpage Creating Main Windows in Qt Widgets Designer
 
 
-    \title Using Containers in Qt Designer
+    \title Using Containers in Qt Widgets Designer
 
     Container widgets provide high level control over groups of objects on a
     form. They can be used to perform a variety of functions, such as managing
@@ -1254,8 +1227,7 @@
         checkboxes and radio buttons with similar purposes.
 
         Among the significant properties of group boxes are \c title, \c flat,
-        \c checkable, and \c checked. These are demonstrated in the
-        \l{widgets/groupbox}{Group Box} example, and described in the QGroupBox
+        \c checkable, and \c checked, as described in the \l QGroupBox
         class documentation. Each group box can contain its own layout, and
         this is necessary if it contains other widgets. To add a layout to the
         group box, click inside it and apply the layout as usual.
@@ -1329,7 +1301,7 @@
 
         Although dock widgets can be added to any type of form, they are
         typically used with forms created from the
-        \l{Creating Main Windows in Qt Designer}{main window template}.
+        \l{Creating Main Windows in Qt Widgets Designer}{main window template}.
 
     \endtable
 */
@@ -1337,10 +1309,10 @@
 
 /*!
     \page designer-creating-mainwindows.html
-    \previouspage Using Containers in Qt Designer
-    \nextpage Editing Resources with Qt Designer
+    \previouspage Using Containers in Qt Widgets Designer
+    \nextpage Editing Resources with Qt Widgets Designer
 
-    \title Creating Main Windows in Qt Designer
+    \title Creating Main Windows in Qt Widgets Designer
 
     \QD can be used to create user interfaces for different purposes, and
     it provides different kinds of form templates for each user interface. The
@@ -1372,9 +1344,9 @@
     will not be displayed in the preview or in the finished window.
 
     Once created, the properties of a menu can be accessed using the
-    \l{Qt Designer's Widget Editing Mode#The Property Editor}{Property Editor},
+    \l{Qt Widgets Designer's Widget Editing Mode#The Property Editor}{Property Editor},
     and each menu can be accessed for this purpose via the
-    \l{Qt Designer's Widget Editing Mode#The Object Inspector}{The Object Inspector}.
+    \l{Qt Widgets Designer's Widget Editing Mode#The Object Inspector}{The Object Inspector}.
 
     Existing menus can be removed by opening a context menu over the label in
     the menu bar, and selecting \gui{Remove Menu 'menu_name'}.
@@ -1555,11 +1527,9 @@
 
     \section1 Dock Widgets
 
-    Since dock widgets are \l{Using Containers in Qt Designer}
-    {container widgets}, they can be added to a form in the usual way. Once
-    added to a form, dock widgets are not placed in any particular dock area by
-    default; you need to set the \gui{docked} property to true for each widget
-    and choose an appropriate value for its \gui{dockWidgetArea} property.
+    Dock widgets are \l{Using Containers in Qt Widgets Designer}{container widgets}
+    as well. They can be added to a form by dropping them onto the desired
+    dock area.
 
     \target AddingADockWidget
 
@@ -1591,10 +1561,10 @@
 
 /*!
     \page designer-resources.html
-    \previouspage Creating Main Windows in Qt Designer
-    \nextpage Using Stylesheets with Qt Designer
+    \previouspage Creating Main Windows in Qt Widgets Designer
+    \nextpage Using Stylesheets with Qt Widgets Designer
 
-    \title Editing Resources with Qt Designer
+    \title Editing Resources with Qt Widgets Designer
 
     \image designer-resources-editing.png
 
@@ -1695,10 +1665,10 @@ pixmap property in the property editor.
 
 /*!
     \page designer-stylesheet.html
-    \previouspage Editing Resources with Qt Designer
+    \previouspage Editing Resources with Qt Widgets Designer
     \nextpage Using a Designer UI File in Your C++ Application
 
-    \title Using Stylesheets with Qt Designer
+    \title Using Stylesheets with Qt Widgets Designer
 
     Since Qt 4.2, it is possible to edit stylesheets in \QD with the stylesheet
     editor.
@@ -1721,12 +1691,13 @@ pixmap property in the property editor.
 
 /*!
     \page designer-using-a-ui-file.html
-    \previouspage Using Stylesheets with Qt Designer
+    \previouspage Using Stylesheets with Qt Widgets Designer
     \nextpage Using a Designer UI File in Your Qt for Python Application
 
+    \keyword Using a Designer UI File in Your Application
     \title Using a Designer UI File in Your C++ Application
 
-    Qt Designer UI files represent the widget tree of the form in XML format. The
+    Qt Widgets Designer UI files represent the widget tree of the form in XML format. The
     forms can be processed:
 
     \list
@@ -1774,7 +1745,7 @@ pixmap property in the property editor.
     \endlist
 
     To demonstrate, we create a simple Calculator Form application. It is based on the
-    original \l{Calculator Form Example}{Calculator Form} example.
+    original \l{Calculator Form} example.
 
     The application consists of one source file, \c main.cpp and a UI
     file.
@@ -1783,10 +1754,19 @@ pixmap property in the property editor.
 
     \image directapproach-calculatorform.png
 
-    We will use \c qmake to build the executable, so we need to write a
-    \c{.pro} file:
+    When using \c CMake to build the executable, a \c{CMakeLists.txt}
+    file is required:
 
-    \snippet calculatorform/calculatorform.pro 0
+    \snippet uitools/calculatorform/CMakeLists.txt 0
+
+    The form is listed among the C++ source files in \c qt_add_executable().
+    The option \c CMAKE_AUTOUIC tells \c CMake to run the \c uic tool
+    to create a \c ui_calculatorform.h file that can be used
+    by the source files.
+
+    When using \c qmake to build the executable, a \c{.pro} file is required:
+
+    \snippet uitools/calculatorform/calculatorform.pro 0
 
     The special feature of this file is the \c FORMS declaration that tells
     \c qmake which files to process with \c uic. In this case, the
@@ -1794,8 +1774,8 @@ pixmap property in the property editor.
     that can be used by any file listed in the \c SOURCES declaration.
 
     \note You can use Qt Creator to create the Calculator Form project. It
-    automatically generates the main.cpp, UI, and .pro files, which you can
-    then modify.
+    automatically generates the main.cpp, UI, and a project file for the
+    desired build tool, which you can modify.
 
     \section2 The Direct Approach
 
@@ -1842,16 +1822,35 @@ pixmap property in the property editor.
     interface and other objects in your application.
     The generated \c{Ui::CalculatorForm} structure is a member of the class.
 
-    This approach is used in the \l{Calculator Form Example}{Calculator Form}
-    example.
+    This approach is used in the \l{Calculator Form} example.
 
     To ensure that we can use the user interface, we need to include the header
     file that \c uic generates before referring to \c{Ui::CalculatorForm}:
 
     \snippet calculatorform/calculatorform.h 0
 
-    This means that the \c{.pro} file must be updated to include
-    \c{calculatorform.h}:
+    The project file must be updated to include \c{calculatorform.h}.
+    For \c CMake:
+
+    \snippet calculatorform/CMakeLists.txt 1
+
+    In specific cases, such as the example below where the include directive
+    uses a relative path, \l{qt6_add_ui}{qt_add_ui} can be used to generate the
+    \c{ui_calculatorform.h} file instead of relying on
+    \l{CMake AUTOUIC Documentation}{AUTOUIC}.
+
+    \l{When to prefer qt_add_ui over AUTOUIC}
+
+    \code
+        #include "src/files/ui_calculatorform.h"
+    \endcode
+
+    \code
+        qt_add_ui(calculatorform SOURCES calculatorform.ui
+                  INCLUDE_PREFIX src/files)
+    \endcode
+
+    For \c qmake:
 
     \snippet calculatorform/calculatorform.pro 0
 
@@ -1936,20 +1935,17 @@ pixmap property in the property editor.
     and enables signal and slot connections to be made in the usual way with
     the \l{QObject::connect()}{connect()} function.
 
-    This approach is used in the \l{Multiple Inheritance Example}
-    {Multiple Inheritance} example.
-
     We need to include the header file that \c uic generates from the
     \c calculatorform.ui file, as follows:
 
-    \snippet ../uitools/multipleinheritance/calculatorform.h 0
+    \snippet ../designer/calculatorform_mi/calculatorform.h 0
 
     The class is defined in a similar way to the one used in the
     \l{The Single Inheritance Approach}{single inheritance approach}, except that
     this time we inherit from \e{both} QWidget and \c{Ui::CalculatorForm},
     as follows:
 
-    \snippet ../uitools/multipleinheritance/calculatorform.h 1
+    \snippet ../designer/calculatorform_mi/calculatorform.h 1
 
     We inherit \c{Ui::CalculatorForm} privately to ensure that the user
     interface objects are private in our subclass. We can also inherit it with
@@ -1960,7 +1956,7 @@ pixmap property in the property editor.
     constructor used in the \l{The Single Inheritance Approach}
     {single inheritance} example:
 
-    \snippet ../uitools/multipleinheritance/calculatorform.cpp 0
+    \snippet ../designer/calculatorform_mi/calculatorform.cpp 0
 
     In this case, the widgets used in the user interface can be accessed in the
     same say as a widget created in code by hand. We no longer require the
@@ -1998,9 +1994,14 @@ pixmap property in the property editor.
 
     A resource file containing a UI file is required to process forms at
     run time. Also, the application needs to be configured to use the QtUiTools
-    module. This is done by including the following declaration in a \c qmake
+    module. This is done by including the following declarations in a \c CMake
     project file, ensuring that the application is compiled and linked
     appropriately.
+
+    \snippet ../uitools/textfinder/CMakeLists.txt 0
+    \snippet ../uitools/textfinder/CMakeLists.txt 1
+
+    For \c qmake:
 
     \snippet manual/doc_src_designer-manual.pro 0
 
@@ -2015,7 +2016,7 @@ pixmap property in the property editor.
     \snippet manual/doc_src_designer-manual.cpp 1
 
     The QUiLoader::load() function is invoked as shown in this code from the
-    \l{Text Finder Example}{Text Finder} example:
+    \l{Text Finder} example:
 
     \snippet ../uitools/textfinder/textfinder.cpp 4
 
@@ -2086,13 +2087,17 @@ pixmap property in the property editor.
 
     \snippet manual/doc_src_designer-manual.cpp 2
 
+    \note When renaming widgets in the form, the slot names need to be
+    adapted accordingly, which can become a maintenance problem.
+    For this reason, we recommend against using this in new code.
+
     Using this convention, we can define and implement a slot that responds to
     mouse clicks on the \gui OK button:
 
     \snippet autoconnection/imagedialog.h 0
 
     Another example of automatic signal and slot connection would be the
-    \l{Text Finder Example}{Text Finder} with its \c{on_findButton_clicked()}
+    \l{Text Finder} with its \c{on_findButton_clicked()}
     slot.
 
     We use QMetaObject's system to enable signal and slot connections:
@@ -2115,7 +2120,7 @@ pixmap property in the property editor.
 /*!
     \page designer-using-a-ui-file-python.html
     \previouspage Using a Designer UI File in Your C++ Application
-    \nextpage Using Custom Widgets with Qt Designer
+    \nextpage Using Custom Widgets with Qt Widgets Designer
 
     \title Using a Designer UI File in Your Qt for Python Application
 
@@ -2197,14 +2202,78 @@ pixmap property in the property editor.
         widget.show()
         sys.exit(app.exec_())
     \endcode
+
+    \section1 Resource imports
+
+    \section2 Single directory usage
+
+    When using icons from \l{The Qt Resource System}{resource files}, say
+    \c resources.qrc, \c uic will generate an import of the form:
+
+    \code
+    import resources_rc
+    \endcode
+
+    This assumes that a file \c resources_rc.py generated by calling the
+    \l {Resource Compiler (rcc)} tool (passing the \c {-g python}
+    command line option) exists in the same directory as the form source.
+
+    \c uic has a command line option \c --rc-prefix causing the \c rc indicator
+    to be prepended:
+
+    \code
+    import rc_resources
+    \endcode
+
+    The command line option \c --from-imports causes the imports to be generated
+    relative to '.':
+
+    \code
+    from . import resources_rc
+    \endcode
+
+    \section2 Directory trees
+
+    Some projects have more complicated directory trees, for example:
+
+    \badcode
+    project
+        resources   (resources.qrc)
+        ui          (.ui files)
+    \endcode
+
+    The resource file is then not in the same directory as the form source
+    and the \c .ui files typically have relative paths to the resource files:
+
+    \badcode
+    <include location="../resources/resources.qrc"/>
+    \endcode
+
+    In this case, the command line option \c --absolute-imports can be used
+    to generate an absolute import in Python, resulting in:
+
+    \code
+    import resources.resources_rc
+    \endcode
+
+    based on the assumption that \c .. is the root directory of the project
+    contained in the Python import path list.
+
+    For more deeply nested trees, it is possible to use the
+    command line option \c {--python-paths <path list>} to pass a Python
+    import path list. \c uic will then try to determine the project root
+    by matching the form file path against the path components.
+
+    If \c {--python-paths} is not given, the environment variable
+    \c PYTHONPATH is by default checked.
 */
 
 /*!
     \page designer-customizing-forms.html
     \previouspage Using a Designer UI File in Your Qt for Python Application
-    \nextpage Using Custom Widgets with Qt Designer
+    \nextpage Using Custom Widgets with Qt Widgets Designer
 
-    \title Customizing Qt Designer Forms
+    \title Customizing Qt Widgets Designer Forms
 
     \image designer-form-settings.png
 
@@ -2257,10 +2326,10 @@ pixmap property in the property editor.
 
 /*!
     \page designer-using-custom-widgets.html
-    \previouspage Customizing Qt Designer Forms
-    \nextpage Creating Custom Widgets for Qt Designer
+    \previouspage Customizing Qt Widgets Designer Forms
+    \nextpage Creating Custom Widgets for Qt Widgets Designer
 
-    \title Using Custom Widgets with Qt Designer
+    \title Using Custom Widgets with Qt Widgets Designer
 
     \QD can display custom widgets through its extensible plugin mechanism,
     allowing the range of designable widgets to be extended by the user and
@@ -2331,19 +2400,17 @@ pixmap property in the property editor.
 
     \section2 User Defined Custom Widgets
 
-    \image worldtimeclockplugin-example.png
-
     Custom widgets can be adapted for use with \QD, giving designers the
     opportunity to configure the user interface using the actual widgets that
     will be used in an application rather than placeholder widgets. The process
     of creating a custom widget plugin is described in the
-    \l{Creating Custom Widgets for Qt Designer} chapter of this manual.
+    \l{Creating Custom Widgets for Qt Widgets Designer} chapter of this manual.
 
     To use a plugin created in this way, it is necessary to ensure that the
     plugin is located on a path that \QD searches for plugins. Generally,
     plugins stored in \c{$QTDIR/plugins/designer} will be loaded when \QD
     starts. Further information on building and installing plugins can be found
-    \l{Creating Custom Widgets for Qt Designer#BuildingandInstallingthePlugin}
+    \l{Creating Custom Widgets for Qt Widgets Designer#BuildingandInstallingthePlugin}
     {here}. You can also refer to the \l{How to Create Qt Plugins}
     {Plugins HOWTO} document for information about creating plugins.
 */
@@ -2351,10 +2418,10 @@ pixmap property in the property editor.
 
 /*!
     \page designer-creating-custom-widgets.html
-    \previouspage Using Custom Widgets with Qt Designer
+    \previouspage Using Custom Widgets with Qt Widgets Designer
     \nextpage Creating Custom Widget Extensions
 
-    \title Creating Custom Widgets for Qt Designer
+    \title Creating Custom Widgets for Qt Widgets Designer
 
     \QD's plugin-based architecture allows user-defined and third party custom
     widgets to be edited just like you do with standard Qt widgets. All of the
@@ -2363,8 +2430,6 @@ pixmap property in the property editor.
     design process, custom widgets will appear the same as they do when
     previewed.
 
-    \image worldtimeclockplugin-example.png
-
     The \l QtDesigner module provides you with the ability to create custom
     widgets in \QD.
 
@@ -2372,7 +2437,7 @@ pixmap property in the property editor.
     \section1 Getting Started
 
     To integrate a custom widget with \QD, you require a suitable description
-    for the widget and an appropriate \c{.pro} file.
+    for the widget and an appropriate project file.
 
 
     \section2 Providing an Interface Description
@@ -2613,28 +2678,39 @@ pixmap property in the property editor.
 
     \section2 A Simple Plugin
 
-    The \l{Custom Widget Plugin Example} demonstrates a simple \QD plugin.
+    The \l{Custom Widget Plugin} demonstrates a simple \QD plugin.
 
-    The \c{.pro} file for a plugin must specify the headers and sources for
+    The project file for a plugin must specify the headers and sources for
     both the custom widget and the plugin interface. Typically, this file only
-    has to specify that the plugin's project is to be built as a library, but
-    with specific plugin support for \QD. This is done with the following
-    declarations:
+    has to specify that the plugin's project will be built as a library, but
+    with specific plugin support for \QD. For \c CMake, this is done with
+    the following declarations:
+
+    \snippet customwidgetplugin/CMakeLists.txt 0
+    \snippet customwidgetplugin/CMakeLists.txt 1
+    \snippet customwidgetplugin/CMakeLists.txt 2
+
+    The link libraries list specifies \c Qt::UiPlugin. This indicates that
+    the plugin uses the abstract interfaces QDesignerCustomWidgetInterface
+    and QDesignerCustomWidgetCollectionInterface only and has no linkage
+    to the \QD libraries. When accessing other interfaces of \QD that have
+    linkage, \c Designer should be used instead; this ensures that the plugin
+    dynamically links to the \QD libraries and has a run-time dependency on
+    them.
+
+    It is also necessary to ensure that the plugin is installed together with
+    other \QD widget plugins:
+
+    \snippet customwidgetplugin/CMakeLists.txt 3
+    \snippet customwidgetplugin/CMakeLists.txt 4
+
+    For \c qmake:
 
     \snippet customwidgetplugin/customwidgetplugin.pro 0
     \snippet customwidgetplugin/customwidgetplugin.pro 2
 
-    The \c QT variable contains the keyword \c uiplugin. It indicates that
-    the plugin uses the abstract interfaces QDesignerCustomWidgetInterface
-    and QDesignerCustomWidgetCollectionInterface only and has no linkage
-    to the \QD libraries. When accessing other interfaces of \QD that have
-    linkage, \c designer should be used instead; this ensures that the plugin
-    dynamically links to the \QD libraries and has a run-time dependency on
-    them.
-
-    If plugins are built in a mode that is incompatible with \QD, they will
-    not be loaded and installed. For more information about plugins, see the
-    \l{plugins-howto.html}{Plugins HOWTO} document.
+    The \c QT variable contains the keyword \c uiplugin, which is
+    the equivalent of the \c Qt::UiPlugin library.
 
     It is also necessary to ensure that the plugin is installed together with
     other \QD widget plugins:
@@ -2651,19 +2727,24 @@ pixmap property in the property editor.
     See QCoreApplication::libraryPaths() for more information about customizing
     paths for libraries and plugins with Qt applications.
 
+    If plugins are built in a mode that is incompatible with \QD, they will
+    not be loaded and installed. For more information about plugins, see the
+    \l{plugins-howto.html}{Plugins HOWTO} document.
+
     \section2 Splitting up the Plugin
 
-    In a real world scenario, you do not want to have dependencies of the
-    application making use of the custom widgets to the \QD headers and
-    libraries as introduced by the simple approach explained above.
+    The simple approach explained above introduces a problem particularly
+    when using the other interfaces of \QD that have linkage:
+    The application using the custom widget will then depend on
+    \QD headers and libraries. In a real world scenario, this is not desired.
 
     The following sections describe how to resolve this.
 
     \section3 Linking the Widget into the Application
 
-     The source and header file of the custom widget can be shared
-     between the application and \QD by creating a \c{.pri} file for
-     inclusion:
+     When using \c qmake, the source and header file of the custom widget
+     can be shared between the application and \QD by creating a \c{.pri}
+     file for inclusion:
 
      \code
      INCLUDEPATH += $$PWD
@@ -2677,6 +2758,9 @@ pixmap property in the property editor.
      \code
      include(customwidget.pri)
      \endcode
+
+    When using \c CMake, the source files of the widget can similarly be
+    added to the application project.
 
     \section3 Sharing the Widget Using a Library
 
@@ -2695,13 +2779,13 @@ pixmap property in the property editor.
     (see QUiLoader::pluginPaths() and related functions). To avoid having
     to deploy the \QD libraries onto the target device, those plugins should
     have no linkage to the \QD libraries (\c {QT = uiplugin}, see
-    \l{Creating Custom Widgets for Qt Designer#BuildingandInstallingthePlugin}).
+    \l{Creating Custom Widgets for Qt Widgets Designer#BuildingandInstallingthePlugin}).
 
     \section1 Related Examples
 
     For more information on using custom widgets in \QD, refer to the
     \l{customwidgetplugin}{Custom Widget Plugin} and
-    \l{worldtimeclockplugin}{World Time Clock Plugin} examples for more
+    \l{taskmenuextension}{Task Menu Extension} examples for more
     information about using custom widgets in \QD. Also, you can use the
     QDesignerCustomWidgetCollectionInterface class to combine several custom
     widgets into a single library.
@@ -2710,8 +2794,8 @@ pixmap property in the property editor.
 
 /*!
     \page designer-creating-custom-widgets-extensions.html
-    \previouspage Creating Custom Widgets for Qt Designer
-    \nextpage Qt Designer's UI File Format
+    \previouspage Creating Custom Widgets for Qt Widgets Designer
+    \nextpage Qt Widgets Designer's UI File Format
 
     \title Creating Custom Widget Extensions
 
@@ -2812,7 +2896,7 @@ pixmap property in the property editor.
     interfaces using a QObject pointer only.
 
 
-    \section1 Exposing an Extension to Qt Designer
+    \section1 Exposing an Extension to Qt Widgets Designer
 
     In \QD the extensions are not created until they are required. For this
     reason, when implementing extensions, you must subclass QExtensionFactory
@@ -2850,12 +2934,12 @@ pixmap property in the property editor.
     \snippet manual/doc_src_designer-manual.cpp 9
 
 
-    \section2 Accessing Qt Designer's Extension Manager
+    \section2 Accessing Qt Widgets Designer's Extension Manager
 
     When implementing a custom widget plugin, you must subclass the
     QDesignerCustomWidgetInterface to expose your plugin to \QD. This is
     covered in more detail in the
-    \l{Creating Custom Widgets for Qt Designer} section. The registration of
+    \l{Creating Custom Widgets for Qt Widgets Designer} section. The registration of
     an extension factory is typically made in the
     QDesignerCustomWidgetInterface::initialize() function:
 
@@ -2882,7 +2966,7 @@ pixmap property in the property editor.
     \page designer-ui-file-format.html
     \previouspage Creating Custom Widget Extensions
 
-    \title Qt Designer's UI File Format
+    \title Qt Widgets Designer's UI File Format
 
     The \c UI file format used by \QD is described by the
     \l{http://www.w3.org/XML/Schema}{XML schema} presented below,

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QHELPCOLLECTIONHANDLER_H
 #define QHELPCOLLECTIONHANDLER_H
@@ -51,21 +15,19 @@
 // We mean it.
 //
 
-#include <QtCore/QList>
-#include <QtCore/QString>
-#include <QtCore/QObject>
-#include <QtCore/QVariant>
-#include <QtCore/QStringList>
-
-#include <QtSql/QSqlQuery>
-
 #include "qhelpdbreader_p.h"
+#include "qhelplink.h"
+
+#include <QtCore/qdatetime.h>
+#include <QtCore/qobject.h>
+#include <QtCore/qstringlist.h>
 
 QT_BEGIN_NAMESPACE
 
-class QVersionNumber;
 class QHelpFilterData;
-struct QHelpLink;
+class QSqlQuery;
+class QVariant;
+class QVersionNumber;
 
 class QHelpCollectionHandler : public QObject
 {
@@ -86,7 +48,7 @@ public:
         int folderId = -1;
         QString fileName;
         int size = 0;
-        QString timeStamp;
+        QDateTime timeStamp;
     };
 
     struct ContentsData
@@ -96,11 +58,10 @@ public:
         QList<QByteArray> contentsList;
     };
 
-    explicit QHelpCollectionHandler(const QString &collectionFile,
-        QObject *parent = nullptr);
+    explicit QHelpCollectionHandler(const QString &collectionFile, QObject *parent = nullptr);
     ~QHelpCollectionHandler();
 
-    QString collectionFile() const;
+    QString collectionFile() const { return m_collectionFile; }
 
     bool openCollectionFile();
     bool copyCollectionFile(const QString &fileName);
@@ -115,8 +76,7 @@ public:
     bool removeCustomFilter(const QString &filterName);
 
     // use QHelpFilterEngine::setFilterData() instead
-    bool addCustomFilter(const QString &filterName,
-        const QStringList &attributes);
+    bool addCustomFilter(const QString &filterName, const QStringList &attributes);
 
     // use files(const QString &, const QString &, const QString &) instead
     QStringList files(const QString &namespaceName,
@@ -124,12 +84,10 @@ public:
                       const QString &extensionFilter) const;
 
     // use namespaceForFile(const QUrl &, const QString &) instead
-    QString namespaceForFile(const QUrl &url,
-                             const QStringList &filterAttributes) const;
+    QString namespaceForFile(const QUrl &url, const QStringList &filterAttributes) const;
 
     // use findFile(const QUrl &, const QString &) instead
-    QUrl findFile(const QUrl &url,
-                  const QStringList &filterAttributes) const;
+    QUrl findFile(const QUrl &url, const QStringList &filterAttributes) const;
 
     // use indicesForFilter(const QString &) instead
     QStringList indicesForFilter(const QStringList &filterAttributes) const;
@@ -146,21 +104,6 @@ public:
     // use filterData(const QString &) instead
     QList<QStringList> filterAttributeSets(const QString &namespaceName) const;
 
-    // use linksForIdentifier(const QString &, const QString &) instead
-    QMap<QString, QUrl> linksForIdentifier(const QString &id,
-                                           const QStringList &filterAttributes) const;
-
-    // use linksForKeyword(const QString &, const QString &) instead
-    QMap<QString, QUrl> linksForKeyword(const QString &keyword,
-                                        const QStringList &filterAttributes) const;
-
-    // use documentsForIdentifier instead
-    QMap<QString, QUrl> linksForIdentifier(const QString &id,
-                                           const QString &filterName) const;
-
-    // use documentsForKeyword instead
-    QMap<QString, QUrl> linksForKeyword(const QString &keyword,
-                                        const QString &filterName) const;
     // *** Legacy block end ***
 
     QStringList filters() const;
@@ -173,23 +116,18 @@ public:
     bool setFilterData(const QString &filterName, const QHelpFilterData &filterData);
     bool removeFilter(const QString &filterName);
 
-
     FileInfo registeredDocumentation(const QString &namespaceName) const;
     FileInfoList registeredDocumentations() const;
     bool registerDocumentation(const QString &fileName);
     bool unregisterDocumentation(const QString &namespaceName);
 
-
     bool fileExists(const QUrl &url) const;
     QStringList files(const QString &namespaceName,
                       const QString &filterName,
                       const QString &extensionFilter) const;
-    QString namespaceForFile(const QUrl &url,
-                             const QString &filterName) const;
-    QUrl findFile(const QUrl &url,
-                  const QString &filterName) const;
+    QString namespaceForFile(const QUrl &url, const QString &filterName) const;
+    QUrl findFile(const QUrl &url, const QString &filterName) const;
     QByteArray fileData(const QUrl &url) const;
-
 
     QStringList indicesForFilter(const QString &filterName) const;
     QList<ContentsData> contentsForFilter(const QString &filterName) const;
@@ -198,16 +136,13 @@ public:
     QVariant customValue(const QString &key, const QVariant &defaultValue) const;
     bool setCustomValue(const QString &key, const QVariant &value);
 
-
     int registerNamespace(const QString &nspace, const QString &fileName);
     int registerVirtualFolder(const QString &folderName, int namespaceId);
     int registerComponent(const QString &componentName, int namespaceId);
     bool registerVersion(const QString &version, int namespaceId);
 
-    QList<QHelpLink> documentsForIdentifier(const QString &id,
-                                            const QString &filterName) const;
-    QList<QHelpLink> documentsForKeyword(const QString &keyword,
-                                         const QString &filterName) const;
+    QList<QHelpLink> documentsForIdentifier(const QString &id, const QString &filterName) const;
+    QList<QHelpLink> documentsForKeyword(const QString &keyword, const QString &filterName) const;
     QList<QHelpLink> documentsForIdentifier(const QString &id,
                                             const QStringList &filterAttributes) const;
     QList<QHelpLink> documentsForKeyword(const QString &keyword,
@@ -215,24 +150,23 @@ public:
 
     QStringList namespacesForFilter(const QString &filterName) const;
 
-    void setReadOnly(bool readOnly);
+    void setReadOnly(bool readOnly) { m_readOnly = readOnly; }
+
+    static QUrl buildQUrl(const QString &ns, const QString &folder,
+                          const QString &relFileName, const QString &anchor);
 
 signals:
-    void error(const QString &msg) const;
+    void error(const QString &msg);
 
 private:
     // legacy stuff
-    QMap<QString, QUrl> linksForField(const QString &fieldName,
-                                      const QString &fieldValue,
-                                      const QStringList &filterAttributes) const;
     QList<QHelpLink> documentsForField(const QString &fieldName,
                                        const QString &fieldValue,
                                        const QStringList &filterAttributes) const;
 
     QString namespaceVersion(const QString &namespaceName) const;
-    QMap<QString, QUrl> linksForField(const QString &fieldName,
-                                      const QString &fieldValue,
-                                      const QString &filterName) const;
+    QMultiMap<QString, QUrl> linksForField(const QString &fieldName, const QString &fieldValue,
+                                           const QString &filterName) const;
     QList<QHelpLink> documentsForField(const QString &fieldName,
                                        const QString &fieldValue,
                                        const QString &filterName) const;
@@ -257,11 +191,11 @@ private:
 
     QString m_collectionFile;
     QString m_connectionName;
-    QSqlQuery *m_query = nullptr;
+    std::unique_ptr<QSqlQuery> m_query;
     bool m_vacuumScheduled = false;
-    bool m_readOnly = false;
+    bool m_readOnly = true;
 };
 
 QT_END_NAMESPACE
 
-#endif  //QHELPCOLLECTIONHANDLER_H
+#endif // QHELPCOLLECTIONHANDLER_H

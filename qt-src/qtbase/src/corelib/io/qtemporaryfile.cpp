@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2017 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2017 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtemporaryfile.h"
 
@@ -59,6 +23,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 #if defined(Q_OS_WIN)
 typedef ushort Char;
 
@@ -78,20 +44,20 @@ typedef int NativeFileHandle;
 QTemporaryFileName::QTemporaryFileName(const QString &templateName)
 {
     // Ensure there is a placeholder mask
-    QString qfilename = templateName;
-    uint phPos = qfilename.length();
-    uint phLength = 0;
+    QString qfilename = QDir::fromNativeSeparators(templateName);
+    qsizetype phPos = qfilename.size();
+    qsizetype phLength = 0;
 
     while (phPos != 0) {
         --phPos;
 
-        if (qfilename[phPos] == QLatin1Char('X')) {
+        if (qfilename[phPos] == u'X') {
             ++phLength;
             continue;
         }
 
         if (phLength >= 6
-                || qfilename[phPos] == QLatin1Char('/')) {
+                || qfilename[phPos] == u'/') {
             ++phPos;
             break;
         }
@@ -101,15 +67,14 @@ QTemporaryFileName::QTemporaryFileName(const QString &templateName)
     }
 
     if (phLength < 6)
-        qfilename.append(QLatin1String(".XXXXXX"));
+        qfilename.append(".XXXXXX"_L1);
 
     // "Nativify" :-)
-    QFileSystemEntry::NativePath filename = QFileSystemEngine::absoluteName(
-            QFileSystemEntry(qfilename, QFileSystemEntry::FromInternalPath()))
-        .nativeFilePath();
+    QFileSystemEntry::NativePath filename =
+            QFileSystemEntry(QDir::cleanPath(qfilename)).nativeFilePath();
 
     // Find mask in native path
-    phPos = filename.length();
+    phPos = filename.size();
     phLength = 0;
     while (phPos != 0) {
         --phPos;
@@ -143,8 +108,8 @@ QTemporaryFileName::QTemporaryFileName(const QString &templateName)
 QFileSystemEntry::NativePath QTemporaryFileName::generateNext()
 {
     Q_ASSERT(length != 0);
-    Q_ASSERT(pos < path.length());
-    Q_ASSERT(length <= path.length() - pos);
+    Q_ASSERT(pos < path.size());
+    Q_ASSERT(length <= path.size() - pos);
 
     Char *const placeholderStart = (Char *)path.data() + pos;
     Char *const placeholderEnd = placeholderStart + length;
@@ -191,14 +156,14 @@ QFileSystemEntry::NativePath QTemporaryFileName::generateNext()
     return path;
 }
 
-#ifndef QT_NO_TEMPORARYFILE
+#if QT_CONFIG(temporaryfile)
 
 /*!
     \internal
 
     Generates a unique file path from the template \a templ and creates a new
-    file based based on those parameters: the \c templ.length characters in \c
-    templ.path starting at \c templ.pos will be replacd by a random sequence of
+    file based on those parameters: the \c templ.length characters in \c
+    templ.path starting at \c templ.pos will be replaced by a random sequence of
     characters. \a mode specifies the file mode bits (not used on Windows).
 
     Returns true on success and sets the file handle on \a file. On error,
@@ -219,17 +184,11 @@ static bool createFileFromTemplate(NativeFileHandle &file, QTemporaryFileName &t
         const DWORD shareMode = (flags & QTemporaryFileEngine::Win32NonShared)
                                 ? 0u : (FILE_SHARE_READ | FILE_SHARE_WRITE);
 
-#  ifndef Q_OS_WINRT
+        const DWORD extraAccessFlags = (flags & QTemporaryFileEngine::Win32NonShared) ? DELETE : 0;
         file = CreateFile((const wchar_t *)path.constData(),
-                GENERIC_READ | GENERIC_WRITE,
+                GENERIC_READ | GENERIC_WRITE | extraAccessFlags,
                 shareMode, NULL, CREATE_NEW,
                 FILE_ATTRIBUTE_NORMAL, NULL);
-#  else // !Q_OS_WINRT
-        file = CreateFile2((const wchar_t *)path.constData(),
-                GENERIC_READ | GENERIC_WRITE,
-                shareMode, CREATE_NEW,
-                NULL);
-#  endif // Q_OS_WINRT
 
         if (file != INVALID_HANDLE_VALUE)
             return true;
@@ -249,7 +208,7 @@ static bool createFileFromTemplate(NativeFileHandle &file, QTemporaryFileName &t
             return false;
         }
 #else // POSIX
-        Q_UNUSED(flags)
+        Q_UNUSED(flags);
         file = QT_OPEN(path.constData(),
                 QT_OPEN_CREAT | QT_OPEN_EXCL | QT_OPEN_RDWR | QT_OPEN_LARGEFILE,
                 static_cast<mode_t>(mode));
@@ -347,7 +306,8 @@ void QTemporaryFileEngine::setFileName(const QString &file)
     QFSFileEngine::setFileName(file);
 }
 
-bool QTemporaryFileEngine::open(QIODevice::OpenMode openMode)
+bool QTemporaryFileEngine::open(QIODevice::OpenMode openMode,
+                                std::optional<QFile::Permissions> permissions)
 {
     Q_D(QFSFileEngine);
     Q_ASSERT(!isReallyOpen());
@@ -355,7 +315,7 @@ bool QTemporaryFileEngine::open(QIODevice::OpenMode openMode)
     openMode |= QIODevice::ReadWrite;
 
     if (!filePathIsTemplate)
-        return QFSFileEngine::open(openMode);
+        return QFSFileEngine::open(openMode, permissions);
 
     QTemporaryFileName tfn(templateName);
 
@@ -380,7 +340,7 @@ bool QTemporaryFileEngine::open(QIODevice::OpenMode openMode)
         return false;
     }
 
-#if !defined(Q_OS_WIN) || defined(Q_OS_WINRT)
+#if !defined(Q_OS_WIN)
     d->closeFileHandle = true;
 #endif
 
@@ -431,6 +391,18 @@ bool QTemporaryFileEngine::renameOverwrite(const QString &newName)
         QFSFileEngine::close();
         return ok;
     }
+#ifdef Q_OS_WIN
+    if (flags & Win32NonShared) {
+        QFileSystemEntry newEntry(newName, QFileSystemEntry::FromInternalPath());
+        bool ok = d_func()->nativeRenameOverwrite(newEntry);
+        QFSFileEngine::close();
+        if (ok) {
+            // Match what QFSFileEngine::renameOverwrite() does
+            setFileEntry(std::move(newEntry));
+        }
+        return ok;
+    }
+#endif
     QFSFileEngine::close();
     return QFSFileEngine::renameOverwrite(newName);
 }
@@ -446,7 +418,7 @@ bool QTemporaryFileEngine::close()
 QString QTemporaryFileEngine::fileName(QAbstractFileEngine::FileName file) const
 {
     if (isUnnamedFile()) {
-        if (file == LinkName) {
+        if (file == AbsoluteLinkTarget || file == RawLinkPath) {
             // we know our file isn't (won't be) a symlink
             return QString();
         }
@@ -582,9 +554,9 @@ QString QTemporaryFilePrivate::defaultTemplateName()
     baseName = QCoreApplication::applicationName();
     if (baseName.isEmpty())
 #endif
-        baseName = QLatin1String("qt_temp");
+        baseName = "qt_temp"_L1;
 
-    return QDir::tempPath() + QLatin1Char('/') + baseName + QLatin1String(".XXXXXX");
+    return QDir::tempPath() + u'/' + baseName + ".XXXXXX"_L1;
 }
 
 //************* QTemporaryFile
@@ -627,11 +599,18 @@ QString QTemporaryFilePrivate::defaultTemplateName()
     If you specify your own filename, a relative file path will not be placed in the
     temporary directory by default, but be relative to the current working directory.
 
-    Specified filenames can contain the following template \c XXXXXX
-    (six upper case "X" characters), which will be replaced by the
-    auto-generated portion of the filename. Note that the template is
-    case sensitive. If the template is not present in the filename,
-    QTemporaryFile appends the generated part to the filename given.
+//! [note-about-rename-method]
+    It is important to specify the correct directory if the rename() function will be
+    called, as QTemporaryFile can only rename files within the same volume / filesystem
+    as the temporary file itself was created on.
+//! [note-about-rename-method]
+
+    The file name (the part after the last directory path separator in the
+    specified file template) can contain the special sequence \c {"XXXXXX"}
+    (at least six upper case \c "X" characters), which will be replaced with
+    the auto-generated portion of the file name. If the file name doesn't
+    contain \c {"XXXXXX"}, QTemporaryFile will append the generated part to the
+    file name. Only the last occurrence of \c {"XXXXXX"} will be considered.
 
     \note On Linux, QTemporaryFile will attempt to create unnamed temporary
     files. If that succeeds, open() will return true but exists() will be
@@ -655,12 +634,17 @@ QTemporaryFile::QTemporaryFile(const QString &templateName)
 
 #else
 /*!
-    Constructs a QTemporaryFile using as file template
-    the application name returned by QCoreApplication::applicationName()
-    (otherwise \c qt_temp) followed by ".XXXXXX".
-    The file is stored in the system's temporary directory, QDir::tempPath().
+    Constructs a QTemporaryFile.
 
-    \sa setFileTemplate(), QDir::tempPath()
+//! [default-file-name-template]
+    \keyword Default File Name Template
+    The default file name template is determined from the application name as
+    returned by QCoreApplication::applicationName() (or \c {"qt_temp"} if the
+    application name is empty), followed by \c {".XXXXXX"}. The file is stored
+    in the system's temporary directory, as returned by QDir::tempPath().
+//! [default-file-name-template]
+
+    \sa setFileTemplate(), fileTemplate(), fileName(), QDir::tempPath()
 */
 QTemporaryFile::QTemporaryFile()
     : QTemporaryFile(nullptr)
@@ -668,16 +652,35 @@ QTemporaryFile::QTemporaryFile()
 }
 
 /*!
-    Constructs a QTemporaryFile with a template filename of \a
-    templateName. Upon opening the temporary file this will be used to create
+    \fn QTemporaryFile::QTemporaryFile(const std::filesystem::path &templateName, QObject *parent)
+    \overload
+    \since 6.7
+*/
+
+/*!
+    Constructs a QTemporaryFile with \a templateName as the file name template.
+
+//! [file-created-on-open]
+    Upon opening the temporary file, \a templateName will be used to create
     a unique filename.
+//! [file-created-on-open]
 
-    If the \a templateName does not contain XXXXXX it will automatically be
-    appended and used as the dynamic portion of the filename.
+//! [dynamic-part-of-filename]
+    If the file name (the part after the last directory path separator in
+    \a templateName) doesn't contain \c {"XXXXXX"}, it will be added
+    automatically.
 
+    \c {"XXXXXX"} will be replaced with the dynamic part of the file name,
+    which is calculated to be unique.
+//! [dynamic-part-of-filename]
+
+//! [filename-relative-or-absolute-path]
     If \a templateName is a relative path, the path will be relative to the
     current working directory. You can use QDir::tempPath() to construct \a
     templateName if you want use the system's temporary directory.
+//! [filename-relative-or-absolute-path]
+
+    \include qtemporaryfile.cpp note-about-rename-method
 
     \sa open(), fileTemplate()
 */
@@ -687,10 +690,9 @@ QTemporaryFile::QTemporaryFile(const QString &templateName)
 }
 
 /*!
-    Constructs a QTemporaryFile (with the given \a parent)
-    using as file template the application name returned by QCoreApplication::applicationName()
-    (otherwise \c qt_temp) followed by ".XXXXXX".
-    The file is stored in the system's temporary directory, QDir::tempPath().
+    Constructs a QTemporaryFile with the given \a parent.
+
+    \include qtemporaryfile.cpp default-file-name-template
 
     \sa setFileTemplate()
 */
@@ -700,17 +702,15 @@ QTemporaryFile::QTemporaryFile(QObject *parent)
 }
 
 /*!
-    Constructs a QTemporaryFile with a template filename of \a
-    templateName and the specified \a parent.
-    Upon opening the temporary file this will be used to
-    create a unique filename.
+    Constructs a QTemporaryFile with the specified \a parent, and
+    \a templateName as the file name template.
 
-    If the \a templateName does not contain XXXXXX it will automatically be
-    appended and used as the dynamic portion of the filename.
+    \include qtemporaryfile.cpp file-created-on-open
 
-    If \a templateName is a relative path, the path will be relative to the
-    current working directory. You can use QDir::tempPath() to construct \a
-    templateName if you want use the system's temporary directory.
+    \include qtemporaryfile.cpp dynamic-part-of-filename
+
+    \include qtemporaryfile.cpp filename-relative-or-absolute-path
+    \include qtemporaryfile.cpp note-about-rename-method
 
     \sa open(), fileTemplate()
 */
@@ -736,14 +736,21 @@ QTemporaryFile::~QTemporaryFile()
 }
 
 /*!
-  \fn bool QTemporaryFile::open()
+    \fn bool QTemporaryFile::open()
 
-  A QTemporaryFile will always be opened in QIODevice::ReadWrite mode,
-  this allows easy access to the data in the file. This function will
-  return true upon success and will set the fileName() to the unique
-  filename used.
+    Opens a unique temporary file in the file system in
+    \l QIODeviceBase::ReadWrite mode.
+    Returns \c true if the file was successfully opened, or was already open.
+    Otherwise returns \c false.
 
-  \sa fileName()
+    If called for the first time, open() will create a unique file name
+    based on \l fileTemplate(). The file is guaranteed to have been created
+    by this function (that is, it has never existed before).
+
+    If a file is reopened after calling \l close(), the same file will be
+    opened again.
+
+    \sa setFileTemplate(), QT_USE_NODISCARD_FILE_OPEN
 */
 
 /*!
@@ -794,6 +801,10 @@ void QTemporaryFile::setAutoRemove(bool b)
    afterwards it will contain the fileTemplate() plus
    additional characters to make it unique.
 
+   The file name returned by this method is relative or absolute depending on
+   the file name template used to construct this object (or passed to
+   setFileTemplate()) being relative or absolute, respectively.
+
    \sa fileTemplate()
 */
 
@@ -804,16 +815,19 @@ QString QTemporaryFile::fileName() const
     if (tef && tef->isReallyOpen())
         const_cast<QTemporaryFilePrivate *>(d)->materializeUnnamedFile();
 
-    if(d->fileName.isEmpty())
+    if (d->fileName.isEmpty())
         return QString();
     return d->engine()->fileName(QAbstractFileEngine::DefaultName);
 }
 
 /*!
-  Returns the set file template. The default file template will be
-  called qcoreappname.XXXXXX and be placed in QDir::tempPath().
+    Returns the file name template.
 
-  \sa setFileTemplate()
+    The file name template returned by this method, will be relative or
+    absolute depending on the file name template used to construct this object
+    (or passed to setFileTemplate()) being relative or absolute, respectively.
+
+    \sa setFileTemplate(), fileName(), {Default File Name Template}
 */
 QString QTemporaryFile::fileTemplate() const
 {
@@ -822,16 +836,22 @@ QString QTemporaryFile::fileTemplate() const
 }
 
 /*!
-   Sets the static portion of the file name to \a name. If the file
-   template contains XXXXXX that will automatically be replaced with
-   the unique part of the filename, otherwise a filename will be
-   determined automatically based on the static portion specified.
+    \fn void QTemporaryFile::setFileTemplate(const std::filesystem::path &name)
+    \overload
+    \since 6.7
+*/
 
-    If \a name contains a relative file path, the path will be relative to the
-    current working directory. You can use QDir::tempPath() to construct \a
-    name if you want use the system's temporary directory.
+/*!
+    \fn void QTemporaryFile::setFileTemplate(const QString &templateName)
 
-   \sa fileTemplate()
+    Sets the file name template to \a templateName.
+
+    \include qtemporaryfile.cpp dynamic-part-of-filename
+
+    \include qtemporaryfile.cpp filename-relative-or-absolute-path
+    \include qtemporaryfile.cpp note-about-rename-method
+
+   \sa fileTemplate(), fileName()
 */
 void QTemporaryFile::setFileTemplate(const QString &name)
 {
@@ -840,49 +860,56 @@ void QTemporaryFile::setFileTemplate(const QString &name)
 }
 
 /*!
-    \internal
+    \fn bool QTemporaryFile::rename(const std::filesystem::path &newName)
+    \overload
+    \since 6.7
+*/
 
-    This is just a simplified version of QFile::rename() because we know a few
-    extra details about what kind of file we have. The documentation is hidden
-    from the user because QFile::rename() should be enough.
+/*!
+    Renames the current temporary file to \a newName and returns true if it
+    succeeded.
+
+    This function has an important difference compared to QFile::rename(): it
+    will not perform a copy+delete if the low-level system call to rename the
+    file fails, something that could happen if \a newName specifies a file in a
+    different volume or filesystem than the temporary file was created on. In
+    other words, QTemporaryFile only supports atomic file renaming.
+
+    This functionality is intended to support materializing the destination
+    file with all contents already present, so another process cannot see an
+    incomplete file in the process of being written. The \l QSaveFile class can
+    be used for a similar purpose too, particularly if the destination file is
+    not temporary.
+
+    \sa QSaveFile, QSaveFile::commit(), QFile::rename()
 */
 bool QTemporaryFile::rename(const QString &newName)
 {
     Q_D(QTemporaryFile);
-    auto tef = static_cast<QTemporaryFileEngine *>(d->fileEngine.get());
-    if (!tef || !tef->isReallyOpen() || !tef->filePathWasTemplate)
-        return QFile::rename(newName);
+    return d->rename(newName, false);
+}
 
-    unsetError();
-    close();
-    if (error() == QFile::NoError) {
-        if (tef->rename(newName)) {
-            unsetError();
+bool QTemporaryFilePrivate::rename(const QString &newName, bool overwrite)
+{
+    Q_Q(QTemporaryFile);
+    auto tef = static_cast<QTemporaryFileEngine *>(fileEngine.get());
+    if (!tef || !tef->isReallyOpen() || !tef->filePathWasTemplate)
+        return q->QFile::rename(newName);
+
+    q->unsetError();
+    q->close();
+    if (q->error() == QFile::NoError) {
+        if (overwrite ? tef->renameOverwrite(newName) : tef->rename(newName)) {
+            q->unsetError();
             // engine was able to handle the new name so we just reset it
-            tef->setFileName(newName);
-            d->fileName = newName;
+            fileName = newName;
             return true;
         }
 
-        d->setError(QFile::RenameError, tef->errorString());
+        setError(QFile::RenameError, tef->errorString());
     }
     return false;
 }
-
-/*!
-  \fn QTemporaryFile *QTemporaryFile::createLocalFile(const QString &fileName)
-  \overload
-  \obsolete
-
-  Use QTemporaryFile::createNativeFile(const QString &fileName) instead.
-*/
-
-/*!
-  \fn QTemporaryFile *QTemporaryFile::createLocalFile(QFile &file)
-  \obsolete
-
-  Use QTemporaryFile::createNativeFile(QFile &file) instead.
-*/
 
 /*!
   \fn QTemporaryFile *QTemporaryFile::createNativeFile(const QString &fileName)
@@ -891,7 +918,11 @@ bool QTemporaryFile::rename(const QString &newName)
   Works on the given \a fileName rather than an existing QFile
   object.
 */
-
+/*!
+  \fn QTemporaryFile *QTemporaryFile::createNativeFile(const std::filesystem::path &fileName)
+  \overload
+  \since 6.7
+*/
 
 /*!
   If \a file is not already a native file, then a QTemporaryFile is created
@@ -909,12 +940,12 @@ bool QTemporaryFile::rename(const QString &newName)
 QTemporaryFile *QTemporaryFile::createNativeFile(QFile &file)
 {
     if (QAbstractFileEngine *engine = file.d_func()->engine()) {
-        if(engine->fileFlags(QAbstractFileEngine::FlagsMask) & QAbstractFileEngine::LocalDiskFlag)
+        if (engine->fileFlags(QAbstractFileEngine::FlagsMask) & QAbstractFileEngine::LocalDiskFlag)
             return nullptr; // native already
         //cache
         bool wasOpen = file.isOpen();
         qint64 old_off = 0;
-        if(wasOpen)
+        if (wasOpen)
             old_off = file.pos();
         else if (!file.open(QIODevice::ReadOnly))
             return nullptr;
@@ -935,7 +966,7 @@ QTemporaryFile *QTemporaryFile::createNativeFile(QFile &file)
             ret = nullptr;
         }
         //restore
-        if(wasOpen)
+        if (wasOpen)
             file.seek(old_off);
         else
             file.close();
@@ -946,18 +977,28 @@ QTemporaryFile *QTemporaryFile::createNativeFile(QFile &file)
 }
 
 /*!
-   \reimp
+    \reimp
 
-    Creates a unique file name for the temporary file, and opens it.  You can
-    get the unique name later by calling fileName(). The file is guaranteed to
-    have been created by this function (i.e., it has never existed before).
+    Opens a unique temporary file in the file system with \a mode flags.
+    Returns \c true if the file was successfully opened, or was already open.
+    Otherwise returns \c false.
+
+    If called for the first time, open() will create a unique file name
+    based on \l fileTemplate(), and open it with \a mode flags.
+    The file is guaranteed to have been created by this function (that is,
+    it has never existed before).
+
+    If a file is reopened after calling \l close(), the same file will be
+    opened again with \a mode flags.
+
+    \sa setFileTemplate(), QT_USE_NODISCARD_FILE_OPEN
 */
-bool QTemporaryFile::open(OpenMode flags)
+bool QTemporaryFile::open(OpenMode mode)
 {
     Q_D(QTemporaryFile);
     auto tef = static_cast<QTemporaryFileEngine *>(d->fileEngine.get());
     if (tef && tef->isReallyOpen()) {
-        setOpenMode(flags);
+        setOpenMode(mode);
         return true;
     }
 
@@ -968,7 +1009,7 @@ bool QTemporaryFile::open(OpenMode flags)
     //    d->engine();
     d->resetFileEngine();
 
-    if (QFile::open(flags)) {
+    if (QFile::open(mode)) {
         tef = static_cast<QTemporaryFileEngine *>(d->fileEngine.get());
         if (tef->isUnnamedFile())
             d->fileName.clear();
@@ -979,7 +1020,7 @@ bool QTemporaryFile::open(OpenMode flags)
     return false;
 }
 
-#endif // QT_NO_TEMPORARYFILE
+#endif // QT_CONFIG(temporaryfile)
 
 QT_END_NAMESPACE
 

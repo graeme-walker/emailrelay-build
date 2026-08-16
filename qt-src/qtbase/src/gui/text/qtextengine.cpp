@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtGui/private/qtguiglobal_p.h>
 #include "qdebug.h"
@@ -43,6 +7,7 @@
 #include "qtextformat_p.h"
 #include "qtextengine_p.h"
 #include "qabstracttextdocumentlayout.h"
+#include "qabstracttextdocumentlayout_p.h"
 #include "qtextlayout.h"
 #include "qtextboundaryfinder.h"
 #include <QtCore/private/qunicodetables_p.h>
@@ -71,24 +36,19 @@ public:
     Itemizer(const QString &string, const QScriptAnalysis *analysis, QScriptItemArray &items)
         : m_string(string),
         m_analysis(analysis),
-        m_items(items),
-        m_splitter(nullptr)
+        m_items(items)
     {
     }
-    ~Itemizer()
-    {
-        delete m_splitter;
-    }
-
+    ~Itemizer() = default;
     /// generate the script items
-    /// The caps parameter is used to choose the algoritm of splitting text and assiging roles to the textitems
+    /// The caps parameter is used to choose the algorithm of splitting text and assigning roles to the textitems
     void generate(int start, int length, QFont::Capitalization caps)
     {
         if (caps == QFont::SmallCaps)
             generateScriptItemsSmallCaps(reinterpret_cast<const ushort *>(m_string.unicode()), start, length);
-        else if(caps == QFont::Capitalize)
+        else if (caps == QFont::Capitalize)
             generateScriptItemsCapitalize(start, length);
-        else if(caps != QFont::MixedCase) {
+        else if (caps != QFont::MixedCase) {
             generateScriptItemsAndChangeCase(start, length,
                 caps == QFont::AllLowercase ? QScriptAnalysis::Lowercase : QScriptAnalysis::Uppercase);
         }
@@ -120,7 +80,7 @@ private:
         for (int i = start + 1; i < end; ++i) {
             if (m_analysis[i].bidiLevel == m_analysis[start].bidiLevel
                 && m_analysis[i].flags == m_analysis[start].flags
-                && (m_analysis[i].script == m_analysis[start].script || m_string[i] == QLatin1Char('.'))
+                && (m_analysis[i].script == m_analysis[start].script || m_string[i] == u'.')
                 && m_analysis[i].flags < QScriptAnalysis::SpaceTabOrObject
                 && i - start < MaxItemLength)
                 continue;
@@ -136,8 +96,8 @@ private:
             return;
 
         if (!m_splitter)
-            m_splitter = new QTextBoundaryFinder(QTextBoundaryFinder::Word,
-                                                 m_string.constData(), m_string.length(),
+            m_splitter = std::make_unique<QTextBoundaryFinder>(QTextBoundaryFinder::Word,
+                                                 m_string.constData(), m_string.size(),
                                                  /*buffer*/nullptr, /*buffer size*/0);
 
         m_splitter->setPosition(start);
@@ -206,7 +166,7 @@ private:
     const QString &m_string;
     const QScriptAnalysis * const m_analysis;
     QScriptItemArray &m_items;
-    QTextBoundaryFinder *m_splitter;
+    std::unique_ptr<QTextBoundaryFinder> m_splitter;
 };
 
 // -----------------------------------------------------------------------------------------------------
@@ -257,8 +217,8 @@ struct QBidiAlgorithm {
         // load directions of string, and determine isolate pairs
         for (int i = 0; i < length; ++i) {
             int pos = i;
-            uint uc = text[i].unicode();
-            if (QChar::isHighSurrogate(uc) && i < length - 1) {
+            char32_t uc = text[i].unicode();
+            if (QChar::isHighSurrogate(uc) && i < length - 1 && text[i + 1].isLowSurrogate()) {
                 ++i;
                 analysis[i].bidiDirection = QChar::DirNSM;
                 uc = QChar::surrogateToUcs4(ushort(uc), text[i].unicode());
@@ -829,7 +789,7 @@ struct QBidiAlgorithm {
                 int pos = *it;
                 QChar::Direction dir = analysis[pos].bidiDirection;
                 if (dir == QChar::DirON) {
-                    const QUnicodeTables::Properties *p = QUnicodeTables::properties(text[pos].unicode());
+                    const QUnicodeTables::Properties *p = QUnicodeTables::properties(char16_t{text[pos].unicode()});
                     if (p->mirrorDiff) {
                         // either opening or closing bracket
                         if (p->category == QChar::Punctuation_Open) {
@@ -1192,7 +1152,7 @@ void QTextEngine::bidiReorder(int numItems, const quint8 *levels, int *visualOrd
     // reverse any contiguous sequence of characters that are at that level or higher.
 
     // reversing is only done up to the lowest odd level
-    if(!(levelLow%2)) levelLow++;
+    if (!(levelLow%2)) levelLow++;
 
     BIDI_DEBUG() << "reorderLine: lineLow = " << (uint)levelLow << ", lineHigh = " << (uint)levelHigh;
 
@@ -1208,7 +1168,7 @@ void QTextEngine::bidiReorder(int numItems, const quint8 *levels, int *visualOrd
             while(i <= count && levels[i] >= levelHigh) i++;
             int end = i-1;
 
-            if(start != end) {
+            if (start != end) {
                 //qDebug() << "reversing from " << start << " to " << end;
                 for(int j = 0; j < (end-start+1)/2; j++) {
                     int tmp = visualOrder[start+j];
@@ -1247,9 +1207,9 @@ enum JustificationClass {
     Adds an inter character justification opportunity after the number or letter
     character and a space justification opportunity after the space character.
 */
-static inline void qt_getDefaultJustificationOpportunities(const ushort *string, int length, const QGlyphLayout &g, ushort *log_clusters, int spaceAs)
+static inline void qt_getDefaultJustificationOpportunities(const ushort *string, qsizetype length, const QGlyphLayout &g, ushort *log_clusters, int spaceAs)
 {
-    int str_pos = 0;
+    qsizetype str_pos = 0;
     while (str_pos < length) {
         int glyph_pos = log_clusters[str_pos];
 
@@ -1281,7 +1241,7 @@ static inline void qt_getDefaultJustificationOpportunities(const ushort *string,
     }
 }
 
-static inline void qt_getJustificationOpportunities(const ushort *string, int length, const QScriptItem &si, const QGlyphLayout &g, ushort *log_clusters)
+static inline void qt_getJustificationOpportunities(const ushort *string, qsizetype length, const QScriptItem &si, const QGlyphLayout &g, ushort *log_clusters)
 {
     Q_ASSERT(length > 0 && g.numGlyphs > 0);
 
@@ -1354,10 +1314,6 @@ void QTextEngine::shapeLine(const QScriptLine &line)
     }
 }
 
-#if QT_CONFIG(harfbuzz)
-extern bool qt_useHarfbuzzNG(); // defined in qfontengine.cpp
-#endif
-
 static void applyVisibilityRules(ushort ucs, QGlyphLayout *glyphs, uint glyphPosition, QFontEngine *fontEngine)
 {
     // hide characters that should normally be invisible
@@ -1373,9 +1329,15 @@ static void applyVisibilityRules(ushort ucs, QGlyphLayout *glyphs, uint glyphPos
         if (!fontEngine->symbol) {
             // U+00AD [SOFT HYPHEN] is a default ignorable codepoint,
             // so we replace its glyph and metrics with ones for
-            // U+002D [HYPHEN-MINUS] and make it visible if it appears at line-break
+            // U+002D [HYPHEN-MINUS] or U+2010 [HYPHEN] and make
+            // it visible if it appears at line-break
             const uint engineIndex = glyphs->glyphs[glyphPosition] & 0xff000000;
-            glyphs->glyphs[glyphPosition] = fontEngine->glyphIndex('-');
+            glyph_t glyph = fontEngine->glyphIndex(0x002d);
+            if (glyph == 0)
+                glyph = fontEngine->glyphIndex(0x2010);
+            if (glyph == 0)
+                glyph = fontEngine->glyphIndex(0x00ad);
+            glyphs->glyphs[glyphPosition] = glyph;
             if (Q_LIKELY(glyphs->glyphs[glyphPosition] != 0)) {
                 glyphs->glyphs[glyphPosition] |= engineIndex;
                 QGlyphLayout tmp = glyphs->mid(glyphPosition, 1);
@@ -1429,36 +1391,44 @@ void QTextEngine::shapeText(int item) const
     }
 
     if (Q_UNLIKELY(!ensureSpace(itemLength))) {
-        Q_UNREACHABLE(); // ### report OOM error somehow
-        return;
+        Q_UNREACHABLE_RETURN(); // ### report OOM error somehow
     }
 
     QFontEngine *fontEngine = this->fontEngine(si, &si.ascent, &si.descent, &si.leading);
 
+#if QT_CONFIG(harfbuzz)
     bool kerningEnabled;
+#endif
     bool letterSpacingIsAbsolute;
-    bool shapingEnabled;
+    bool shapingEnabled = false;
+    QHash<QFont::Tag, quint32> features;
     QFixed letterSpacing, wordSpacing;
 #ifndef QT_NO_RAWFONT
     if (useRawFont) {
         QTextCharFormat f = format(&si);
         QFont font = f.font();
+#  if QT_CONFIG(harfbuzz)
         kerningEnabled = font.kerning();
         shapingEnabled = QFontEngine::scriptRequiresOpenType(QChar::Script(si.analysis.script))
                 || (font.styleStrategy() & QFont::PreferNoShaping) == 0;
+#  endif
         wordSpacing = QFixed::fromReal(font.wordSpacing());
         letterSpacing = QFixed::fromReal(font.letterSpacing());
         letterSpacingIsAbsolute = true;
+        features = font.d->features;
     } else
 #endif
     {
         QFont font = this->font(si);
+#if QT_CONFIG(harfbuzz)
         kerningEnabled = font.d->kerning;
         shapingEnabled = QFontEngine::scriptRequiresOpenType(QChar::Script(si.analysis.script))
                 || (font.d->request.styleStrategy & QFont::PreferNoShaping) == 0;
+#endif
         letterSpacingIsAbsolute = font.d->letterSpacingIsAbsolute;
         letterSpacing = font.d->letterSpacing;
         wordSpacing = font.d->wordSpacing;
+        features = font.d->features;
 
         if (letterSpacingIsAbsolute && letterSpacing.value())
             letterSpacing *= font.d->dpi / qt_defaultDpiY();
@@ -1466,8 +1436,7 @@ void QTextEngine::shapeText(int item) const
 
     // split up the item into parts that come from different font engines
     // k * 3 entries, array[k] == index in string, array[k + 1] == index in glyphs, array[k + 2] == engine index
-    QVector<uint> itemBoundaries;
-    itemBoundaries.reserve(24);
+    QVarLengthArray<uint, 24> itemBoundaries;
 
     QGlyphLayout initialGlyphs = availableGlyphs(&si);
     int nGlyphs = initialGlyphs.numGlyphs;
@@ -1478,7 +1447,7 @@ void QTextEngine::shapeText(int item) const
                 shapingEnabled
                     ? QFontEngine::GlyphIndicesOnly
                     : QFontEngine::ShaperFlag(0);
-        if (!fontEngine->stringToCMap(reinterpret_cast<const QChar *>(string), itemLength, &initialGlyphs, &nGlyphs, shaperFlags))
+        if (fontEngine->stringToCMap(reinterpret_cast<const QChar *>(string), itemLength, &initialGlyphs, &nGlyphs, shaperFlags) < 0)
             Q_UNREACHABLE();
     }
 
@@ -1487,9 +1456,9 @@ void QTextEngine::shapeText(int item) const
         for (int i = 0, glyph_pos = 0; i < itemLength; ++i, ++glyph_pos) {
             const uint engineIdx = initialGlyphs.glyphs[glyph_pos] >> 24;
             if (lastEngine != engineIdx) {
-                itemBoundaries.append(i);
-                itemBoundaries.append(glyph_pos);
-                itemBoundaries.append(engineIdx);
+                itemBoundaries.push_back(i);
+                itemBoundaries.push_back(glyph_pos);
+                itemBoundaries.push_back(engineIdx);
 
                 if (engineIdx != 0) {
                     QFontEngine *actualFontEngine = static_cast<QFontEngineMulti *>(fontEngine)->engine(engineIdx);
@@ -1505,12 +1474,24 @@ void QTextEngine::shapeText(int item) const
                 ++i;
         }
     } else {
-        itemBoundaries.append(0);
-        itemBoundaries.append(0);
-        itemBoundaries.append(0);
+        itemBoundaries.push_back(0);
+        itemBoundaries.push_back(0);
+        itemBoundaries.push_back(0);
     }
 
-    if (Q_UNLIKELY(!shapingEnabled)) {
+#if QT_CONFIG(harfbuzz)
+    if (Q_LIKELY(shapingEnabled)) {
+        si.num_glyphs = shapeTextWithHarfbuzzNG(si,
+                                                string,
+                                                itemLength,
+                                                fontEngine,
+                                                itemBoundaries,
+                                                kerningEnabled,
+                                                letterSpacing != 0,
+                                                features);
+    } else
+#endif
+    {
         ushort *log_clusters = logClusters(&si);
 
         int glyph_pos = 0;
@@ -1540,26 +1521,34 @@ void QTextEngine::shapeText(int item) const
         }
 
         si.num_glyphs = glyph_pos;
-#if QT_CONFIG(harfbuzz)
-    } else if (Q_LIKELY(qt_useHarfbuzzNG())) {
-        si.num_glyphs = shapeTextWithHarfbuzzNG(si, string, itemLength, fontEngine, itemBoundaries, kerningEnabled, letterSpacing != 0);
-#endif
-    } else {
-        si.num_glyphs = shapeTextWithHarfbuzz(si, string, itemLength, fontEngine, itemBoundaries, kerningEnabled);
-    }
-    if (Q_UNLIKELY(si.num_glyphs == 0)) {
-        Q_UNREACHABLE(); // ### report shaping errors somehow
-        return;
     }
 
+    if (Q_UNLIKELY(si.num_glyphs == 0)) {
+        if (Q_UNLIKELY(!ensureSpace(si.glyph_data_offset + 1))) {
+            qWarning() << "Unable to allocate space for place-holder glyph";
+            return;
+        }
+
+        si.num_glyphs = 1;
+
+        // Overwrite with 0 token to indicate failure
+        QGlyphLayout g = availableGlyphs(&si);
+        g.glyphs[0] = 0;
+        g.attributes[0].clusterStart = true;
+
+        ushort *log_clusters = logClusters(&si);
+        for (int i = 0; i < itemLength; ++i)
+            log_clusters[i] = 0;
+
+        return;
+    }
 
     layoutData->used += si.num_glyphs;
 
     QGlyphLayout glyphs = shapedGlyphs(&si);
 
 #if QT_CONFIG(harfbuzz)
-    if (Q_LIKELY(qt_useHarfbuzzNG()))
-        qt_getJustificationOpportunities(string, itemLength, si, glyphs, logClusters(&si));
+    qt_getJustificationOpportunities(string, itemLength, si, glyphs, logClusters(&si));
 #endif
 
     if (letterSpacing != 0) {
@@ -1609,9 +1598,10 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
                                          const ushort *string,
                                          int itemLength,
                                          QFontEngine *fontEngine,
-                                         const QVector<uint> &itemBoundaries,
+                                         QSpan<uint> itemBoundaries,
                                          bool kerningEnabled,
-                                         bool hasLetterSpacing) const
+                                         bool hasLetterSpacing,
+                                         const QHash<QFont::Tag, quint32> &fontFeatures) const
 {
     uint glyphs_shaped = 0;
 
@@ -1627,9 +1617,10 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
     props.direction = si.analysis.bidiLevel % 2 ? HB_DIRECTION_RTL : HB_DIRECTION_LTR;
     QChar::Script script = QChar::Script(si.analysis.script);
     props.script = hb_qt_script_to_script(script);
-    // ### props.language = hb_language_get_default_for_script(props.script);
+    // ### TODO get_default_for_script?
+    props.language = hb_language_get_default(); // use default language from locale
 
-    for (int k = 0; k < itemBoundaries.size(); k += 3) {
+    for (qsizetype k = 0; k < itemBoundaries.size(); k += 3) {
         const uint item_pos = itemBoundaries[k];
         const uint item_length = (k + 4 < itemBoundaries.size() ? itemBoundaries[k + 3] : itemLength) - item_pos;
         const uint engineIdx = itemBoundaries[k + 2];
@@ -1642,22 +1633,7 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
         hb_buffer_clear_contents(buffer);
         hb_buffer_add_utf16(buffer, reinterpret_cast<const uint16_t *>(string) + item_pos, item_length, 0, item_length);
 
-#if defined(Q_OS_DARWIN)
-        // ### temporary workaround for QTBUG-38113
-        // CoreText throws away the PDF token, while the OpenType backend will replace it with
-        // a zero-advance glyph. This becomes a real issue when PDF is the last character,
-        // since it gets treated like if it were a grapheme extender, so we
-        // temporarily replace it with some visible grapheme starter.
-        bool endsWithPDF = actualFontEngine->type() == QFontEngine::Mac && string[item_pos + item_length - 1] == 0x202c;
-        if (Q_UNLIKELY(endsWithPDF)) {
-            uint num_glyphs;
-            hb_glyph_info_t *infos = hb_buffer_get_glyph_infos(buffer, &num_glyphs);
-            infos[num_glyphs - 1].codepoint = '.';
-        }
-#endif
-
         hb_buffer_set_segment_properties(buffer, &props);
-        hb_buffer_guess_segment_properties(buffer);
 
         uint buffer_flags = HB_BUFFER_FLAG_DEFAULT;
         // Symbol encoding used to encode various crap in the 32..255 character code range,
@@ -1679,31 +1655,38 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
                                          || script == QChar::Script_Khmer || script == QChar::Script_Nko);
 
             bool dontLigate = hasLetterSpacing && !scriptRequiresOpenType;
-            const hb_feature_t features[5] = {
-                { HB_TAG('k','e','r','n'), !!kerningEnabled, 0, uint(-1) },
-                { HB_TAG('l','i','g','a'), !dontLigate, 0, uint(-1) },
-                { HB_TAG('c','l','i','g'), !dontLigate, 0, uint(-1) },
-                { HB_TAG('d','l','i','g'), !dontLigate, 0, uint(-1) },
-                { HB_TAG('h','l','i','g'), !dontLigate, 0, uint(-1) } };
-            const int num_features = dontLigate ? 5 : 1;
 
-            const char *const *shaper_list = nullptr;
-#if defined(Q_OS_DARWIN)
-            // What's behind QFontEngine::FaceData::user_data isn't compatible between different font engines
-            // - specifically functions in hb-coretext.cc would run into undefined behavior with data
-            // from non-CoreText engine. The other shapers works with that engine just fine.
-            if (actualFontEngine->type() != QFontEngine::Mac) {
-                static const char *s_shaper_list_without_coretext[] = {
-                    "graphite2",
-                    "ot",
-                    "fallback",
-                    nullptr
-                };
-                shaper_list = s_shaper_list_without_coretext;
+            QHash<QFont::Tag, quint32> features;
+            features.insert(QFont::Tag("kern"), !!kerningEnabled);
+            if (dontLigate) {
+                features.insert(QFont::Tag("liga"), false);
+                features.insert(QFont::Tag("clig"), false);
+                features.insert(QFont::Tag("dlig"), false);
+                features.insert(QFont::Tag("hlig"), false);
             }
-#endif
+            features.insert(fontFeatures);
 
-            bool shapedOk = hb_shape_full(hb_font, buffer, features, num_features, shaper_list);
+            QVarLengthArray<hb_feature_t, 16> featureArray;
+            for (auto it = features.constBegin(); it != features.constEnd(); ++it) {
+                featureArray.append({ it.key().value(),
+                                      it.value(),
+                                      HB_FEATURE_GLOBAL_START,
+                                      HB_FEATURE_GLOBAL_END });
+            }
+
+            // whitelist cross-platforms shapers only
+            static const char *shaper_list[] = {
+                "graphite2",
+                "ot",
+                "fallback",
+                nullptr
+            };
+
+            bool shapedOk = hb_shape_full(hb_font,
+                                          buffer,
+                                          featureArray.constData(),
+                                          features.size(),
+                                          shaper_list);
             if (Q_UNLIKELY(!shapedOk)) {
                 hb_buffer_destroy(buffer);
                 return 0;
@@ -1713,9 +1696,14 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
                 hb_buffer_reverse(buffer);
         }
 
-        const uint num_glyphs = hb_buffer_get_length(buffer);
+        uint num_glyphs = hb_buffer_get_length(buffer);
+        const bool has_glyphs = num_glyphs > 0;
+        // If Harfbuzz returns zero glyphs, we have to manually add a missing glyph
+        if (Q_UNLIKELY(!has_glyphs))
+            num_glyphs = 1;
+
         // ensure we have enough space for shaped glyphs and metrics
-        if (Q_UNLIKELY(num_glyphs == 0 || !ensureSpace(glyphs_shaped + num_glyphs))) {
+        if (Q_UNLIKELY(!ensureSpace(glyphs_shaped + num_glyphs))) {
             hb_buffer_destroy(buffer);
             return 0;
         }
@@ -1723,71 +1711,56 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
         // fetch the shaped glyphs and metrics
         QGlyphLayout g = availableGlyphs(&si).mid(glyphs_shaped, num_glyphs);
         ushort *log_clusters = logClusters(&si) + item_pos;
+        if (Q_LIKELY(has_glyphs)) {
+            hb_glyph_info_t *infos = hb_buffer_get_glyph_infos(buffer, nullptr);
+            hb_glyph_position_t *positions = hb_buffer_get_glyph_positions(buffer, nullptr);
+            uint str_pos = 0;
+            uint last_cluster = ~0u;
+            uint last_glyph_pos = glyphs_shaped;
+            for (uint i = 0; i < num_glyphs; ++i, ++infos, ++positions) {
+                g.glyphs[i] = infos->codepoint;
 
-        hb_glyph_info_t *infos = hb_buffer_get_glyph_infos(buffer, nullptr);
-        hb_glyph_position_t *positions = hb_buffer_get_glyph_positions(buffer, nullptr);
-        uint str_pos = 0;
-        uint last_cluster = ~0u;
-        uint last_glyph_pos = glyphs_shaped;
-        for (uint i = 0; i < num_glyphs; ++i, ++infos, ++positions) {
-            g.glyphs[i] = infos->codepoint;
+                g.advances[i] = QFixed::fromFixed(positions->x_advance);
+                g.offsets[i].x = QFixed::fromFixed(positions->x_offset);
+                g.offsets[i].y = QFixed::fromFixed(positions->y_offset);
 
-            g.advances[i] = QFixed::fromFixed(positions->x_advance);
-            g.offsets[i].x = QFixed::fromFixed(positions->x_offset);
-            g.offsets[i].y = QFixed::fromFixed(positions->y_offset);
+                uint cluster = infos->cluster;
+                if (Q_LIKELY(last_cluster != cluster)) {
+                    g.attributes[i].clusterStart = true;
 
-            uint cluster = infos->cluster;
-            if (Q_LIKELY(last_cluster != cluster)) {
-                g.attributes[i].clusterStart = true;
+                    // fix up clusters so that the cluster indices will be monotonic
+                    // and thus we never return out-of-order indices
+                    while (last_cluster++ < cluster && str_pos < item_length)
+                        log_clusters[str_pos++] = last_glyph_pos;
+                    last_glyph_pos = i + glyphs_shaped;
+                    last_cluster = cluster;
 
-                // fix up clusters so that the cluster indices will be monotonic
-                // and thus we never return out-of-order indices
-                while (last_cluster++ < cluster && str_pos < item_length)
-                    log_clusters[str_pos++] = last_glyph_pos;
-                last_glyph_pos = i + glyphs_shaped;
-                last_cluster = cluster;
-
-                applyVisibilityRules(string[item_pos + str_pos], &g, i, actualFontEngine);
+                    applyVisibilityRules(string[item_pos + str_pos], &g, i, actualFontEngine);
+                }
             }
+            while (str_pos < item_length)
+                log_clusters[str_pos++] = last_glyph_pos;
+        } else { // Harfbuzz did not return a glyph for the character, so we add a placeholder
+            g.glyphs[0] = 0;
+            g.advances[0] = QFixed{};
+            g.offsets[0].x = QFixed{};
+            g.offsets[0].y = QFixed{};
+            g.attributes[0].clusterStart = true;
+            g.attributes[0].dontPrint = true;
+            for (uint str_pos = 0; str_pos < item_length; ++str_pos)
+                log_clusters[str_pos] = glyphs_shaped;
         }
-        while (str_pos < item_length)
-            log_clusters[str_pos++] = last_glyph_pos;
-
-#if defined(Q_OS_DARWIN)
-        if (Q_UNLIKELY(endsWithPDF)) {
-            int last_glyph_idx = num_glyphs - 1;
-            g.glyphs[last_glyph_idx] = 0xffff;
-            g.advances[last_glyph_idx] = QFixed();
-            g.offsets[last_glyph_idx].x = QFixed();
-            g.offsets[last_glyph_idx].y = QFixed();
-            g.attributes[last_glyph_idx].clusterStart = true;
-            g.attributes[last_glyph_idx].dontPrint = true;
-
-            log_clusters[item_length - 1] = glyphs_shaped + last_glyph_idx;
-        }
-#endif
 
         if (Q_UNLIKELY(engineIdx != 0)) {
             for (quint32 i = 0; i < num_glyphs; ++i)
                 g.glyphs[i] |= (engineIdx << 24);
         }
 
-#ifdef Q_OS_DARWIN
-        if (actualFontEngine->type() == QFontEngine::Mac) {
-            if (actualFontEngine->fontDef.stretch != 100 && actualFontEngine->fontDef.stretch != QFont::AnyStretch) {
-                QFixed stretch = QFixed(int(actualFontEngine->fontDef.stretch)) / QFixed(100);
-                for (uint i = 0; i < num_glyphs; ++i)
-                    g.advances[i] *= stretch;
-            }
-        }
-#endif
-
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-        if (!actualFontEngine->supportsSubPixelPositions() || (actualFontEngine->fontDef.styleStrategy & QFont::ForceIntegerMetrics)) {
-QT_WARNING_POP
-            for (uint i = 0; i < num_glyphs; ++i)
+        if (!actualFontEngine->supportsHorizontalSubPixelPositions()) {
+            for (uint i = 0; i < num_glyphs; ++i) {
                 g.advances[i] = g.advances[i].round();
+                g.offsets[i].x = g.offsets[i].x.round();
+            }
         }
 
         glyphs_shaped += num_glyphs;
@@ -1799,138 +1772,6 @@ QT_WARNING_POP
 }
 
 #endif // harfbuzz
-
-
-QT_BEGIN_INCLUDE_NAMESPACE
-
-#include <private/qharfbuzz_p.h>
-
-QT_END_INCLUDE_NAMESPACE
-
-Q_STATIC_ASSERT(sizeof(HB_Glyph) == sizeof(glyph_t));
-Q_STATIC_ASSERT(sizeof(HB_Fixed) == sizeof(QFixed));
-Q_STATIC_ASSERT(sizeof(HB_FixedPoint) == sizeof(QFixedPoint));
-
-static inline void moveGlyphData(const QGlyphLayout &destination, const QGlyphLayout &source, int num)
-{
-    if (num > 0 && destination.glyphs != source.glyphs)
-        memmove(destination.glyphs, source.glyphs, num * sizeof(glyph_t));
-}
-
-int QTextEngine::shapeTextWithHarfbuzz(const QScriptItem &si, const ushort *string, int itemLength, QFontEngine *fontEngine, const QVector<uint> &itemBoundaries, bool kerningEnabled) const
-{
-    HB_ShaperItem entire_shaper_item;
-    memset(&entire_shaper_item, 0, sizeof(entire_shaper_item));
-    entire_shaper_item.string = reinterpret_cast<const HB_UChar16 *>(string);
-    entire_shaper_item.stringLength = itemLength;
-    entire_shaper_item.item.script = script_to_hbscript(si.analysis.script);
-    entire_shaper_item.item.pos = 0;
-    entire_shaper_item.item.length = itemLength;
-    entire_shaper_item.item.bidiLevel = si.analysis.bidiLevel;
-
-    entire_shaper_item.shaperFlags = 0;
-    if (!kerningEnabled)
-        entire_shaper_item.shaperFlags |= HB_ShaperFlag_NoKerning;
-    if (option.useDesignMetrics())
-        entire_shaper_item.shaperFlags |= HB_ShaperFlag_UseDesignMetrics;
-
-    // ensure we are not asserting in HB_HeuristicSetGlyphAttributes()
-    entire_shaper_item.num_glyphs = 0;
-    for (int i = 0; i < itemLength; ++i, ++entire_shaper_item.num_glyphs) {
-        if (QChar::isHighSurrogate(string[i]) && i + 1 < itemLength && QChar::isLowSurrogate(string[i + 1]))
-            ++i;
-    }
-
-
-    int remaining_glyphs = entire_shaper_item.num_glyphs;
-    int glyph_pos = 0;
-    // for each item shape using harfbuzz and store the results in our layoutData's glyphs array.
-    for (int k = 0; k < itemBoundaries.size(); k += 3) {
-        HB_ShaperItem shaper_item = entire_shaper_item;
-        shaper_item.item.pos = itemBoundaries[k];
-        if (k + 4 < itemBoundaries.size()) {
-            shaper_item.item.length = itemBoundaries[k + 3] - shaper_item.item.pos;
-            shaper_item.num_glyphs = itemBoundaries[k + 4] - itemBoundaries[k + 1];
-        } else { // last combo in the list, avoid out of bounds access.
-            shaper_item.item.length -= shaper_item.item.pos - entire_shaper_item.item.pos;
-            shaper_item.num_glyphs -= itemBoundaries[k + 1];
-        }
-        shaper_item.initialGlyphCount = shaper_item.num_glyphs;
-        if (shaper_item.num_glyphs < shaper_item.item.length)
-            shaper_item.num_glyphs = shaper_item.item.length;
-
-        uint engineIdx = itemBoundaries[k + 2];
-        QFontEngine *actualFontEngine = fontEngine;
-        if (fontEngine->type() == QFontEngine::Multi) {
-            actualFontEngine = static_cast<QFontEngineMulti *>(fontEngine)->engine(engineIdx);
-
-            if ((si.analysis.bidiLevel % 2) == 0)
-                shaper_item.glyphIndicesPresent = true;
-        }
-
-        shaper_item.font = (HB_Font)actualFontEngine->harfbuzzFont();
-        shaper_item.face = (HB_Face)actualFontEngine->harfbuzzFace();
-
-        remaining_glyphs -= shaper_item.initialGlyphCount;
-
-        QVarLengthArray<HB_GlyphAttributes, 128> hbGlyphAttributes;
-        do {
-            if (!ensureSpace(glyph_pos + shaper_item.num_glyphs + remaining_glyphs))
-                return 0;
-            if (hbGlyphAttributes.size() < int(shaper_item.num_glyphs)) {
-                hbGlyphAttributes.resize(shaper_item.num_glyphs);
-                memset(hbGlyphAttributes.data(), 0, hbGlyphAttributes.size() * sizeof(HB_GlyphAttributes));
-            }
-
-            const QGlyphLayout g = availableGlyphs(&si).mid(glyph_pos);
-            if (fontEngine->type() == QFontEngine::Multi && shaper_item.num_glyphs > shaper_item.item.length)
-                moveGlyphData(g.mid(shaper_item.num_glyphs), g.mid(shaper_item.initialGlyphCount), remaining_glyphs);
-
-            shaper_item.glyphs = reinterpret_cast<HB_Glyph *>(g.glyphs);
-            shaper_item.advances = reinterpret_cast<HB_Fixed *>(g.advances);
-            shaper_item.offsets = reinterpret_cast<HB_FixedPoint *>(g.offsets);
-            shaper_item.attributes = hbGlyphAttributes.data();
-
-            if (engineIdx != 0 && shaper_item.glyphIndicesPresent) {
-                for (quint32 i = 0; i < shaper_item.initialGlyphCount; ++i)
-                    shaper_item.glyphs[i] &= 0x00ffffff;
-            }
-
-            shaper_item.log_clusters = logClusters(&si) + shaper_item.item.pos - entire_shaper_item.item.pos;
-        } while (!qShapeItem(&shaper_item)); // this does the actual shaping via harfbuzz.
-
-        QGlyphLayout g = availableGlyphs(&si).mid(glyph_pos, shaper_item.num_glyphs);
-        if (fontEngine->type() == QFontEngine::Multi)
-            moveGlyphData(g.mid(shaper_item.num_glyphs), g.mid(shaper_item.initialGlyphCount), remaining_glyphs);
-
-        for (quint32 i = 0; i < shaper_item.num_glyphs; ++i) {
-            HB_GlyphAttributes hbAttrs = hbGlyphAttributes.at(i);
-            QGlyphAttributes &attrs = g.attributes[i];
-            attrs.clusterStart = hbAttrs.clusterStart;
-            attrs.dontPrint = hbAttrs.dontPrint;
-            attrs.justification = hbAttrs.justification;
-        }
-
-        for (quint32 i = 0; i < shaper_item.item.length; ++i) {
-            // Workaround wrong log_clusters for surrogates (i.e. QTBUG-39875)
-            if (shaper_item.log_clusters[i] >= shaper_item.num_glyphs)
-                shaper_item.log_clusters[i] = shaper_item.num_glyphs - 1;
-            shaper_item.log_clusters[i] += glyph_pos;
-        }
-
-        if (kerningEnabled && !shaper_item.kerning_applied)
-            actualFontEngine->doKerning(&g, option.useDesignMetrics() ? QFontEngine::DesignMetrics : QFontEngine::ShaperFlags{});
-
-        if (engineIdx != 0) {
-            for (quint32 i = 0; i < shaper_item.num_glyphs; ++i)
-                g.glyphs[i] |= (engineIdx << 24);
-        }
-
-        glyph_pos += shaper_item.num_glyphs;
-    }
-
-    return glyph_pos;
-}
 
 void QTextEngine::init(QTextEngine *e)
 {
@@ -1978,22 +1819,24 @@ const QCharAttributes *QTextEngine::attributes() const
         return (QCharAttributes *) layoutData->memory;
 
     itemize();
-    if (! ensureSpace(layoutData->string.length()))
+    if (! ensureSpace(layoutData->string.size()))
         return nullptr;
 
     QVarLengthArray<QUnicodeTools::ScriptItem> scriptItems(layoutData->items.size());
     for (int i = 0; i < layoutData->items.size(); ++i) {
         const QScriptItem &si = layoutData->items.at(i);
         scriptItems[i].position = si.position;
-        scriptItems[i].script = si.analysis.script;
+        scriptItems[i].script = QChar::Script(si.analysis.script);
     }
 
-    QUnicodeTools::initCharAttributes(reinterpret_cast<const ushort *>(layoutData->string.constData()),
-                                      layoutData->string.length(),
-                                      scriptItems.data(), scriptItems.size(),
-                                      (QCharAttributes *)layoutData->memory,
-                                      QUnicodeTools::CharAttributeOptions(QUnicodeTools::DefaultOptionsCompat
-                                                                          | QUnicodeTools::HangulLineBreakTailoring));
+    QUnicodeTools::initCharAttributes(
+        layoutData->string,
+        scriptItems.data(), scriptItems.size(),
+        reinterpret_cast<QCharAttributes *>(layoutData->memory),
+        QUnicodeTools::CharAttributeOptions(QUnicodeTools::GraphemeBreaks
+                                            | QUnicodeTools::LineBreaks
+                                            | QUnicodeTools::WhiteSpaces
+                                            | QUnicodeTools::HangulLineBreakTailoring));
 
 
     layoutData->haveCharAttributes = true;
@@ -2005,7 +1848,7 @@ void QTextEngine::shape(int item) const
     auto &li = layoutData->items[item];
     if (li.analysis.flags == QScriptAnalysis::Object) {
         ensureSpace(1);
-        if (block.docHandle()) {
+        if (QTextDocumentPrivate::get(block) != nullptr) {
             docLayout()->resizeInlineObject(QTextInlineObject(item, const_cast<QTextEngine *>(this)),
                                             li.position + block.position(),
                                             format(&li));
@@ -2061,13 +1904,13 @@ void QTextEngine::validate() const
     if (layoutData)
         return;
     layoutData = new LayoutData();
-    if (block.docHandle()) {
+    if (QTextDocumentPrivate::get(block) != nullptr) {
         layoutData->string = block.text();
         const bool nextBlockValid = block.next().isValid();
         if (!nextBlockValid && option.flags() & QTextOption::ShowDocumentTerminator) {
-            layoutData->string += QChar(0xA7);
+            layoutData->string += QLatin1Char('\xA7');
         } else if (option.flags() & QTextOption::ShowLineAndParagraphSeparators) {
-            layoutData->string += QLatin1Char(nextBlockValid ? 0xb6 : 0x20);
+            layoutData->string += QLatin1Char(nextBlockValid ? '\xB6' : '\x20');
         }
 
     } else {
@@ -2083,7 +1926,7 @@ void QTextEngine::itemize() const
     if (layoutData->items.size())
         return;
 
-    int length = layoutData->string.length();
+    int length = layoutData->string.size();
     if (!length)
         return;
 
@@ -2098,10 +1941,14 @@ void QTextEngine::itemize() const
     layoutData->hasBidi = bidi.process();
 
     {
-        QVarLengthArray<uchar> scripts(length);
-        QUnicodeTools::initScripts(string, length, scripts.data());
-        for (int i = 0; i < length; ++i)
-            analysis[i].script = scripts.at(i);
+        QUnicodeTools::ScriptItemArray scriptItems;
+        QUnicodeTools::initScripts(layoutData->string, &scriptItems);
+        for (int i = 0; i < scriptItems.size(); ++i) {
+            const auto &item = scriptItems.at(i);
+            int end = i < scriptItems.size() - 1 ? scriptItems.at(i + 1).position : length;
+            for (int j = item.position; j < end; ++j)
+                analysis[j].script = item.script;
+        }
     }
 
     const ushort *uc = string;
@@ -2109,7 +1956,17 @@ void QTextEngine::itemize() const
     while (uc < e) {
         switch (*uc) {
         case QChar::ObjectReplacementCharacter:
-            analysis->flags = QScriptAnalysis::Object;
+            {
+                const QTextDocumentPrivate *doc_p = QTextDocumentPrivate::get(block);
+                if (doc_p != nullptr
+                        && doc_p->layout() != nullptr
+                        && QAbstractTextDocumentLayoutPrivate::get(doc_p->layout()) != nullptr
+                        && QAbstractTextDocumentLayoutPrivate::get(doc_p->layout())->hasHandlers()) {
+                    analysis->flags = QScriptAnalysis::Object;
+                } else {
+                    analysis->flags = QScriptAnalysis::None;
+                }
+            }
             break;
         case QChar::LineSeparator:
             analysis->flags = QScriptAnalysis::LineOrParagraphSeparator;
@@ -2137,26 +1994,16 @@ void QTextEngine::itemize() const
             analysis->flags = QScriptAnalysis::None;
             break;
         }
-#if !QT_CONFIG(harfbuzz)
-        analysis->script = hbscript_to_script(script_to_hbscript(analysis->script));
-#endif
         ++uc;
         ++analysis;
     }
     if (option.flags() & QTextOption::ShowLineAndParagraphSeparators) {
         (analysis-1)->flags = QScriptAnalysis::LineOrParagraphSeparator; // to exclude it from width
     }
-#if QT_CONFIG(harfbuzz)
-    analysis = scriptAnalysis.data();
-    if (!qt_useHarfbuzzNG()) {
-        for (int i = 0; i < length; ++i)
-            analysis[i].script = hbscript_to_script(script_to_hbscript(analysis[i].script));
-    }
-#endif
 
     Itemizer itemizer(layoutData->string, scriptAnalysis.data(), layoutData->items);
 
-    const QTextDocumentPrivate *p = block.docHandle();
+    const QTextDocumentPrivate *p = QTextDocumentPrivate::get(block);
     if (p) {
         SpecialData *s = specialData;
 
@@ -2164,20 +2011,35 @@ void QTextEngine::itemize() const
         QTextDocumentPrivate::FragmentIterator end = p->find(block.position() + block.length() - 1); // -1 to omit the block separator char
         int format = it.value()->format;
 
+        int preeditPosition = s ? s->preeditPosition : INT_MAX;
         int prevPosition = 0;
         int position = prevPosition;
         while (1) {
             const QTextFragmentData * const frag = it.value();
             if (it == end || format != frag->format) {
-                if (s && position >= s->preeditPosition) {
-                    position += s->preeditText.length();
-                    s = nullptr;
+                if (s && position >= preeditPosition) {
+                    position += s->preeditText.size();
+                    preeditPosition = INT_MAX;
                 }
                 Q_ASSERT(position <= length);
                 QFont::Capitalization capitalization =
                         formatCollection()->charFormat(format).hasProperty(QTextFormat::FontCapitalization)
                         ? formatCollection()->charFormat(format).fontCapitalization()
                         : formatCollection()->defaultFont().capitalization();
+                if (s) {
+                    for (const auto &range : std::as_const(s->formats)) {
+                        if (range.start + range.length <= prevPosition || range.start >= position)
+                            continue;
+                        if (range.format.hasProperty(QTextFormat::FontCapitalization)) {
+                            if (range.start > prevPosition)
+                                itemizer.generate(prevPosition, range.start - prevPosition, capitalization);
+                            int newStart = std::max(prevPosition, range.start);
+                            int newEnd = std::min(position, range.start + range.length);
+                            itemizer.generate(newStart, newEnd - newStart, range.format.fontCapitalization());
+                            prevPosition = newEnd;
+                        }
+                    }
+                }
                 itemizer.generate(prevPosition, position - prevPosition, capitalization);
                 if (it == end) {
                     if (position < length)
@@ -2253,35 +2115,30 @@ int QTextEngine::findItem(int strPos, int firstItem) const
     return right;
 }
 
-QFixed QTextEngine::width(int from, int len) const
+namespace {
+template<typename InnerFunc>
+void textIterator(const QTextEngine *textEngine, int from, int len, QFixed &width, InnerFunc &&innerFunc)
 {
-    itemize();
-
-    QFixed w = 0;
-
-//     qDebug("QTextEngine::width(from = %d, len = %d), numItems=%d, strleng=%d", from,  len, items.size(), string.length());
-    for (int i = 0; i < layoutData->items.size(); i++) {
-        const QScriptItem *si = layoutData->items.constData() + i;
+    for (int i = 0; i < textEngine->layoutData->items.size(); i++) {
+        const QScriptItem *si = textEngine->layoutData->items.constData() + i;
         int pos = si->position;
-        int ilen = length(i);
+        int ilen = textEngine->length(i);
 //          qDebug("item %d: from %d len %d", i, pos, ilen);
         if (pos >= from + len)
             break;
         if (pos + ilen > from) {
             if (!si->num_glyphs)
-                shape(i);
+                textEngine->shape(i);
 
             if (si->analysis.flags == QScriptAnalysis::Object) {
-                w += si->width;
+                width += si->width;
                 continue;
             } else if (si->analysis.flags == QScriptAnalysis::Tab) {
-                w += calculateTabWidth(i, w);
+                width += textEngine->calculateTabWidth(i, width);
                 continue;
             }
 
-
-            QGlyphLayout glyphs = shapedGlyphs(si);
-            unsigned short *logClusters = this->logClusters(si);
+            unsigned short *logClusters = textEngine->logClusters(si);
 
 //             fprintf(stderr, "  logclusters:");
 //             for (int k = 0; k < ilen; k++)
@@ -2306,11 +2163,24 @@ QFixed QTextEngine::width(int from, int len) const
                 glyphEnd = (charEnd == ilen) ? si->num_glyphs : logClusters[charEnd];
 
 //                 qDebug("char: start=%d end=%d / glyph: start = %d, end = %d", charFrom, charEnd, glyphStart, glyphEnd);
-                for (int i = glyphStart; i < glyphEnd; i++)
-                    w += glyphs.advances[i] * !glyphs.attributes[i].dontPrint;
+                innerFunc(glyphStart, glyphEnd, si);
             }
         }
     }
+}
+} // namespace
+
+QFixed QTextEngine::width(int from, int len) const
+{
+    itemize();
+
+    QFixed w = 0;
+//     qDebug("QTextEngine::width(from = %d, len = %d), numItems=%d, strleng=%d", from,  len, items.size(), string.length());
+    textIterator(this, from, len, w, [this, &w](int glyphStart, int glyphEnd, const QScriptItem *si) {
+        QGlyphLayout glyphs = this->shapedGlyphs(si);
+        for (int j = glyphStart; j < glyphEnd; j++)
+            w += glyphs.advances[j] * !glyphs.attributes[j].dontPrint;
+    });
 //     qDebug("   --> w= %d ", w);
     return w;
 }
@@ -2321,58 +2191,20 @@ glyph_metrics_t QTextEngine::boundingBox(int from,  int len) const
 
     glyph_metrics_t gm;
 
-    for (int i = 0; i < layoutData->items.size(); i++) {
-        const QScriptItem *si = layoutData->items.constData() + i;
-
-        int pos = si->position;
-        int ilen = length(i);
-        if (pos > from + len)
-            break;
-        if (pos + ilen > from) {
-            if (!si->num_glyphs)
-                shape(i);
-
-            if (si->analysis.flags == QScriptAnalysis::Object) {
-                gm.width += si->width;
-                continue;
-            } else if (si->analysis.flags == QScriptAnalysis::Tab) {
-                gm.width += calculateTabWidth(i, gm.width);
-                continue;
-            }
-
-            unsigned short *logClusters = this->logClusters(si);
-            QGlyphLayout glyphs = shapedGlyphs(si);
-
-            // do the simple thing for now and give the first glyph in a cluster the full width, all other ones 0.
-            int charFrom = from - pos;
-            if (charFrom < 0)
-                charFrom = 0;
-            int glyphStart = logClusters[charFrom];
-            if (charFrom > 0 && logClusters[charFrom-1] == glyphStart)
-                while (charFrom < ilen && logClusters[charFrom] == glyphStart)
-                    charFrom++;
-            if (charFrom < ilen) {
-                QFontEngine *fe = fontEngine(*si);
-                glyphStart = logClusters[charFrom];
-                int charEnd = from + len - 1 - pos;
-                if (charEnd >= ilen)
-                    charEnd = ilen-1;
-                int glyphEnd = logClusters[charEnd];
-                while (charEnd < ilen && logClusters[charEnd] == glyphEnd)
-                    charEnd++;
-                glyphEnd = (charEnd == ilen) ? si->num_glyphs : logClusters[charEnd];
-                if (glyphStart <= glyphEnd ) {
-                    glyph_metrics_t m = fe->boundingBox(glyphs.mid(glyphStart, glyphEnd - glyphStart));
-                    gm.x = qMin(gm.x, m.x + gm.xoff);
-                    gm.y = qMin(gm.y, m.y + gm.yoff);
-                    gm.width = qMax(gm.width, m.width+gm.xoff);
-                    gm.height = qMax(gm.height, m.height+gm.yoff);
-                    gm.xoff += m.xoff;
-                    gm.yoff += m.yoff;
-                }
-            }
+    textIterator(this, from, len, gm.width, [this, &gm](int glyphStart, int glyphEnd, const QScriptItem *si) {
+        if (glyphStart <= glyphEnd) {
+            QGlyphLayout glyphs = this->shapedGlyphs(si);
+            QFontEngine *fe = this->fontEngine(*si);
+            glyph_metrics_t m = fe->boundingBox(glyphs.mid(glyphStart, glyphEnd - glyphStart));
+            gm.x = qMin(gm.x, m.x + gm.xoff);
+            gm.y = qMin(gm.y, m.y + gm.yoff);
+            gm.width = qMax(gm.width, m.width + gm.xoff);
+            gm.height = qMax(gm.height, m.height + gm.yoff);
+            gm.xoff += m.xoff;
+            gm.yoff += m.yoff;
         }
-    }
+    });
+
     return gm;
 }
 
@@ -2382,48 +2214,19 @@ glyph_metrics_t QTextEngine::tightBoundingBox(int from,  int len) const
 
     glyph_metrics_t gm;
 
-    for (int i = 0; i < layoutData->items.size(); i++) {
-        const QScriptItem *si = layoutData->items.constData() + i;
-        int pos = si->position;
-        int ilen = length(i);
-        if (pos > from + len)
-            break;
-        if (pos + len > from) {
-            if (!si->num_glyphs)
-                shape(i);
-            unsigned short *logClusters = this->logClusters(si);
-            QGlyphLayout glyphs = shapedGlyphs(si);
-
-            // do the simple thing for now and give the first glyph in a cluster the full width, all other ones 0.
-            int charFrom = from - pos;
-            if (charFrom < 0)
-                charFrom = 0;
-            int glyphStart = logClusters[charFrom];
-            if (charFrom > 0 && logClusters[charFrom-1] == glyphStart)
-                while (charFrom < ilen && logClusters[charFrom] == glyphStart)
-                    charFrom++;
-            if (charFrom < ilen) {
-                glyphStart = logClusters[charFrom];
-                int charEnd = from + len - 1 - pos;
-                if (charEnd >= ilen)
-                    charEnd = ilen-1;
-                int glyphEnd = logClusters[charEnd];
-                while (charEnd < ilen && logClusters[charEnd] == glyphEnd)
-                    charEnd++;
-                glyphEnd = (charEnd == ilen) ? si->num_glyphs : logClusters[charEnd];
-                if (glyphStart <= glyphEnd ) {
-                    QFontEngine *fe = fontEngine(*si);
-                    glyph_metrics_t m = fe->tightBoundingBox(glyphs.mid(glyphStart, glyphEnd - glyphStart));
-                    gm.x = qMin(gm.x, m.x + gm.xoff);
-                    gm.y = qMin(gm.y, m.y + gm.yoff);
-                    gm.width = qMax(gm.width, m.width+gm.xoff);
-                    gm.height = qMax(gm.height, m.height+gm.yoff);
-                    gm.xoff += m.xoff;
-                    gm.yoff += m.yoff;
-                }
-            }
+    textIterator(this, from, len, gm.width, [this, &gm](int glyphStart, int glyphEnd, const QScriptItem *si) {
+        if (glyphStart <= glyphEnd) {
+            QGlyphLayout glyphs = this->shapedGlyphs(si);
+            QFontEngine *fe = fontEngine(*si);
+            glyph_metrics_t m = fe->tightBoundingBox(glyphs.mid(glyphStart, glyphEnd - glyphStart));
+            gm.x = qMin(gm.x, m.x + gm.xoff);
+            gm.y = qMin(gm.y, m.y + gm.yoff);
+            gm.width = qMax(gm.width, m.width + gm.xoff);
+            gm.height = qMax(gm.height, m.height + gm.yoff);
+            gm.xoff += m.xoff;
+            gm.yoff += m.yoff;
         }
-    }
+    });
     return gm;
 }
 
@@ -2434,9 +2237,10 @@ QFont QTextEngine::font(const QScriptItem &si) const
         QTextCharFormat f = format(&si);
         font = f.font();
 
-        if (block.docHandle() && block.docHandle()->layout()) {
+        const QTextDocumentPrivate *document_d = QTextDocumentPrivate::get(block);
+        if (document_d != nullptr && document_d->layout() != nullptr) {
             // Make sure we get the right dpi on printers
-            QPaintDevice *pdev = block.docHandle()->layout()->paintDevice();
+            QPaintDevice *pdev = document_d->layout()->paintDevice();
             if (pdev)
                 font = QFont(font, pdev);
         } else {
@@ -2489,6 +2293,12 @@ QFontEngine *QTextEngine::fontEngine(const QScriptItem &si, QFixed *ascent, QFix
             if (feCache.prevScaledFontEngine) {
                 scaledEngine = feCache.prevScaledFontEngine;
             } else {
+                // GCC 12 gets confused about QFontEngine::ref, for some non-obvious reason
+                //  warning: ‘unsigned int __atomic_or_fetch_4(volatile void*, unsigned int, int)’ writing 4 bytes
+                //  into a region of size 0 overflows the destination [-Wstringop-overflow=]
+                QT_WARNING_PUSH
+                QT_WARNING_DISABLE_GCC("-Wstringop-overflow")
+
                 QFontEngine *scEngine = rawFont.d->fontEngine->cloneWithSize(smallCapsFraction * rawFont.pixelSize());
                 scEngine->ref.ref();
                 scaledEngine = QFontEngineMulti::createMultiFontEngine(scEngine, script);
@@ -2498,6 +2308,7 @@ QFontEngine *QTextEngine::fontEngine(const QScriptItem &si, QFixed *ascent, QFix
                 if (!scEngine->ref.deref())
                     delete scEngine;
 
+                QT_WARNING_POP
             }
         }
     } else
@@ -2511,17 +2322,17 @@ QFontEngine *QTextEngine::fontEngine(const QScriptItem &si, QFixed *ascent, QFix
                 QTextCharFormat f = format(&si);
                 font = f.font();
 
-                if (block.docHandle() && block.docHandle()->layout()) {
+                if (QTextDocumentPrivate::get(block) != nullptr && QTextDocumentPrivate::get(block)->layout() != nullptr) {
                     // Make sure we get the right dpi on printers
-                    QPaintDevice *pdev = block.docHandle()->layout()->paintDevice();
+                    QPaintDevice *pdev = QTextDocumentPrivate::get(block)->layout()->paintDevice();
                     if (pdev)
                         font = QFont(font, pdev);
                 } else {
                     font = font.resolve(fnt);
                 }
                 engine = font.d->engineForScript(script);
-                if (engine)
-                    engine->ref.ref();
+                Q_ASSERT(engine);
+                engine->ref.ref();
 
                 QTextCharFormat::VerticalAlignment valign = f.verticalAlignment();
                 if (valign == QTextCharFormat::AlignSuperScript || valign == QTextCharFormat::AlignSubScript) {
@@ -2547,13 +2358,12 @@ QFontEngine *QTextEngine::fontEngine(const QScriptItem &si, QFixed *ascent, QFix
                 feCache.prevLength = length(&si);
             }
         } else {
-            if (feCache.prevFontEngine && feCache.prevScript == script && feCache.prevPosition == -1)
+            if (feCache.prevFontEngine && feCache.prevScript == script && feCache.prevPosition == -1) {
                 engine = feCache.prevFontEngine;
-            else {
+            } else {
                 engine = font.d->engineForScript(script);
-
-                if (engine)
-                    engine->ref.ref();
+                Q_ASSERT(engine);
+                engine->ref.ref();
                 if (feCache.prevFontEngine)
                     releaseCachedFontEngine(feCache.prevFontEngine);
                 feCache.prevFontEngine = engine;
@@ -2571,7 +2381,10 @@ QFontEngine *QTextEngine::fontEngine(const QScriptItem &si, QFixed *ascent, QFix
         }
     }
 
-    if (ascent) {
+    if (leading) {
+        Q_ASSERT(engine);
+        Q_ASSERT(ascent);
+        Q_ASSERT(descent);
         *ascent = engine->ascent();
         *descent = engine->descent();
         *leading = engine->leading();
@@ -2596,9 +2409,9 @@ static void set(QJustificationPoint *point, int type, const QGlyphLayout &glyph,
     point->glyph = glyph;
 
     if (type >= Justification_Arabic_Normal) {
-        QChar ch(0x640); // Kashida character
+        const char32_t ch = U'\x640'; // Kashida character
 
-        glyph_t kashidaGlyph = fe->glyphIndex(ch.unicode());
+        glyph_t kashidaGlyph = fe->glyphIndex(ch);
         if (kashidaGlyph != 0) {
             QGlyphLayout g;
             g.numGlyphs = 1;
@@ -2634,7 +2447,7 @@ void QTextEngine::justify(const QScriptLine &line)
 
     if (!forceJustification) {
         int end = line.from + (int)line.length + line.trailingSpaces;
-        if (end == layoutData->string.length())
+        if (end == layoutData->string.size())
             return; // no justification at end of paragraph
         if (end && layoutData->items.at(findItem(end - 1)).analysis.flags == QScriptAnalysis::LineOrParagraphSeparator)
             return; // no justification at the end of an explicitly separated line
@@ -2810,10 +2623,10 @@ void QScriptLine::setDefaultHeight(QTextEngine *eng)
     QFont f;
     QFontEngine *e;
 
-    if (eng->block.docHandle() && eng->block.docHandle()->layout()) {
+    if (QTextDocumentPrivate::get(eng->block) != nullptr && QTextDocumentPrivate::get(eng->block)->layout() != nullptr) {
         f = eng->block.charFormat().font();
         // Make sure we get the right dpi on printers
-        QPaintDevice *pdev = eng->block.docHandle()->layout()->paintDevice();
+        QPaintDevice *pdev = QTextDocumentPrivate::get(eng->block)->layout()->paintDevice();
         if (pdev)
             f = QFont(f, pdev);
         e = f.d->engineForScript(QChar::Script_Common);
@@ -2840,18 +2653,20 @@ QTextEngine::LayoutData::LayoutData()
     haveCharAttributes = false;
     logClustersPtr = nullptr;
     available_glyphs = 0;
+    currentMaxWidth = 0;
 }
 
-QTextEngine::LayoutData::LayoutData(const QString &str, void **stack_memory, int _allocated)
+QTextEngine::LayoutData::LayoutData(const QString &str, void **stack_memory, qsizetype _allocated)
     : string(str)
 {
     allocated = _allocated;
 
-    int space_charAttributes = sizeof(QCharAttributes)*string.length()/sizeof(void*) + 1;
-    int space_logClusters = sizeof(unsigned short)*string.length()/sizeof(void*) + 1;
-    available_glyphs = ((int)allocated - space_charAttributes - space_logClusters)*(int)sizeof(void*)/(int)QGlyphLayout::SpaceNeeded;
+    constexpr qsizetype voidSize = sizeof(void*);
+    qsizetype space_charAttributes = sizeof(QCharAttributes) * string.size() / voidSize + 1;
+    qsizetype space_logClusters = sizeof(unsigned short) * string.size() / voidSize + 1;
+    available_glyphs = (allocated - space_charAttributes - space_logClusters) * voidSize / QGlyphLayout::SpaceNeeded;
 
-    if (available_glyphs < str.length()) {
+    if (available_glyphs < str.size()) {
         // need to allocate on the heap
         allocated = 0;
 
@@ -2864,7 +2679,7 @@ QTextEngine::LayoutData::LayoutData(const QString &str, void **stack_memory, int
         logClustersPtr = (unsigned short *)(memory + space_charAttributes);
 
         void *m = memory + space_charAttributes + space_logClusters;
-        glyphLayout = QGlyphLayout(reinterpret_cast<char *>(m), str.length());
+        glyphLayout = QGlyphLayout(reinterpret_cast<char *>(m), str.size());
         glyphLayout.clear();
         memset(memory, 0, space_charAttributes*sizeof(void *));
     }
@@ -2872,6 +2687,7 @@ QTextEngine::LayoutData::LayoutData(const QString &str, void **stack_memory, int
     hasBidi = false;
     layoutState = LayoutEmpty;
     haveCharAttributes = false;
+    currentMaxWidth = 0;
 }
 
 QTextEngine::LayoutData::~LayoutData()
@@ -2889,15 +2705,16 @@ bool QTextEngine::LayoutData::reallocate(int totalGlyphs)
         return true;
     }
 
-    int space_charAttributes = sizeof(QCharAttributes)*string.length()/sizeof(void*) + 1;
-    int space_logClusters = sizeof(unsigned short)*string.length()/sizeof(void*) + 1;
-    int space_glyphs = (totalGlyphs * QGlyphLayout::SpaceNeeded) / sizeof(void *) + 2;
+    const qsizetype space_charAttributes = (sizeof(QCharAttributes) * string.size() / sizeof(void*) + 1);
+    const qsizetype space_logClusters = (sizeof(unsigned short) * string.size() / sizeof(void*) + 1);
+    const qsizetype space_glyphs = qsizetype(totalGlyphs) * QGlyphLayout::SpaceNeeded / sizeof(void *) + 2;
 
-    int newAllocated = space_charAttributes + space_glyphs + space_logClusters;
-    // These values can be negative if the length of string/glyphs causes overflow,
+    const qsizetype newAllocated = space_charAttributes + space_glyphs + space_logClusters;
+    // Check if the length of string/glyphs causes int overflow,
     // we can't layout such a long string all at once, so return false here to
     // indicate there is a failure
-    if (space_charAttributes < 0 || space_logClusters < 0 || space_glyphs < 0 || newAllocated < allocated) {
+    if (size_t(space_charAttributes) > INT_MAX || size_t(space_logClusters) > INT_MAX || totalGlyphs < 0
+        || size_t(space_glyphs) > INT_MAX || size_t(newAllocated) > INT_MAX || newAllocated < allocated) {
         layoutState = LayoutFailed;
         return false;
     }
@@ -2917,7 +2734,7 @@ bool QTextEngine::LayoutData::reallocate(int totalGlyphs)
     logClustersPtr = (unsigned short *) m;
     m += space_logClusters;
 
-    const int space_preGlyphLayout = space_charAttributes + space_logClusters;
+    const qsizetype space_preGlyphLayout = space_charAttributes + space_logClusters;
     if (allocated < space_preGlyphLayout)
         memset(memory + allocated, 0, (space_preGlyphLayout - allocated)*sizeof(void *));
 
@@ -2925,6 +2742,21 @@ bool QTextEngine::LayoutData::reallocate(int totalGlyphs)
 
     allocated = newAllocated;
     return true;
+}
+
+void QGlyphLayout::copy(QGlyphLayout *oldLayout)
+{
+    Q_ASSERT(offsets != oldLayout->offsets);
+
+    int n = std::min(numGlyphs, oldLayout->numGlyphs);
+
+    memcpy(offsets, oldLayout->offsets, n * sizeof(QFixedPoint));
+    memcpy(attributes, oldLayout->attributes, n * sizeof(QGlyphAttributes));
+    memcpy(justifications, oldLayout->justifications, n * sizeof(QGlyphJustification));
+    memcpy(advances, oldLayout->advances, n * sizeof(QFixed));
+    memcpy(glyphs, oldLayout->glyphs, n * sizeof(glyph_t));
+
+    numGlyphs = n;
 }
 
 // grow to the new size, copying the existing data to the new layout
@@ -2957,6 +2789,7 @@ void QTextEngine::freeMemory()
         layoutData->hasBidi = false;
         layoutData->layoutState = LayoutEmpty;
         layoutData->haveCharAttributes = false;
+        layoutData->currentMaxWidth = 0;
         layoutData->items.clear();
     }
     if (specialData)
@@ -2975,15 +2808,15 @@ int QTextEngine::formatIndex(const QScriptItem *si) const
         return collection->indexForFormat(specialData->resolvedFormats.at(si - &layoutData->items.at(0)));
     }
 
-    QTextDocumentPrivate *p = block.docHandle();
+    const QTextDocumentPrivate *p = QTextDocumentPrivate::get(block);
     if (!p)
         return -1;
     int pos = si->position;
     if (specialData && si->position >= specialData->preeditPosition) {
-        if (si->position < specialData->preeditPosition + specialData->preeditText.length())
+        if (si->position < specialData->preeditPosition + specialData->preeditText.size())
             pos = qMax(qMin(block.length(), specialData->preeditPosition) - 1, 0);
         else
-            pos -= specialData->preeditText.length();
+            pos -= specialData->preeditText.size();
     }
     QTextDocumentPrivate::FragmentIterator it = p->find(block.position() + pos);
     return it.value()->format;
@@ -3073,7 +2906,7 @@ void QTextEngine::setPreeditArea(int position, const QString &preeditText)
     clearLineData();
 }
 
-void QTextEngine::setFormats(const QVector<QTextLayout::FormatRange> &formats)
+void QTextEngine::setFormats(const QList<QTextLayout::FormatRange> &formats)
 {
     if (formats.isEmpty()) {
         if (!specialData)
@@ -3100,7 +2933,7 @@ void QTextEngine::indexFormats()
 {
     QTextFormatCollection *collection = formatCollection();
     if (!collection) {
-        Q_ASSERT(!block.docHandle());
+        Q_ASSERT(QTextDocumentPrivate::get(block) == nullptr);
         specialData->formatCollection.reset(new QTextFormatCollection);
         collection = specialData->formatCollection.data();
     }
@@ -3118,9 +2951,9 @@ void QTextEngine::indexFormats()
 */
 static inline bool nextCharJoins(const QString &string, int pos)
 {
-    while (pos < string.length() && string.at(pos).category() == QChar::Mark_NonSpacing)
+    while (pos < string.size() && string.at(pos).category() == QChar::Mark_NonSpacing)
         ++pos;
-    if (pos == string.length())
+    if (pos == string.size())
         return false;
     QChar::JoiningType joining = string.at(pos).joiningType();
     return joining != QChar::Joining_None && joining != QChar::Joining_Transparent;
@@ -3136,11 +2969,11 @@ static inline bool prevCharJoins(const QString &string, int pos)
     return joining == QChar::Joining_Dual || joining == QChar::Joining_Causing;
 }
 
-static inline bool isRetainableControlCode(QChar c)
+static constexpr bool isRetainableControlCode(char16_t c) noexcept
 {
-    return (c.unicode() >= 0x202a && c.unicode() <= 0x202e) // LRE, RLE, PDF, LRO, RLO
-            || (c.unicode() >= 0x200e && c.unicode() <= 0x200f) // LRM, RLM
-            || (c.unicode() >= 0x2066 && c.unicode() <= 0x2069); // LRI, RLI, FSI, PDI
+    return (c >= 0x202a && c <= 0x202e) // LRE, RLE, PDF, LRO, RLO
+            || (c >= 0x200e && c <= 0x200f) // LRM, RLM
+            || (c >= 0x2066 && c <= 0x2069); // LRI, RLI, FSI, PDI
 }
 
 static QString stringMidRetainingBidiCC(const QString &string,
@@ -3153,22 +2986,22 @@ static QString stringMidRetainingBidiCC(const QString &string,
 {
     QString prefix;
     for (int i=subStringFrom; i<midStart; ++i) {
-        QChar c = string.at(i);
+        char16_t c = string.at(i).unicode();
         if (isRetainableControlCode(c))
             prefix += c;
     }
 
     QString suffix;
     for (int i=midStart + midLength; i<subStringTo; ++i) {
-        QChar c = string.at(i);
+        char16_t c = string.at(i).unicode();
         if (isRetainableControlCode(c))
             suffix += c;
     }
 
-    return prefix + ellidePrefix + string.midRef(midStart, midLength) + ellideSuffix + suffix;
+    return prefix + ellidePrefix + QStringView{string}.mid(midStart, midLength) + ellideSuffix + suffix;
 }
 
-QString QTextEngine::elidedText(Qt::TextElideMode mode, const QFixed &width, int flags, int from, int count) const
+QString QTextEngine::elidedText(Qt::TextElideMode mode, QFixed width, int flags, int from, int count) const
 {
 //    qDebug() << "elidedText; available width" << width.toReal() << "text width:" << this->width(0, layoutData->string.length()).toReal();
 
@@ -3187,14 +3020,14 @@ QString QTextEngine::elidedText(Qt::TextElideMode mode, const QFixed &width, int
 
             const int end = si.position + length(&si);
             for (int i = si.position; i < end - 1; ++i) {
-                if (layoutData->string.at(i) == QLatin1Char('&')
+                if (layoutData->string.at(i) == u'&'
                     && !attributes[i + 1].whiteSpace && attributes[i + 1].graphemeBoundary) {
                     const int gp = logClusters[i - si.position];
                     glyphs.attributes[gp].dontPrint = true;
                     // emulate grapheme cluster
                     attributes[i] = attributes[i + 1];
                     memset(attributes + i + 1, 0, sizeof(QCharAttributes));
-                    if (layoutData->string.at(i + 1) == QLatin1Char('&'))
+                    if (layoutData->string.at(i + 1) == u'&')
                         ++i;
                 }
             }
@@ -3203,12 +3036,12 @@ QString QTextEngine::elidedText(Qt::TextElideMode mode, const QFixed &width, int
 
     validate();
 
-    const int to = count >= 0 && count <= layoutData->string.length() - from
+    const int to = count >= 0 && count <= layoutData->string.size() - from
             ? from + count
-            : layoutData->string.length();
+            : layoutData->string.size();
 
     if (mode == Qt::ElideNone
-        || this->width(from, layoutData->string.length()) <= width
+        || this->width(from, layoutData->string.size()) <= width
         || to - from <= 1)
         return layoutData->string.mid(from, from - to);
 
@@ -3217,7 +3050,7 @@ QString QTextEngine::elidedText(Qt::TextElideMode mode, const QFixed &width, int
     {
         QFontEngine *engine = fnt.d->engineForScript(QChar::Script_Common);
 
-        QChar ellipsisChar(0x2026);
+        constexpr char16_t ellipsisChar = u'\x2026';
 
         // We only want to use the ellipsis character if it is from the main
         // font (not one of the fallbacks), since using a fallback font
@@ -3229,7 +3062,7 @@ QString QTextEngine::elidedText(Qt::TextElideMode mode, const QFixed &width, int
             engine = multiEngine->engine(0);
         }
 
-        glyph_t glyph = engine->glyphIndex(ellipsisChar.unicode());
+        glyph_t glyph = engine->glyphIndex(ellipsisChar);
 
         QGlyphLayout glyphs;
         glyphs.numGlyphs = 1;
@@ -3247,6 +3080,11 @@ QString QTextEngine::elidedText(Qt::TextElideMode mode, const QFixed &width, int
 
                 ellipsisWidth *= 3;
                 ellipsisText = QStringLiteral("...");
+            } else {
+                engine = fnt.d->engineForScript(QChar::Script_Common);
+                glyph = engine->glyphIndex(ellipsisChar);
+                engine->recalcAdvances(&glyphs, { });
+                ellipsisText = ellipsisChar;
             }
         }
     }
@@ -3259,6 +3097,8 @@ QString QTextEngine::elidedText(Qt::TextElideMode mode, const QFixed &width, int
     if (!attributes)
         return QString();
 
+    constexpr char16_t ZWJ = u'\x200d'; // ZERO-WIDTH JOINER
+
     if (mode == Qt::ElideRight) {
         QFixed currentWidth;
         int pos;
@@ -3268,7 +3108,7 @@ QString QTextEngine::elidedText(Qt::TextElideMode mode, const QFixed &width, int
             pos = nextBreak;
 
             ++nextBreak;
-            while (nextBreak < layoutData->string.length() && !attributes[nextBreak].graphemeBoundary)
+            while (nextBreak < layoutData->string.size() && !attributes[nextBreak].graphemeBoundary)
                 ++nextBreak;
 
             currentWidth += this->width(pos, nextBreak - pos);
@@ -3276,7 +3116,7 @@ QString QTextEngine::elidedText(Qt::TextElideMode mode, const QFixed &width, int
                  && currentWidth < availableWidth);
 
         if (nextCharJoins(layoutData->string, pos))
-            ellipsisText.prepend(QChar(0x200d) /* ZWJ */);
+            ellipsisText.prepend(ZWJ);
 
         return stringMidRetainingBidiCC(layoutData->string,
                                         QString(), ellipsisText,
@@ -3299,7 +3139,7 @@ QString QTextEngine::elidedText(Qt::TextElideMode mode, const QFixed &width, int
                  && currentWidth < availableWidth);
 
         if (prevCharJoins(layoutData->string, pos))
-            ellipsisText.append(QChar(0x200d) /* ZWJ */);
+            ellipsisText.append(ZWJ);
 
         return stringMidRetainingBidiCC(layoutData->string,
                                         ellipsisText, QString(),
@@ -3320,7 +3160,7 @@ QString QTextEngine::elidedText(Qt::TextElideMode mode, const QFixed &width, int
             rightPos = nextRightBreak;
 
             ++nextLeftBreak;
-            while (nextLeftBreak < layoutData->string.length() && !attributes[nextLeftBreak].graphemeBoundary)
+            while (nextLeftBreak < layoutData->string.size() && !attributes[nextLeftBreak].graphemeBoundary)
                 ++nextLeftBreak;
 
             --nextRightBreak;
@@ -3334,11 +3174,11 @@ QString QTextEngine::elidedText(Qt::TextElideMode mode, const QFixed &width, int
                  && leftWidth + rightWidth < availableWidth);
 
         if (nextCharJoins(layoutData->string, leftPos))
-            ellipsisText.prepend(QChar(0x200d) /* ZWJ */);
+            ellipsisText.prepend(ZWJ);
         if (prevCharJoins(layoutData->string, rightPos))
-            ellipsisText.append(QChar(0x200d) /* ZWJ */);
+            ellipsisText.append(ZWJ);
 
-        return layoutData->string.midRef(from, leftPos - from) + ellipsisText + layoutData->string.midRef(rightPos, to - rightPos);
+        return QStringView{layoutData->string}.mid(from, leftPos - from) + ellipsisText + QStringView{layoutData->string}.mid(rightPos, to - rightPos);
     }
 
     return layoutData->string.mid(from, to - from);
@@ -3359,11 +3199,11 @@ void QTextEngine::setBoundary(int strPos) const
 
 QFixed QTextEngine::calculateTabWidth(int item, QFixed x) const
 {
-    const QScriptItem &si = layoutData->items[item];
+    const QScriptItem &si = layoutData->items.at(item);
 
     QFixed dpiScale = 1;
-    if (block.docHandle() && block.docHandle()->layout()) {
-        QPaintDevice *pdev = block.docHandle()->layout()->paintDevice();
+    if (QTextDocumentPrivate::get(block) != nullptr && QTextDocumentPrivate::get(block)->layout() != nullptr) {
+        QPaintDevice *pdev = QTextDocumentPrivate::get(block)->layout()->paintDevice();
         if (pdev)
             dpiScale = QFixed::fromReal(pdev->logicalDpiY() / qreal(qt_defaultDpiY()));
     } else {
@@ -3393,15 +3233,15 @@ QFixed QTextEngine::calculateTabWidth(int item, QFixed x) const
                 }
             }
         }
-        for (const QTextOption::Tab &tabSpec : qAsConst(tabArray)) {
+        for (const QTextOption::Tab &tabSpec : std::as_const(tabArray)) {
             QFixed tab = QFixed::fromReal(tabSpec.position) * dpiScale;
             if (tab > x) {  // this is the tab we need.
-                int tabSectionEnd = layoutData->string.count();
+                int tabSectionEnd = layoutData->string.size();
                 if (tabSpec.type == QTextOption::RightTab || tabSpec.type == QTextOption::CenterTab) {
                     // find next tab to calculate the width required.
                     tab = QFixed::fromReal(tabSpec.position);
-                    for (int i=item + 1; i < layoutData->items.count(); i++) {
-                        const QScriptItem &item = layoutData->items[i];
+                    for (int i=item + 1; i < layoutData->items.size(); i++) {
+                        const QScriptItem &item = layoutData->items.at(i);
                         if (item.analysis.flags == QScriptAnalysis::TabOrObject) { // found it.
                             tabSectionEnd = item.position;
                             break;
@@ -3409,13 +3249,13 @@ QFixed QTextEngine::calculateTabWidth(int item, QFixed x) const
                     }
                 }
                 else if (tabSpec.type == QTextOption::DelimiterTab)
-                    // find delimitor character to calculate the width required
+                    // find delimiter character to calculate the width required
                     tabSectionEnd = qMax(si.position, layoutData->string.indexOf(tabSpec.delimiter, si.position) + 1);
 
                 if (tabSectionEnd > si.position) {
                     QFixed length;
                     // Calculate the length of text between this tab and the tabSectionEnd
-                    for (int i=item; i < layoutData->items.count(); i++) {
+                    for (int i=item; i < layoutData->items.size(); i++) {
                         const QScriptItem &item = layoutData->items.at(i);
                         if (item.position > tabSectionEnd || item.position <= si.position)
                             continue;
@@ -3462,17 +3302,17 @@ QFixed QTextEngine::calculateTabWidth(int item, QFixed x) const
 
 namespace {
 class FormatRangeComparatorByStart {
-    const QVector<QTextLayout::FormatRange> &list;
+    const QList<QTextLayout::FormatRange> &list;
 public:
-    FormatRangeComparatorByStart(const QVector<QTextLayout::FormatRange> &list) : list(list) { }
+    FormatRangeComparatorByStart(const QList<QTextLayout::FormatRange> &list) : list(list) { }
     bool operator()(int a, int b) {
         return list.at(a).start < list.at(b).start;
     }
 };
 class FormatRangeComparatorByEnd {
-    const QVector<QTextLayout::FormatRange> &list;
+    const QList<QTextLayout::FormatRange> &list;
 public:
-    FormatRangeComparatorByEnd(const QVector<QTextLayout::FormatRange> &list) : list(list) { }
+    FormatRangeComparatorByEnd(const QList<QTextLayout::FormatRange> &list) : list(list) { }
     bool operator()(int a, int b) {
         return list.at(a).start + list.at(a).length < list.at(b).start + list.at(b).length;
     }
@@ -3487,7 +3327,7 @@ void QTextEngine::resolveFormats() const
 
     QTextFormatCollection *collection = formatCollection();
 
-    QVector<QTextCharFormat> resolvedFormats(layoutData->items.count());
+    QList<QTextCharFormat> resolvedFormats(layoutData->items.size());
 
     QVarLengthArray<int, 64> formatsSortedByStart;
     formatsSortedByStart.reserve(specialData->formats.size());
@@ -3505,7 +3345,7 @@ void QTextEngine::resolveFormats() const
     const int *startIt = formatsSortedByStart.constBegin();
     const int *endIt = formatsSortedByEnd.constBegin();
 
-    for (int i = 0; i < layoutData->items.count(); ++i) {
+    for (int i = 0; i < layoutData->items.size(); ++i) {
         const QScriptItem *si = &layoutData->items.at(i);
         int end = si->position + length(si);
 
@@ -3525,8 +3365,8 @@ void QTextEngine::resolveFormats() const
         }
 
         QTextCharFormat &format = resolvedFormats[i];
-        if (block.docHandle()) {
-            // when we have a docHandle, formatIndex might still return a valid index based
+        if (QTextDocumentPrivate::get(block) != nullptr) {
+            // when we have a QTextDocumentPrivate, formatIndex might still return a valid index based
             // on the preeditPosition. for all other cases, we cleared the resolved format indices
             format = collection->charFormat(formatIndex(si));
         }
@@ -3681,8 +3521,8 @@ int QTextEngine::previousLogicalPosition(int oldPos) const
 {
     const QCharAttributes *attrs = attributes();
     int len = block.isValid() ? block.length() - 1
-                              : layoutData->string.length();
-    Q_ASSERT(len <= layoutData->string.length());
+                              : layoutData->string.size();
+    Q_ASSERT(len <= layoutData->string.size());
     if (!attrs || oldPos <= 0 || oldPos > len)
         return oldPos;
 
@@ -3696,8 +3536,8 @@ int QTextEngine::nextLogicalPosition(int oldPos) const
 {
     const QCharAttributes *attrs = attributes();
     int len = block.isValid() ? block.length() - 1
-                              : layoutData->string.length();
-    Q_ASSERT(len <= layoutData->string.length());
+                              : layoutData->string.size();
+    Q_ASSERT(len <= layoutData->string.size());
     if (!attrs || oldPos < 0 || oldPos >= len)
         return oldPos;
 
@@ -3711,7 +3551,7 @@ int QTextEngine::lineNumberForTextPosition(int pos)
 {
     if (!layoutData)
         itemize();
-    if (pos == layoutData->string.length() && lines.size())
+    if (pos == layoutData->string.size() && lines.size())
         return lines.size() - 1;
     for (int i = 0; i < lines.size(); ++i) {
         const QScriptLine& line = lines[i];
@@ -3843,21 +3683,12 @@ void QTextEngine::drawDecorations(QPainter *painter)
 {
     QPen oldPen = painter->pen();
 
-    bool wasCompatiblePainting = painter->renderHints()
-            & QPainter::Qt4CompatiblePainting;
-
-    if (wasCompatiblePainting)
-        painter->setRenderHint(QPainter::Qt4CompatiblePainting, false);
-
     adjustUnderlines();
     drawItemDecorationList(painter, underlineList);
     drawItemDecorationList(painter, strikeOutList);
     drawItemDecorationList(painter, overlineList);
 
     clearDecorations();
-
-    if (wasCompatiblePainting)
-        painter->setRenderHint(QPainter::Qt4CompatiblePainting);
 
     painter->setPen(oldPen);
 }
@@ -4044,10 +3875,12 @@ QTextLineItemIterator::QTextLineItemIterator(QTextEngine *_eng, int _lineNum, co
 
     x += eng->alignLine(line);
 
-    QVarLengthArray<uchar> levels(nItems);
-    for (int i = 0; i < nItems; ++i)
-        levels[i] = eng->layoutData->items.at(i + firstItem).analysis.bidiLevel;
-    QTextEngine::bidiReorder(nItems, levels.data(), visualOrder.data());
+    if (nItems > 0) {
+        QVarLengthArray<uchar> levels(nItems);
+        for (int i = 0; i < nItems; ++i)
+            levels[i] = eng->layoutData->items.at(i + firstItem).analysis.bidiLevel;
+        QTextEngine::bidiReorder(nItems, levels.data(), visualOrder.data());
+    }
 
     eng->shapeLine(line);
 }

@@ -1,37 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-#include <qcoreapplication.h>
-#include <qdebug.h>
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
-
-#include <QtDBus>
+#include <QTest>
+#include <QDebug>
+#include <QCoreApplication>
+#include <QProcess>
+#include <QTimer>
+#include <QDBusConnection>
+#include <QDBusInterface>
+#include <QDBusConnectionInterface>
 
 #include "../qdbusmarshall/common.h"
 #include "myobject.h"
@@ -890,7 +868,7 @@ void tst_QDBusAbstractAdaptor::readProperties()
                 properties.call(QDBus::BlockWithGui, "Get", "local." + name, propname);
             QVariant value = reply;
 
-            QCOMPARE(value.userType(), int(QVariant::String));
+            QCOMPARE(value.userType(), int(QMetaType::QString));
             QCOMPARE(value.toString(), QString("QString %1::%2() const").arg(name, propname));
         }
     }
@@ -953,7 +931,7 @@ void tst_QDBusAbstractAdaptor::readPropertiesEmptyInterface()
             continue;
         }
 
-        QCOMPARE(int(reply.value().type()), int(QVariant::String));
+        QCOMPARE(reply.value().userType(), int(QMetaType::QString));
         if (it.value().isValid())
             QCOMPARE(reply.value().toString(), it.value().toString());
     }
@@ -979,7 +957,7 @@ void tst_QDBusAbstractAdaptor::readAllProperties()
                      qPrintable(propname + " on " + name));
             QVariant value = reply.value().value(propname);
 
-            QCOMPARE(value.userType(), int(QVariant::String));
+            QCOMPARE(value.userType(), int(QMetaType::QString));
             QCOMPARE(value.toString(), QString("QString %1::%2() const").arg(name, propname));
         }
     }
@@ -1081,12 +1059,6 @@ void tst_QDBusAbstractAdaptor::methodCallsPeer_data()
 
 void tst_QDBusAbstractAdaptor::methodCallsPeer()
 {
-    QSKIP("Test is currently too flaky (QTBUG-66223)");
-    if (QSysInfo::productType().compare("opensuse", Qt::CaseInsensitive) == 0
-        && QSysInfo::productVersion() == QLatin1String("42.1")
-        && qgetenv("QTEST_ENVIRONMENT").split(' ').contains("ci")) {
-        QSKIP("This test is occasionally hanging in the CI");
-    }
     QDBusConnection con("peer");
     QVERIFY(con.isConnected());
 
@@ -1149,7 +1121,6 @@ void tst_QDBusAbstractAdaptor::methodCallsPeer()
 
 void tst_QDBusAbstractAdaptor::methodCallScriptablePeer()
 {
-    QSKIP("Test is currently too flaky (QTBUG-66223)");
     QDBusConnection con("peer");
     QVERIFY(con.isConnected());
 
@@ -1169,7 +1140,6 @@ void tst_QDBusAbstractAdaptor::signalEmissionsPeer_data()
 
 void tst_QDBusAbstractAdaptor::signalEmissionsPeer()
 {
-    QSKIP("Test is currently too flaky (QTBUG-66223)");
     QFETCH(QString, interface);
     QFETCH(QString, name);
     QFETCH(QVariant, parameter);
@@ -1234,7 +1204,6 @@ void tst_QDBusAbstractAdaptor::signalEmissionsPeer()
 
 void tst_QDBusAbstractAdaptor::sameSignalDifferentPathsPeer()
 {
-    QSKIP("Test is currently too flaky (QTBUG-66223)");
     QDBusConnection con("peer");
     QVERIFY(con.isConnected());
 
@@ -1263,7 +1232,6 @@ void tst_QDBusAbstractAdaptor::sameSignalDifferentPathsPeer()
 
 void tst_QDBusAbstractAdaptor::sameObjectDifferentPathsPeer()
 {
-    QSKIP("Test is currently too flaky (QTBUG-66223)");
     QDBusConnection con("peer");
     QVERIFY(con.isConnected());
 
@@ -1286,8 +1254,7 @@ void tst_QDBusAbstractAdaptor::sameObjectDifferentPathsPeer()
 
 void tst_QDBusAbstractAdaptor::scriptableSignalOrNotPeer()
 {
-    QSKIP("Test is currently too flaky (QTBUG-66223)");
-    QDBusConnection con("peer");;
+    QDBusConnection con("peer");
     QVERIFY(con.isConnected());
 
     {
@@ -1358,7 +1325,6 @@ void tst_QDBusAbstractAdaptor::overloadedSignalEmissionPeer_data()
 
 void tst_QDBusAbstractAdaptor::overloadedSignalEmissionPeer()
 {
-    QSKIP("Test is currently too flaky (QTBUG-66223)");
     QDBusConnection con("peer");
     QVERIFY(con.isConnected());
 
@@ -1410,7 +1376,6 @@ void tst_QDBusAbstractAdaptor::overloadedSignalEmissionPeer()
 
 void tst_QDBusAbstractAdaptor::readPropertiesPeer()
 {
-    QSKIP("Test is currently too flaky (QTBUG-66223)");
     QDBusConnection con("peer");
     QVERIFY(con.isConnected());
 
@@ -1427,7 +1392,7 @@ void tst_QDBusAbstractAdaptor::readPropertiesPeer()
                 properties.call(QDBus::BlockWithGui, "Get", "local." + name, propname);
             QVariant value = reply;
 
-            QCOMPARE(value.userType(), int(QVariant::String));
+            QCOMPARE(value.userType(), int(QMetaType::QString));
             QCOMPARE(value.toString(), QString("QString %1::%2() const").arg(name, propname));
         }
     }
@@ -1435,7 +1400,6 @@ void tst_QDBusAbstractAdaptor::readPropertiesPeer()
 
 void tst_QDBusAbstractAdaptor::readPropertiesInvalidInterfacePeer()
 {
-    QSKIP("Test is currently too flaky (QTBUG-66223)");
     QDBusConnection con("peer");
     QVERIFY(con.isConnected());
 
@@ -1456,7 +1420,6 @@ void tst_QDBusAbstractAdaptor::readPropertiesEmptyInterfacePeer_data()
 
 void tst_QDBusAbstractAdaptor::readPropertiesEmptyInterfacePeer()
 {
-    QSKIP("Test is currently too flaky (QTBUG-66223)");
     QDBusConnection con("peer");
     QVERIFY(con.isConnected());
 
@@ -1479,7 +1442,7 @@ void tst_QDBusAbstractAdaptor::readPropertiesEmptyInterfacePeer()
             continue;
         }
 
-        QCOMPARE(int(reply.value().type()), int(QVariant::String));
+        QCOMPARE(int(reply.value().userType()), int(QMetaType::QString));
         if (it.value().isValid())
             QCOMPARE(reply.value().toString(), it.value().toString());
     }
@@ -1487,7 +1450,6 @@ void tst_QDBusAbstractAdaptor::readPropertiesEmptyInterfacePeer()
 
 void tst_QDBusAbstractAdaptor::readAllPropertiesPeer()
 {
-    QSKIP("Test is currently too flaky (QTBUG-66223)");
     QDBusConnection con("peer");
     QVERIFY(con.isConnected());
 
@@ -1506,7 +1468,7 @@ void tst_QDBusAbstractAdaptor::readAllPropertiesPeer()
                      qPrintable(propname + " on " + name));
             QVariant value = reply.value().value(propname);
 
-            QCOMPARE(value.userType(), int(QVariant::String));
+            QCOMPARE(value.userType(), int(QMetaType::QString));
             QCOMPARE(value.toString(), QString("QString %1::%2() const").arg(name, propname));
         }
     }
@@ -1514,7 +1476,6 @@ void tst_QDBusAbstractAdaptor::readAllPropertiesPeer()
 
 void tst_QDBusAbstractAdaptor::readAllPropertiesInvalidInterfacePeer()
 {
-    QSKIP("Test is currently too flaky (QTBUG-66223)");
     QDBusConnection con("peer");
     QVERIFY(con.isConnected());
 
@@ -1580,7 +1541,6 @@ void tst_QDBusAbstractAdaptor::readAllPropertiesEmptyInterfacePeer()
 
 void tst_QDBusAbstractAdaptor::writePropertiesPeer()
 {
-    QSKIP("Test is currently too flaky (QTBUG-66223)");
     QDBusConnection con("peer");
     QVERIFY(con.isConnected());
 
@@ -1862,10 +1822,9 @@ void tst_QDBusAbstractAdaptor::typeMatching()
 
     reply = iface.call(QDBus::BlockWithGui, "retrieve" + basename);
     QCOMPARE(reply.type(), QDBusMessage::ReplyMessage);
-    QCOMPARE(reply.arguments().count(), 1);
+    QCOMPARE(reply.arguments().size(), 1);
 
-    const QVariant &retval = reply.arguments().at(0);
-    QVERIFY(compare(retval, value));
+    QVERIFY(compare(reply.arguments().at(0), value));
 }
 
 void tst_QDBusAbstractAdaptor::methodWithMoreThanOneReturnValue()
@@ -1880,19 +1839,18 @@ void tst_QDBusAbstractAdaptor::methodWithMoreThanOneReturnValue()
 
     QDBusInterface remote(con.baseService(), "/", "local.Interface3", con);
     QDBusMessage reply = remote.call(QDBus::BlockWithGui, "methodStringString", testString);
-    QCOMPARE(reply.arguments().count(), 2);
+    QCOMPARE(reply.arguments().size(), 2);
 
     QDBusReply<int> intreply = reply;
     QVERIFY(intreply.isValid());
     QCOMPARE(intreply.value(), 42);
 
-    QCOMPARE(reply.arguments().at(1).userType(), int(QVariant::String));
+    QCOMPARE(reply.arguments().at(1).userType(), int(QMetaType::QString));
     QCOMPARE(qdbus_cast<QString>(reply.arguments().at(1)), testString);
 }
 
 void tst_QDBusAbstractAdaptor::methodWithMoreThanOneReturnValuePeer()
 {
-    QSKIP("Test is currently too flaky (QTBUG-66223)");
     QDBusConnection con("peer");
     QVERIFY(con.isConnected());
 
@@ -1903,13 +1861,13 @@ void tst_QDBusAbstractAdaptor::methodWithMoreThanOneReturnValuePeer()
 
     QDBusInterface remote(QString(), "/", "local.Interface3", con);
     QDBusMessage reply = remote.call(QDBus::BlockWithGui, "methodStringString", testString);
-    QCOMPARE(reply.arguments().count(), 2);
+    QCOMPARE(reply.arguments().size(), 2);
 
     QDBusReply<int> intreply = reply;
     QVERIFY(intreply.isValid());
     QCOMPARE(intreply.value(), 42);
 
-    QCOMPARE(reply.arguments().at(1).userType(), int(QVariant::String));
+    QCOMPARE(reply.arguments().at(1).userType(), int(QMetaType::QString));
     QCOMPARE(qdbus_cast<QString>(reply.arguments().at(1)), testString);
 }
 

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qfilesystemwatcher.h"
 #include "qfilesystemwatcher_p.h"
@@ -67,6 +31,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 Q_LOGGING_CATEGORY(lcWatcher, "qt.core.filesystemwatcher")
 
 QFileSystemWatcherEngine *QFileSystemWatcherPrivate::createNativeEngine(QObject *parent)
@@ -92,51 +58,44 @@ QFileSystemWatcherPrivate::QFileSystemWatcherPrivate()
 {
 }
 
+void QFileSystemWatcherPrivate::connectEngine(QFileSystemWatcherEngine *engine)
+{
+    QObjectPrivate::connect(engine, &QFileSystemWatcherEngine::fileChanged,
+                            this, &QFileSystemWatcherPrivate::fileChanged);
+    QObjectPrivate::connect(engine, &QFileSystemWatcherEngine::directoryChanged,
+                            this, &QFileSystemWatcherPrivate::directoryChanged);
+}
+
 void QFileSystemWatcherPrivate::init()
 {
     Q_Q(QFileSystemWatcher);
     native = createNativeEngine(q);
     if (native) {
-        QObject::connect(native,
-                         SIGNAL(fileChanged(QString,bool)),
-                         q,
-                         SLOT(_q_fileChanged(QString,bool)));
-        QObject::connect(native,
-                         SIGNAL(directoryChanged(QString,bool)),
-                         q,
-                         SLOT(_q_directoryChanged(QString,bool)));
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
-        QObject::connect(static_cast<QWindowsFileSystemWatcherEngine *>(native),
-                         &QWindowsFileSystemWatcherEngine::driveLockForRemoval,
-                         q, [this] (const QString &p) { _q_winDriveLockForRemoval(p); });
-        QObject::connect(static_cast<QWindowsFileSystemWatcherEngine *>(native),
-                         &QWindowsFileSystemWatcherEngine::driveLockForRemovalFailed,
-                         q, [this] (const QString &p) { _q_winDriveLockForRemovalFailed(p); });
-        QObject::connect(static_cast<QWindowsFileSystemWatcherEngine *>(native),
-                         &QWindowsFileSystemWatcherEngine::driveRemoved,
-                         q, [this] (const QString &p) { _q_winDriveRemoved(p); });
-#endif  // !Q_OS_WINRT
+        connectEngine(native);
+#if defined(Q_OS_WIN)
+        auto *windowsWatcher = static_cast<QWindowsFileSystemWatcherEngine *>(native);
+        using WinE = QWindowsFileSystemWatcherEngine;
+        QObjectPrivate::connect(windowsWatcher, &WinE::driveLockForRemoval,
+                                this, &QFileSystemWatcherPrivate::winDriveLockForRemoval);
+        QObjectPrivate::connect(windowsWatcher, &WinE::driveLockForRemovalFailed,
+                                this, &QFileSystemWatcherPrivate::winDriveLockForRemovalFailed);
+        QObjectPrivate::connect(windowsWatcher, &WinE::driveRemoved,
+                                this, &QFileSystemWatcherPrivate::winDriveRemoved);
+#endif  // Q_OS_WIN
     }
 }
 
 void QFileSystemWatcherPrivate::initPollerEngine()
 {
-    if(poller)
+    if (poller)
         return;
 
     Q_Q(QFileSystemWatcher);
     poller = new QPollingFileSystemWatcherEngine(q); // that was a mouthful
-    QObject::connect(poller,
-                     SIGNAL(fileChanged(QString,bool)),
-                     q,
-                     SLOT(_q_fileChanged(QString,bool)));
-    QObject::connect(poller,
-                     SIGNAL(directoryChanged(QString,bool)),
-                     q,
-                     SLOT(_q_directoryChanged(QString,bool)));
+    connectEngine(poller);
 }
 
-void QFileSystemWatcherPrivate::_q_fileChanged(const QString &path, bool removed)
+void QFileSystemWatcherPrivate::fileChanged(const QString &path, bool removed)
 {
     Q_Q(QFileSystemWatcher);
     qCDebug(lcWatcher) << "file changed" << path << "removed?" << removed << "watching?" << files.contains(path);
@@ -149,7 +108,7 @@ void QFileSystemWatcherPrivate::_q_fileChanged(const QString &path, bool removed
     emit q->fileChanged(path, QFileSystemWatcher::QPrivateSignal());
 }
 
-void QFileSystemWatcherPrivate::_q_directoryChanged(const QString &path, bool removed)
+void QFileSystemWatcherPrivate::directoryChanged(const QString &path, bool removed)
 {
     Q_Q(QFileSystemWatcher);
     qCDebug(lcWatcher) << "directory changed" << path << "removed?" << removed << "watching?" << directories.contains(path);
@@ -162,9 +121,9 @@ void QFileSystemWatcherPrivate::_q_directoryChanged(const QString &path, bool re
     emit q->directoryChanged(path, QFileSystemWatcher::QPrivateSignal());
 }
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
 
-void QFileSystemWatcherPrivate::_q_winDriveLockForRemoval(const QString &path)
+void QFileSystemWatcherPrivate::winDriveLockForRemoval(const QString &path)
 {
     // Windows: Request to lock a (removable/USB) drive for removal, release
     // its paths under watch, temporarily storing them should the lock fail.
@@ -181,7 +140,7 @@ void QFileSystemWatcherPrivate::_q_winDriveLockForRemoval(const QString &path)
     }
 }
 
-void QFileSystemWatcherPrivate::_q_winDriveLockForRemovalFailed(const QString &path)
+void QFileSystemWatcherPrivate::winDriveLockForRemovalFailed(const QString &path)
 {
     // Windows: Request to lock a (removable/USB) drive failed (blocked by other
     // application), restore the watched paths.
@@ -195,13 +154,13 @@ void QFileSystemWatcherPrivate::_q_winDriveLockForRemovalFailed(const QString &p
     }
 }
 
-void  QFileSystemWatcherPrivate::_q_winDriveRemoved(const QString &path)
+void  QFileSystemWatcherPrivate::winDriveRemoved(const QString &path)
 {
     // Windows: Drive finally removed, clear out paths stored in lock request.
     if (!path.isEmpty())
         temporarilyRemovedPaths.remove(path.at(0));
 }
-#endif // Q_OS_WIN && !Q_OS_WINRT
+#endif // Q_OS_WIN
 
 /*!
     \class QFileSystemWatcher
@@ -364,14 +323,14 @@ QStringList QFileSystemWatcher::addPaths(const QStringList &paths)
 #ifdef QT_BUILD_INTERNAL
         const QString on = objectName();
 
-        if (Q_UNLIKELY(on.startsWith(QLatin1String("_qt_autotest_force_engine_")))) {
+        if (Q_UNLIKELY(on.startsWith("_qt_autotest_force_engine_"_L1))) {
             // Autotest override case - use the explicitly selected engine only
-            const QStringRef forceName = on.midRef(26);
-            if (forceName == QLatin1String("poller")) {
+            const auto forceName = QStringView{on}.mid(26);
+            if (forceName == "poller"_L1) {
                 qCDebug(lcWatcher, "QFileSystemWatcher: skipping native engine, using only polling engine");
                 d_func()->initPollerEngine();
                 return d->poller;
-            } else if (forceName == QLatin1String("native")) {
+            } else if (forceName == "native"_L1) {
                 qCDebug(lcWatcher, "QFileSystemWatcher: skipping polling engine, using only native engine");
                 return d->native;
             }
@@ -379,7 +338,7 @@ QStringList QFileSystemWatcher::addPaths(const QStringList &paths)
         }
 #endif
         // Normal runtime case - search intelligently for best engine
-        if(d->native) {
+        if (d->native) {
             return d->native;
         } else {
             d_func()->initPollerEngine();

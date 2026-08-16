@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "tracer.h"
 
 #include "xbelsupport.h"
@@ -36,6 +11,8 @@
 #include <QtCore/QModelIndex>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 struct Bookmark {
     QString title;
@@ -57,9 +34,9 @@ void XbelWriter::writeToFile(QIODevice *device)
     setDevice(device);
 
     writeStartDocument();
-    writeDTD(QLatin1String("<!DOCTYPE xbel>"));
-    writeStartElement(QLatin1String("xbel"));
-    writeAttribute(QLatin1String("version"), QLatin1String("1.0"));
+    writeDTD("<!DOCTYPE xbel>"_L1);
+    writeStartElement("xbel"_L1);
+    writeAttribute("version"_L1, "1.0"_L1);
 
     const QModelIndex root;
     for (int i = 0; i < bookmarkModel->rowCount(root); ++i)
@@ -76,19 +53,17 @@ void XbelWriter::writeData(const QModelIndex &index)
         entry.url = index.data(UserRoleUrl).toString();
 
         if (index.data(UserRoleFolder).toBool()) {
-            writeStartElement(QLatin1String("folder"));
+            writeStartElement("folder"_L1);
             entry.folded = !index.data(UserRoleExpanded).toBool();
-            writeAttribute(QLatin1String("folded"), entry.folded
-                ? QLatin1String("yes") : QLatin1String("no"));
-            writeTextElement(QLatin1String("title"), entry.title);
-
+            writeAttribute("folded"_L1, entry.folded ? "yes"_L1 : "no"_L1);
+            writeTextElement("title"_L1, entry.title);
             for (int i = 0; i < bookmarkModel->rowCount(index); ++i)
                 writeData(bookmarkModel->index(i, 0 , index));
             writeEndElement();
         } else {
-            writeStartElement(QLatin1String("bookmark"));
-            writeAttribute(QLatin1String("href"), entry.url);
-            writeTextElement(QLatin1String("title"), entry.title);
+            writeStartElement("bookmark"_L1);
+            writeAttribute("href"_L1, entry.url);
+            writeTextElement("title"_L1, entry.title);
             writeEndElement();
         }
     }
@@ -112,16 +87,14 @@ bool XbelReader::readFromFile(QIODevice *device)
         readNext();
 
         if (isStartElement()) {
-            if (name() == QLatin1String("xbel")
-                && attributes().value(QLatin1String("version"))
-                    == QLatin1String("1.0")) {
+            if (name() == "xbel"_L1 && attributes().value("version"_L1) == "1.0"_L1) {
                 const QModelIndex root;
                 parents.append(bookmarkModel->addItem(root, true));
                 readXBEL();
                 bookmarkModel->setData(parents.first(),
                     QDate::currentDate().toString(Qt::ISODate), Qt::EditRole);
             } else {
-                raiseError(QLatin1String("The file is not an XBEL version 1.0 file."));
+                raiseError("The file is not an XBEL version 1.0 file."_L1);
             }
         }
     }
@@ -139,9 +112,9 @@ void XbelReader::readXBEL()
             break;
 
         if (isStartElement()) {
-            if (name() == QLatin1String("folder"))
+            if (name() == "folder"_L1)
                 readFolder();
-            else if (name() == QLatin1String("bookmark"))
+            else if (name() == "bookmark"_L1)
                 readBookmark();
             else
                 readUnknownElement();
@@ -153,9 +126,8 @@ void XbelReader::readFolder()
 {
     TRACE_OBJ
     parents.append(bookmarkModel->addItem(parents.last(), true));
-    bookmarkModel->setData(parents.last(),
-        attributes().value(QLatin1String("folded")) == QLatin1String("no"),
-        UserRoleExpanded);
+    bookmarkModel->setData(parents.last(), attributes().value("folded"_L1) == "no"_L1,
+                           UserRoleExpanded);
 
     while (!atEnd()) {
         readNext();
@@ -164,12 +136,11 @@ void XbelReader::readFolder()
             break;
 
         if (isStartElement()) {
-            if (name() == QLatin1String("title")) {
-                bookmarkModel->setData(parents.last(), readElementText(),
-                    Qt::EditRole);
-            } else if (name() == QLatin1String("folder"))
+            if (name() == "title"_L1)
+                bookmarkModel->setData(parents.last(), readElementText(), Qt::EditRole);
+            else if (name() == "folder"_L1)
                 readFolder();
-            else if (name() == QLatin1String("bookmark"))
+            else if (name() == "bookmark"_L1)
                 readBookmark();
             else
                 readUnknownElement();
@@ -183,10 +154,8 @@ void XbelReader::readBookmark()
 {
     TRACE_OBJ
     const QModelIndex &index = bookmarkModel->addItem(parents.last(), false);
-    if (BookmarkItem* item = bookmarkModel->itemFromIndex(index)) {
-        item->setData(UserRoleUrl, attributes().value(QLatin1String("href"))
-            .toString());
-    }
+    if (BookmarkItem* item = bookmarkModel->itemFromIndex(index))
+        item->setData(UserRoleUrl, attributes().value("href"_L1).toString());
 
     while (!atEnd()) {
         readNext();
@@ -195,7 +164,7 @@ void XbelReader::readBookmark()
             break;
 
         if (isStartElement()) {
-            if (name() == QLatin1String("title"))
+            if (name() == "title"_L1)
                 bookmarkModel->setData(index, readElementText(), Qt::EditRole);
             else
                 readUnknownElement();

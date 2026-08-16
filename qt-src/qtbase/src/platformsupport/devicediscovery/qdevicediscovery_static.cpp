@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdevicediscovery_static_p.h"
 
@@ -49,6 +13,9 @@
 
 #ifdef Q_OS_FREEBSD
 #include <dev/evdev/input.h>
+#elif defined(Q_OS_VXWORKS)
+#include <evdevLib.h>
+#define ABS_X           EV_DEV_PTR_ABS_X
 #else
 #include <linux/input.h>
 #endif
@@ -76,12 +43,16 @@
 #define LONG_BITS (sizeof(long) * 8 )
 #define LONG_FIELD_SIZE(bits) ((bits / LONG_BITS) + 1)
 
+#if !defined(Q_OS_VXWORKS)
 static bool testBit(long bit, const long *field)
 {
     return (field[bit / LONG_BITS] >> bit % LONG_BITS) & 1;
 }
+#endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 Q_LOGGING_CATEGORY(lcDD, "qt.qpa.input")
 
@@ -99,6 +70,37 @@ QDeviceDiscoveryStatic::QDeviceDiscoveryStatic(QDeviceTypes types, QObject *pare
 QStringList QDeviceDiscoveryStatic::scanConnectedDevices()
 {
     QStringList devices;
+
+#if defined(Q_OS_VXWORKS)
+
+    QStringList inputDevices;
+    UINT32 devCount = 0;
+    static const char* device = "/input/event";
+    int fd = QT_OPEN(device, O_RDONLY | O_NDELAY, 0);
+    if (fd >= 0) {
+        if (ERROR == ioctl(fd, EV_DEV_IO_GET_DEV_COUNT, (char *)&devCount)) {
+            qWarning() << "DeviceDiscovery cannot open device" << device;
+            return devices;
+        }
+        for (UINT32 i=0; i<devCount; i++)
+            inputDevices << QString::fromLatin1("/input/event%1").arg(i);
+
+    } else {
+        for (int i=0; i<=EV_DEV_DEVICE_MAX; i++)
+            inputDevices << QString::fromLatin1("/input/event%1").arg(i);
+    }
+    QT_CLOSE(fd);
+
+    // check for input devices
+    if (m_types & Device_InputMask) {
+        for (const auto& deviceFile : inputDevices) {
+            if (checkDeviceType(deviceFile))
+                devices << deviceFile;
+        }
+    }
+
+#else
+
     QDir dir;
     dir.setFilter(QDir::System);
 
@@ -107,7 +109,7 @@ QStringList QDeviceDiscoveryStatic::scanConnectedDevices()
         dir.setPath(QString::fromLatin1(QT_EVDEV_DEVICE_PATH));
         const auto deviceFiles = dir.entryList();
         for (const QString &deviceFile : deviceFiles) {
-            QString absoluteFilePath = dir.absolutePath() + QLatin1Char('/') + deviceFile;
+            QString absoluteFilePath = dir.absolutePath() + u'/' + deviceFile;
             if (checkDeviceType(absoluteFilePath))
                 devices << absoluteFilePath;
         }
@@ -118,7 +120,7 @@ QStringList QDeviceDiscoveryStatic::scanConnectedDevices()
         dir.setPath(QString::fromLatin1(QT_DRM_DEVICE_PATH));
         const auto deviceFiles = dir.entryList();
         for (const QString &deviceFile : deviceFiles) {
-            QString absoluteFilePath = dir.absolutePath() + QLatin1Char('/') + deviceFile;
+            QString absoluteFilePath = dir.absolutePath() + u'/' + deviceFile;
             if (checkDeviceType(absoluteFilePath))
                 devices << absoluteFilePath;
         }
@@ -126,6 +128,7 @@ QStringList QDeviceDiscoveryStatic::scanConnectedDevices()
 
     qCDebug(lcDD) << "Found matching devices" << devices;
 
+#endif // Q_OS_VXWORKS
     return devices;
 }
 
@@ -133,17 +136,46 @@ bool QDeviceDiscoveryStatic::checkDeviceType(const QString &device)
 {
     int fd = QT_OPEN(device.toLocal8Bit().constData(), O_RDONLY | O_NDELAY, 0);
     if (Q_UNLIKELY(fd == -1)) {
-        qWarning() << "Device discovery cannot open device" << device;
+#if defined(Q_OS_VXWORKS)
+        // This is changed to debug type message due the nature of scanning
+        // and adding new device for VxWorks by getting dev count from
+        // dev /input/event0 which might be already in use
+        qCDebug(lcDD)
+#else
+        qWarning()
+#endif
+        << "Device discovery cannot open device" << device;
         return false;
     }
 
     qCDebug(lcDD) << "doing static device discovery for " << device;
 
-    if ((m_types & Device_DRM) && device.contains(QLatin1String(QT_DRM_DEVICE_PREFIX))) {
+    if ((m_types & Device_DRM) && device.contains(QT_DRM_DEVICE_PREFIX ""_L1)) {
         QT_CLOSE(fd);
         return true;
     }
 
+#if defined(Q_OS_VXWORKS)
+    UINT32 devCap = 0;
+    if (ERROR != ioctl(fd, EV_DEV_IO_GET_CAP, (char *)&devCap)) {
+        if ((m_types & Device_Keyboard) && (devCap & EV_DEV_KEY)) {
+            if (!(devCap & EV_DEV_REL) && !(devCap & EV_DEV_ABS)) {
+                qCDebug(lcDD) << "DeviceDiscovery found keyboard at" << device;
+                QT_CLOSE(fd);
+                return true;
+            }
+        }
+
+        if (m_types & Device_Mouse) {
+            if ((devCap & EV_DEV_REL) && (devCap & EV_DEV_KEY)) {
+                qCDebug(lcDD) << "DeviceDiscovery found mouse at" << device;
+                QT_CLOSE(fd);
+                return true;
+            }
+        }
+    }
+    QT_CLOSE(fd);
+#else
     long bitsAbs[LONG_FIELD_SIZE(ABS_CNT)];
     long bitsKey[LONG_FIELD_SIZE(KEY_CNT)];
     long bitsRel[LONG_FIELD_SIZE(REL_CNT)];
@@ -196,6 +228,7 @@ bool QDeviceDiscoveryStatic::checkDeviceType(const QString &device)
             return true;
         }
     }
+#endif
 
     return false;
 }

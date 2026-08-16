@@ -1,32 +1,31 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QPointF>
+#ifdef QVARIANT_H
+# error "This test requires qpoint.h to not include qvariant.h"
+#endif
+#include <private/qcomparisontesthelper_p.h>
+
+// don't assume <type_traits>
+template <typename T, typename U>
+constexpr inline bool my_is_same_v = false;
+template <typename T>
+constexpr inline bool my_is_same_v<T, T> = true;
+
+#define CHECK(cvref) \
+    static_assert(my_is_same_v<decltype(get<0>(std::declval<QPointF cvref >())), qreal cvref >); \
+    static_assert(my_is_same_v<decltype(get<1>(std::declval<QPointF cvref >())), qreal cvref >)
+
+CHECK(&);
+CHECK(const &);
+CHECK(&&);
+CHECK(const &&);
+
+#undef CHECK
+
+#include <QTest>
+#include <QBuffer>
 
 #include <qpoint.h>
 
@@ -73,8 +72,12 @@ private slots:
     void operator_unary_minus_data();
     void operator_unary_minus();
 
+    void operatorsCompile();
     void operator_eq_data();
     void operator_eq();
+
+    void fuzzyCompare_data();
+    void fuzzyCompare();
 
     void toPoint_data();
     void toPoint();
@@ -85,6 +88,8 @@ private slots:
     void stream_data();
     void stream();
 #endif
+
+    void structuredBinding();
 
 private:
     const qreal QREAL_MIN;
@@ -101,15 +106,19 @@ void tst_QPointF::isNull()
 {
     QPointF point(0, 0);
     QVERIFY(point.isNull());
+    QVERIFY(qFuzzyIsNull(point));
     ++point.rx();
     QVERIFY(!point.isNull());
+    QVERIFY(!qFuzzyIsNull(point));
     point.rx() -= 2;
     QVERIFY(!point.isNull());
+    QVERIFY(!qFuzzyIsNull(point));
 
     QPointF nullNegativeZero(qreal(-0.0), qreal(-0.0));
     QCOMPARE(nullNegativeZero.x(), (qreal)-0.0f);
     QCOMPARE(nullNegativeZero.y(), (qreal)-0.0f);
     QVERIFY(nullNegativeZero.isNull());
+    QVERIFY(qFuzzyIsNull(nullNegativeZero));
 }
 
 void tst_QPointF::manhattanLength_data()
@@ -345,21 +354,29 @@ void tst_QPointF::operator_unary_minus()
     QCOMPARE(-point, expected);
 }
 
+void tst_QPointF::operatorsCompile()
+{
+    QTestPrivate::testEqualityOperatorsCompile<QPointF>();
+    QTestPrivate::testEqualityOperatorsCompile<QPointF, QPoint>();
+}
+
 void tst_QPointF::operator_eq_data()
 {
     QTest::addColumn<QPointF>("point1");
     QTest::addColumn<QPointF>("point2");
     QTest::addColumn<bool>("expectEqual");
+    QTest::addColumn<bool>("expectIntEqual");
 
-    QTest::newRow("(0, 0) == (0, 0)") << QPointF(0, 0) << QPointF(0, 0) << true;
-    QTest::newRow("(-1, 0) == (-1, 0)") << QPointF(-1, 0) << QPointF(-1, 0) << true;
-    QTest::newRow("(-1, 0) != (0, 0)") << QPointF(-1, 0) << QPointF(0, 0) << false;
-    QTest::newRow("(-1, 0) != (0, -1)") << QPointF(-1, 0) << QPointF(0, -1) << false;
-    QTest::newRow("(-1.125, 0.25) == (-1.125, 0.25)") << QPointF(-1.125, 0.25) << QPointF(-1.125, 0.25) << true;
+    QTest::newRow("(0, 0) == (0, 0)") << QPointF(0, 0) << QPointF(0, 0) << true << true;
+    QTest::newRow("(-1, 0) == (-1, 0)") << QPointF(-1, 0) << QPointF(-1, 0) << true << true;
+    QTest::newRow("(-1, 0) != (0, 0)") << QPointF(-1, 0) << QPointF(0, 0) << false << false;
+    QTest::newRow("(-1, 0) != (0, -1)") << QPointF(-1, 0) << QPointF(0, -1) << false << false;
+    QTest::newRow("(-1.125, 0.25) == (-1.125, 0.25)")
+            << QPointF(-1.125, 0.25) << QPointF(-1.125, 0.25) << true << false;
     QTest::newRow("(QREAL_MIN, QREAL_MIN) == (QREAL_MIN, QREAL_MIN)")
-        << QPointF(QREAL_MIN, QREAL_MIN) << QPointF(QREAL_MIN, QREAL_MIN) << true;
+            << QPointF(QREAL_MIN, QREAL_MIN) << QPointF(QREAL_MIN, QREAL_MIN) << true << true;
     QTest::newRow("(QREAL_MAX, QREAL_MAX) == (QREAL_MAX, QREAL_MAX)")
-        << QPointF(QREAL_MAX, QREAL_MAX) << QPointF(QREAL_MAX, QREAL_MAX) << true;
+            << QPointF(QREAL_MAX, QREAL_MAX) << QPointF(QREAL_MAX, QREAL_MAX) << true << false;
 }
 
 void tst_QPointF::operator_eq()
@@ -367,11 +384,26 @@ void tst_QPointF::operator_eq()
     QFETCH(QPointF, point1);
     QFETCH(QPointF, point2);
     QFETCH(bool, expectEqual);
+    QFETCH(bool, expectIntEqual);
 
-    bool equal = point1 == point2;
-    QCOMPARE(equal, expectEqual);
-    bool notEqual = point1 != point2;
-    QCOMPARE(notEqual, !expectEqual);
+    QT_TEST_EQUALITY_OPS(point1, point2, expectEqual);
+
+    const QPoint intPoint2 = point2.toPoint();
+    QT_TEST_EQUALITY_OPS(point1, intPoint2, expectIntEqual);
+}
+
+void tst_QPointF::fuzzyCompare_data()
+{
+    operator_eq_data();
+}
+
+void tst_QPointF::fuzzyCompare()
+{
+    QFETCH(QPointF, point1);
+    QFETCH(QPointF, point2);
+    QFETCH(bool, expectEqual);
+
+    QCOMPARE_EQ(qFuzzyCompare(point1, point2), expectEqual);
 }
 
 void tst_QPointF::toPoint_data()
@@ -381,7 +413,7 @@ void tst_QPointF::toPoint_data()
 
     QTest::newRow("(0.0, 0.0) ==> (0, 0)") << QPointF(0, 0) << QPoint(0, 0);
     QTest::newRow("(0.5, 0.5) ==> (1, 1)") << QPointF(0.5, 0.5) << QPoint(1, 1);
-    QTest::newRow("(-0.5, -0.5) ==> (0, 0)") << QPointF(-0.5, -0.5) << QPoint(0, 0);
+    QTest::newRow("(-0.5, -0.5) ==> (-1, -1)") << QPointF(-0.5, -0.5) << QPoint(-1, -1);
 }
 
 void tst_QPointF::toPoint()
@@ -460,6 +492,64 @@ void tst_QPointF::compare()
 
     // Test we can compare one dimension with hard zero
     QVERIFY(QPointF(1.9543e-14, -32.0) == QPointF(0.0, -32.0));
+}
+
+
+void tst_QPointF::structuredBinding()
+{
+    {
+        QPointF p(1.5, 2.25);
+        auto [x, y] = p;
+        QCOMPARE(x, 1.5);
+        QCOMPARE(y, 2.25);
+
+        p.setX(42);
+        QCOMPARE(x, 1.5);
+        QCOMPARE(y, 2.25);
+
+        p.setY(-123);
+        QCOMPARE(x, 1.5);
+        QCOMPARE(y, 2.25);
+    }
+    {
+        QPointF p(1.5, 2.25);
+
+        auto &[x, y] = p;
+        QCOMPARE(x, 1.5);
+        QCOMPARE(y, 2.25);
+
+        x = 42.0;
+        QCOMPARE(x, 42.0);
+        QCOMPARE(p.x(), 42.0);
+        QCOMPARE(p.rx(), 42.0);
+        QCOMPARE(y, 2.25);
+        QCOMPARE(p.y(), 2.25);
+        QCOMPARE(p.ry(), 2.25);
+
+        y = -123.5;
+        QCOMPARE(x, 42.0);
+        QCOMPARE(p.x(), 42.0);
+        QCOMPARE(p.rx(), 42.0);
+        QCOMPARE(y, -123.5);
+        QCOMPARE(p.y(), -123.5);
+        QCOMPARE(p.ry(), -123.5);
+
+        p.setX(0.0);
+        QCOMPARE(x, 0.0);
+        QCOMPARE(p.x(), 0.0);
+        QCOMPARE(p.rx(), 0.0);
+        QCOMPARE(y, -123.5);
+        QCOMPARE(p.y(), -123.5);
+        QCOMPARE(p.ry(), -123.5);
+
+        p.ry() = 10.5;
+        QCOMPARE(x, 0.0);
+        QCOMPARE(p.x(), 0.0);
+        QCOMPARE(p.rx(), 0.0);
+        QCOMPARE(y, 10.5);
+        QCOMPARE(p.y(), 10.5);
+        QCOMPARE(p.ry(), 10.5);
+    }
 }
 
 QTEST_MAIN(tst_QPointF)

@@ -1,50 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#if defined(WINVER) && WINVER < 0x0603
-#  undef WINVER
-#endif
-#if !defined(WINVER)
-#  define WINVER 0x0603 // Enable pointer functions for MinGW
-#endif
+#include <QtCore/qt_windows.h>
 
 #include "qwindowspointerhandler.h"
+#if QT_CONFIG(tabletevent)
+#  include "qwindowstabletsupport.h"
+#endif
 #include "qwindowskeymapper.h"
 #include "qwindowscontext.h"
 #include "qwindowswindow.h"
@@ -53,12 +15,11 @@
 
 #include <QtGui/qguiapplication.h>
 #include <QtGui/qscreen.h>
-#include <QtGui/qtouchdevice.h>
+#include <QtGui/qpointingdevice.h>
 #include <QtGui/qwindow.h>
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtCore/qvarlengtharray.h>
 #include <QtCore/qloggingcategory.h>
-#include <QtCore/qoperatingsystemversion.h>
 #include <QtCore/qqueue.h>
 
 #include <algorithm>
@@ -75,12 +36,26 @@ enum {
     QT_PT_TOUCHPAD = 5, // MinGW is missing PT_TOUCHPAD
 };
 
+qint64 QWindowsPointerHandler::m_nextInputDeviceId = 1;
+
+const QPointingDevice *primaryMouse()
+{
+    static QPointer<const QPointingDevice> result;
+    if (!result)
+        result = QPointingDevice::primaryPointingDevice();
+    return result;
+}
+
+QWindowsPointerHandler::~QWindowsPointerHandler()
+{
+}
+
 bool QWindowsPointerHandler::translatePointerEvent(QWindow *window, HWND hwnd, QtWindows::WindowsEventType et, MSG msg, LRESULT *result)
 {
     *result = 0;
     const quint32 pointerId = GET_POINTERID_WPARAM(msg.wParam);
 
-    if (!QWindowsContext::user32dll.getPointerType(pointerId, &m_pointerType)) {
+    if (!GetPointerType(pointerId, &m_pointerType)) {
         qWarning() << "GetPointerType() failed:" << qt_error_string();
         return false;
     }
@@ -94,12 +69,12 @@ bool QWindowsPointerHandler::translatePointerEvent(QWindow *window, HWND hwnd, Q
     }
     case QT_PT_TOUCH: {
         quint32 pointerCount = 0;
-        if (!QWindowsContext::user32dll.getPointerFrameTouchInfo(pointerId, &pointerCount, nullptr)) {
+        if (!GetPointerFrameTouchInfo(pointerId, &pointerCount, nullptr)) {
             qWarning() << "GetPointerFrameTouchInfo() failed:" << qt_error_string();
             return false;
         }
         QVarLengthArray<POINTER_TOUCH_INFO, 10> touchInfo(pointerCount);
-        if (!QWindowsContext::user32dll.getPointerFrameTouchInfo(pointerId, &pointerCount, touchInfo.data())) {
+        if (!GetPointerFrameTouchInfo(pointerId, &pointerCount, touchInfo.data())) {
             qWarning() << "GetPointerFrameTouchInfo() failed:" << qt_error_string();
             return false;
         }
@@ -112,10 +87,10 @@ bool QWindowsPointerHandler::translatePointerEvent(QWindow *window, HWND hwnd, Q
         // dispatch any skipped frames if event compression is disabled by the app
         if (historyCount > 1 && !QCoreApplication::testAttribute(Qt::AA_CompressHighFrequencyEvents)) {
             touchInfo.resize(pointerCount * historyCount);
-            if (!QWindowsContext::user32dll.getPointerFrameTouchInfoHistory(pointerId,
-                                                                            &historyCount,
-                                                                            &pointerCount,
-                                                                            touchInfo.data())) {
+            if (!GetPointerFrameTouchInfoHistory(pointerId,
+                                                 &historyCount,
+                                                 &pointerCount,
+                                                 touchInfo.data())) {
                 qWarning() << "GetPointerFrameTouchInfoHistory() failed:" << qt_error_string();
                 return false;
             }
@@ -133,7 +108,7 @@ bool QWindowsPointerHandler::translatePointerEvent(QWindow *window, HWND hwnd, Q
     }
     case QT_PT_PEN: {
         POINTER_PEN_INFO penInfo;
-        if (!QWindowsContext::user32dll.getPointerPenInfo(pointerId, &penInfo)) {
+        if (!GetPointerPenInfo(pointerId, &penInfo)) {
             qWarning() << "GetPointerPenInfo() failed:" << qt_error_string();
             return false;
         }
@@ -145,9 +120,7 @@ bool QWindowsPointerHandler::translatePointerEvent(QWindow *window, HWND hwnd, Q
                 || !QCoreApplication::testAttribute(Qt::AA_CompressTabletEvents))) {
             QVarLengthArray<POINTER_PEN_INFO, 10> penInfoHistory(historyCount);
 
-            if (!QWindowsContext::user32dll.getPointerPenInfoHistory(pointerId,
-                                                                     &historyCount,
-                                                                     penInfoHistory.data())) {
+            if (!GetPointerPenInfoHistory(pointerId, &historyCount, penInfoHistory.data())) {
                 qWarning() << "GetPointerPenInfoHistory() failed:" << qt_error_string();
                 return false;
             }
@@ -249,7 +222,7 @@ static Qt::MouseButtons mouseButtonsFromKeyState(WPARAM keyState)
     return result;
 }
 
-static Qt::MouseButtons queryMouseButtons()
+Qt::MouseButtons QWindowsPointerHandler::queryMouseButtons()
 {
     Qt::MouseButtons result = Qt::NoButton;
     const bool mouseSwapped = GetSystemMetrics(SM_SWAPBUTTON);
@@ -310,32 +283,38 @@ static bool isValidWheelReceiver(QWindow *candidate)
     return false;
 }
 
-static QTouchDevice *createTouchDevice()
+QWindowsPointerHandler::QPointingDevicePtr QWindowsPointerHandler::createTouchDevice(bool mouseEmulation)
 {
-    const int digitizers = GetSystemMetrics(SM_DIGITIZER);
-    if (!(digitizers & (NID_INTEGRATED_TOUCH | NID_EXTERNAL_TOUCH)))
-        return nullptr;
-    const int tabletPc = GetSystemMetrics(SM_TABLETPC);
-    const int maxTouchPoints = GetSystemMetrics(SM_MAXIMUMTOUCHES);
-    qCDebug(lcQpaEvents) << "Digitizers:" << Qt::hex << Qt::showbase << (digitizers & ~NID_READY)
-        << "Ready:" << (digitizers & NID_READY) << Qt::dec << Qt::noshowbase
-        << "Tablet PC:" << tabletPc << "Max touch points:" << maxTouchPoints;
-    auto *result = new QTouchDevice;
-    result->setType(digitizers & NID_INTEGRATED_TOUCH
-                    ? QTouchDevice::TouchScreen : QTouchDevice::TouchPad);
-    QTouchDevice::Capabilities capabilities = QTouchDevice::Position | QTouchDevice::Area | QTouchDevice::NormalizedPosition;
-    if (result->type() == QTouchDevice::TouchPad)
-        capabilities |= QTouchDevice::MouseEmulation;
-    result->setCapabilities(capabilities);
-    result->setMaximumTouchPoints(maxTouchPoints);
-    return result;
-}
+     const int digitizers = GetSystemMetrics(SM_DIGITIZER);
+     if (!(digitizers & (NID_INTEGRATED_TOUCH | NID_EXTERNAL_TOUCH)))
+         return nullptr;
+     const int tabletPc = GetSystemMetrics(SM_TABLETPC);
+     const int maxTouchPoints = GetSystemMetrics(SM_MAXIMUMTOUCHES);
+     const QPointingDevice::DeviceType type = (digitizers & NID_INTEGRATED_TOUCH)
+         ? QInputDevice::DeviceType::TouchScreen : QInputDevice::DeviceType::TouchPad;
+     QInputDevice::Capabilities capabilities = QInputDevice::Capability::Position
+         | QInputDevice::Capability::Area
+         | QInputDevice::Capability::NormalizedPosition;
+     if (type != QInputDevice::DeviceType::TouchScreen) {
+         capabilities.setFlag(QInputDevice::Capability::MouseEmulation);
+         capabilities.setFlag(QInputDevice::Capability::Scroll);
+     } else if (mouseEmulation) {
+         capabilities.setFlag(QInputDevice::Capability::MouseEmulation);
+     }
 
-QTouchDevice *QWindowsPointerHandler::ensureTouchDevice()
-{
-    if (!m_touchDevice)
-        m_touchDevice = createTouchDevice();
-    return m_touchDevice;
+     const int flags = digitizers & ~NID_READY;
+     qCDebug(lcQpaEvents) << "Digitizers:" << Qt::hex << Qt::showbase << flags
+         << "Ready:" << (digitizers & NID_READY) << Qt::dec << Qt::noshowbase
+         << "Tablet PC:" << tabletPc << "Max touch points:" << maxTouchPoints << "Capabilities:" << capabilities;
+
+     const int buttonCount = type == QInputDevice::DeviceType::TouchScreen ? 1 : 3;
+     // TODO: use system-provided name and device ID rather than empty-string and m_nextInputDeviceId
+     const qint64 systemId = m_nextInputDeviceId++ | (qint64(flags << 2));
+     auto d = new QPointingDevice(QString(), systemId, type,
+                                  QPointingDevice::PointerType::Finger,
+                                  capabilities, maxTouchPoints, buttonCount,
+                                  QString(), QPointingDeviceUniqueId::fromNumericId(systemId));
+     return QPointingDevicePtr(d);
 }
 
 void QWindowsPointerHandler::clearEvents()
@@ -447,6 +426,8 @@ bool QWindowsPointerHandler::translateTouchEvent(QWindow *window, HWND hwnd,
 {
     Q_UNUSED(hwnd);
 
+    auto *touchInfo = static_cast<POINTER_TOUCH_INFO *>(vTouchInfo);
+
     if (et & QtWindows::NonClientEventFlag)
         return false; // Let DefWindowProc() handle Non Client messages.
 
@@ -454,10 +435,22 @@ bool QWindowsPointerHandler::translateTouchEvent(QWindow *window, HWND hwnd,
         return false;
 
     if (msg.message == WM_POINTERCAPTURECHANGED) {
-        QWindowSystemInterface::handleTouchCancelEvent(window, m_touchDevice,
-                                                       QWindowsKeyMapper::queryKeyboardModifiers());
-        m_lastTouchPositions.clear();
+        const auto *keyMapper = QWindowsContext::instance()->keyMapper();
+        QWindowSystemInterface::handleTouchCancelEvent(window, msg.time, m_touchDevice.data(),
+                                                       keyMapper->queryKeyboardModifiers());
+        m_lastTouchPoints.clear();
         return true;
+    }
+
+    if (msg.message == WM_POINTERLEAVE) {
+        for (quint32 i = 0; i < count; ++i) {
+            const quint32 pointerId = touchInfo[i].pointerInfo.pointerId;
+            int id = m_touchInputIDToTouchPointID.value(pointerId, -1);
+            if (id != -1)
+                m_lastTouchPoints.remove(id);
+        }
+        // Send LeaveEvent to reset hover when the last finger leaves the touch screen (QTBUG-62912)
+        QWindowSystemInterface::handleEnterLeaveEvent(nullptr, window);
     }
 
     // Only handle down/up/update, ignore others like WM_POINTERENTER, WM_POINTERLEAVE, etc.
@@ -470,8 +463,6 @@ bool QWindowsPointerHandler::translateTouchEvent(QWindow *window, HWND hwnd,
     if (!screen)
         return false;
 
-    auto *touchInfo = static_cast<POINTER_TOUCH_INFO *>(vTouchInfo);
-
     const QRect screenGeometry = screen->geometry();
 
     QList<QWindowSystemInterface::TouchPoint> touchPoints;
@@ -482,7 +473,8 @@ bool QWindowsPointerHandler::translateTouchEvent(QWindow *window, HWND hwnd,
                 << " message=" << Qt::hex << msg.message
                 << " count=" << Qt::dec << count;
 
-    Qt::TouchPointStates allStates;
+    QEventPoint::States allStates;
+    QSet<int> inputIds;
 
     for (quint32 i = 0; i < count; ++i) {
         if (QWindowsContext::verbose > 1)
@@ -495,14 +487,17 @@ bool QWindowsPointerHandler::translateTouchEvent(QWindow *window, HWND hwnd,
         const quint32 pointerId = touchInfo[i].pointerInfo.pointerId;
         int id = m_touchInputIDToTouchPointID.value(pointerId, -1);
         if (id == -1) {
+            // Start tracking after fingers touch the screen. Ignore bogus updates after touch is released.
+            if ((touchInfo[i].pointerInfo.pointerFlags & POINTER_FLAG_DOWN) == 0)
+                continue;
             id = m_touchInputIDToTouchPointID.size();
             m_touchInputIDToTouchPointID.insert(pointerId, id);
         }
         touchPoint.id = id;
         touchPoint.pressure = (touchInfo[i].touchMask & TOUCH_MASK_PRESSURE) ?
                     touchInfo[i].pressure / 1024.0 : 1.0;
-        if (m_lastTouchPositions.contains(touchPoint.id))
-            touchPoint.normalPosition = m_lastTouchPositions.value(touchPoint.id);
+        if (m_lastTouchPoints.contains(touchPoint.id))
+            touchPoint.normalPosition = m_lastTouchPoints.value(touchPoint.id).normalPosition;
 
         const QPointF screenPos = QPointF(touchInfo[i].pointerInfo.ptPixelLocation.x,
                                           touchInfo[i].pointerInfo.ptPixelLocation.y);
@@ -517,31 +512,57 @@ bool QWindowsPointerHandler::translateTouchEvent(QWindow *window, HWND hwnd,
         touchPoint.normalPosition = normalPosition;
 
         if (touchInfo[i].pointerInfo.pointerFlags & POINTER_FLAG_DOWN) {
-            touchPoint.state = Qt::TouchPointPressed;
-            m_lastTouchPositions.insert(touchPoint.id, touchPoint.normalPosition);
+            touchPoint.state = QEventPoint::State::Pressed;
+            m_lastTouchPoints.insert(touchPoint.id, touchPoint);
         } else if (touchInfo[i].pointerInfo.pointerFlags & POINTER_FLAG_UP) {
-            touchPoint.state = Qt::TouchPointReleased;
-            m_lastTouchPositions.remove(touchPoint.id);
+            touchPoint.state = QEventPoint::State::Released;
+            m_lastTouchPoints.remove(touchPoint.id);
         } else {
-            touchPoint.state = stationaryTouchPoint ? Qt::TouchPointStationary : Qt::TouchPointMoved;
-            m_lastTouchPositions.insert(touchPoint.id, touchPoint.normalPosition);
+            touchPoint.state = stationaryTouchPoint ? QEventPoint::State::Stationary : QEventPoint::State::Updated;
+            m_lastTouchPoints.insert(touchPoint.id, touchPoint);
         }
         allStates |= touchPoint.state;
 
         touchPoints.append(touchPoint);
+        inputIds.insert(touchPoint.id);
 
         // Avoid getting repeated messages for this frame if there are multiple pointerIds
-        QWindowsContext::user32dll.skipPointerFrameMessages(touchInfo[i].pointerInfo.pointerId);
+        SkipPointerFrameMessages(touchInfo[i].pointerInfo.pointerId);
     }
 
+    // Some devices send touches for each finger in a different message/frame, instead of consolidating
+    // them in the same frame as we were expecting. We account for missing unreleased touches here.
+    for (auto tp : std::as_const(m_lastTouchPoints)) {
+        if (!inputIds.contains(tp.id)) {
+            tp.state = QEventPoint::State::Stationary;
+            allStates |= tp.state;
+            touchPoints.append(tp);
+        }
+    }
+
+    if (touchPoints.count() == 0)
+        return false;
+
     // all touch points released, forget the ids we've seen.
-    if (allStates == Qt::TouchPointReleased)
+    if (allStates == QEventPoint::State::Released)
         m_touchInputIDToTouchPointID.clear();
 
-    QWindowSystemInterface::handleTouchEvent(window, m_touchDevice, touchPoints,
-                                             QWindowsKeyMapper::queryKeyboardModifiers());
+    const auto *keyMapper = QWindowsContext::instance()->keyMapper();
+    QWindowSystemInterface::handleTouchEvent(window, msg.time, m_touchDevice.data(), touchPoints,
+                                             keyMapper->queryKeyboardModifiers());
     return false; // Allow mouse messages to be generated.
 }
+
+#if QT_CONFIG(tabletevent)
+QWindowsPointerHandler::QPointingDevicePtr QWindowsPointerHandler::findTabletDevice(QPointingDevice::PointerType pointerType) const
+{
+    for (const auto &d : m_tabletDevices) {
+        if (d->pointerType() == pointerType)
+            return d;
+    }
+    return {};
+}
+#endif
 
 bool QWindowsPointerHandler::translatePenEvent(QWindow *window, HWND hwnd, QtWindows::WindowsEventType et,
                                                MSG msg, PVOID vPenInfo)
@@ -553,32 +574,35 @@ bool QWindowsPointerHandler::translatePenEvent(QWindow *window, HWND hwnd, QtWin
     auto *penInfo = static_cast<POINTER_PEN_INFO *>(vPenInfo);
 
     RECT pRect, dRect;
-    if (!QWindowsContext::user32dll.getPointerDeviceRects(penInfo->pointerInfo.sourceDevice, &pRect, &dRect))
+    if (!GetPointerDeviceRects(penInfo->pointerInfo.sourceDevice, &pRect, &dRect))
         return false;
 
-    const auto sourceDevice = (qint64)penInfo->pointerInfo.sourceDevice;
+    const auto systemId = (qint64)penInfo->pointerInfo.sourceDevice;
     const QPoint globalPos = QPoint(penInfo->pointerInfo.ptPixelLocation.x, penInfo->pointerInfo.ptPixelLocation.y);
     const QPoint localPos = QWindowsGeometryHint::mapFromGlobal(hwnd, globalPos);
     const QPointF hiResGlobalPos = QPointF(dRect.left + qreal(penInfo->pointerInfo.ptHimetricLocation.x - pRect.left)
                                            / (pRect.right - pRect.left) * (dRect.right - dRect.left),
                                            dRect.top + qreal(penInfo->pointerInfo.ptHimetricLocation.y - pRect.top)
                                            / (pRect.bottom - pRect.top) * (dRect.bottom - dRect.top));
-    const qreal pressure = (penInfo->penMask & PEN_MASK_PRESSURE) ? qreal(penInfo->pressure) / 1024.0 : 0.5;
-    const qreal rotation = (penInfo->penMask & PEN_MASK_ROTATION) ? qreal(penInfo->rotation) : 0.0;
+    const bool hasPressure = (penInfo->penMask & PEN_MASK_PRESSURE) != 0;
+    const bool hasRotation =  (penInfo->penMask & PEN_MASK_ROTATION) != 0;
+    const qreal pressure = hasPressure ? qreal(penInfo->pressure) / 1024.0 : 0.5;
+    const qreal rotation = hasRotation ? qreal(penInfo->rotation) : 0.0;
     const qreal tangentialPressure = 0.0;
-    const int xTilt = (penInfo->penMask & PEN_MASK_TILT_X) ? penInfo->tiltX : 0;
-    const int yTilt = (penInfo->penMask & PEN_MASK_TILT_Y) ? penInfo->tiltY : 0;
+    const bool hasTiltX = (penInfo->penMask & PEN_MASK_TILT_X) != 0;
+    const bool hasTiltY = (penInfo->penMask & PEN_MASK_TILT_Y) != 0;
+    const int xTilt = hasTiltX ? penInfo->tiltX : 0;
+    const int yTilt = hasTiltY ? penInfo->tiltY : 0;
     const int z = 0;
 
     if (QWindowsContext::verbose > 1)
         qCDebug(lcQpaEvents).noquote().nospace() << Qt::showbase
-            << __FUNCTION__ << " sourceDevice=" << sourceDevice
+            << __FUNCTION__ << " systemId=" << systemId
             << " globalPos=" << globalPos << " localPos=" << localPos << " hiResGlobalPos=" << hiResGlobalPos
             << " message=" << Qt::hex << msg.message
             << " flags=" << Qt::hex << penInfo->pointerInfo.pointerFlags;
 
-    const QTabletEvent::TabletDevice device = QTabletEvent::Stylus;
-    QTabletEvent::PointerType type;
+    QPointingDevice::PointerType type;
     // Since it may be the middle button, so if the checks fail then it should
     // be set to Middle if it was used.
     Qt::MouseButtons mouseButtons = queryMouseButtons();
@@ -588,16 +612,41 @@ bool QWindowsPointerHandler::translatePenEvent(QWindow *window, HWND hwnd, QtWin
         mouseButtons = Qt::LeftButton;
 
     if (penInfo->penFlags & (PEN_FLAG_ERASER | PEN_FLAG_INVERTED)) {
-        type = QTabletEvent::Eraser;
+        type = QPointingDevice::PointerType::Eraser;
     } else {
-        type = QTabletEvent::Pen;
+        type = QPointingDevice::PointerType::Pen;
         if (pointerInContact && penInfo->penFlags & PEN_FLAG_BARREL)
             mouseButtons = Qt::RightButton; // Either left or right, not both
     }
 
+    auto device = findTabletDevice(type);
+    if (device.isNull()) {
+        QInputDevice::Capabilities caps(QInputDevice::Capability::Position
+                                        | QInputDevice::Capability::MouseEmulation
+                                        | QInputDevice::Capability::Hover);
+        if (hasPressure)
+             caps |= QInputDevice::Capability::Pressure;
+        if (hasRotation)
+            caps |= QInputDevice::Capability::Rotation;
+        if (hasTiltX)
+            caps |= QInputDevice::Capability::XTilt;
+        if (hasTiltY)
+            caps |= QInputDevice::Capability::YTilt;
+        const qint64 uniqueId = systemId | (qint64(type) << 32L);
+        device.reset(new QPointingDevice(QStringLiteral("wmpointer"),
+                                         systemId, QInputDevice::DeviceType::Stylus,
+                                         type, caps, 1, 3, QString(),
+                                         QPointingDeviceUniqueId::fromNumericId(uniqueId)));
+        QWindowSystemInterface::registerInputDevice(device.data());
+        m_tabletDevices.append(device);
+    }
+
+    const auto uniqueId = device->uniqueId().numericId();
+    m_activeTabletDevice = device;
+
     switch (msg.message) {
     case WM_POINTERENTER: {
-        QWindowSystemInterface::handleTabletEnterProximityEvent(device, type, sourceDevice);
+        QWindowSystemInterface::handleTabletEnterLeaveProximityEvent(window, msg.time, device.data(), true);
         m_windowUnderPointer = window;
         // The local coordinates may fall outside the window.
         // Wait until the next update to send the enter event.
@@ -610,12 +659,12 @@ bool QWindowsPointerHandler::translatePenEvent(QWindow *window, HWND hwnd, QtWin
             m_windowUnderPointer = nullptr;
             m_currentWindow = nullptr;
         }
-        QWindowSystemInterface::handleTabletLeaveProximityEvent(device, type, sourceDevice);
+        QWindowSystemInterface::handleTabletEnterLeaveProximityEvent(window, msg.time, device.data(), false);
         break;
     case WM_POINTERDOWN:
     case WM_POINTERUP:
     case WM_POINTERUPDATE: {
-        QWindow *target = QGuiApplicationPrivate::tabletDevicePoint(sourceDevice).target; // Pass to window that grabbed it.
+        QWindow *target = QGuiApplicationPrivate::tabletDevicePoint(uniqueId).target; // Pass to window that grabbed it.
         if (!target && m_windowUnderPointer)
             target = m_windowUnderPointer;
         if (!target)
@@ -633,11 +682,13 @@ bool QWindowsPointerHandler::translatePenEvent(QWindow *window, HWND hwnd, QtWin
                     wumPlatformWindow->applyCursor();
             }
         }
-        const Qt::KeyboardModifiers keyModifiers = QWindowsKeyMapper::queryKeyboardModifiers();
+        const auto *keyMapper = QWindowsContext::instance()->keyMapper();
+        const Qt::KeyboardModifiers keyModifiers = keyMapper->queryKeyboardModifiers();
 
-        QWindowSystemInterface::handleTabletEvent(target, localPos, hiResGlobalPos, device, type, mouseButtons,
-                                                  pressure, xTilt, yTilt, tangentialPressure, rotation, z,
-                                                  sourceDevice, keyModifiers);
+        QWindowSystemInterface::handleTabletEvent(target, msg.time, device.data(),
+                                                  localPos, hiResGlobalPos, mouseButtons,
+                                                  pressure, xTilt, yTilt, tangentialPressure,
+                                                  rotation, z, keyModifiers);
         return false;  // Allow mouse messages to be generated.
     }
     }
@@ -685,7 +736,7 @@ bool QWindowsPointerHandler::translateMouseWheelEvent(QWindow *window,
 
     QPoint localPos = QWindowsGeometryHint::mapFromGlobal(receiver, globalPos);
 
-    QWindowSystemInterface::handleWheelEvent(receiver, localPos, globalPos, QPoint(), angleDelta, keyModifiers);
+    QWindowSystemInterface::handleWheelEvent(receiver, msg.time, localPos, globalPos, QPoint(), angleDelta, keyModifiers);
     return true;
 }
 
@@ -698,25 +749,31 @@ bool QWindowsPointerHandler::translateMouseEvent(QWindow *window,
 {
     *result = 0;
 
-    QPoint eventPos(GET_X_LPARAM(msg.lParam), GET_Y_LPARAM(msg.lParam));
-    if ((et & QtWindows::NonClientEventFlag) == 0 && QWindowsBaseWindow::isRtlLayout(hwnd))  {
-        RECT clientArea;
-        GetClientRect(hwnd, &clientArea);
-        eventPos.setX(clientArea.right - eventPos.x());
-    }
-
     QPoint localPos;
     QPoint globalPos;
+    QPoint eventPos(GET_X_LPARAM(msg.lParam), GET_Y_LPARAM(msg.lParam));
 
     if ((et == QtWindows::MouseWheelEvent) || (et & QtWindows::NonClientEventFlag)) {
         globalPos = eventPos;
         localPos = QWindowsGeometryHint::mapFromGlobal(hwnd, eventPos);
     } else {
-        localPos = eventPos;
+        if (QWindowsBaseWindow::isRtlLayout(hwnd))  {
+            RECT clientArea;
+            GetClientRect(hwnd, &clientArea);
+            eventPos.setX(clientArea.right - eventPos.x());
+        }
+
         globalPos = QWindowsGeometryHint::mapToGlobal(hwnd, eventPos);
+        auto targetHwnd = hwnd;
+        if (auto *pw = window->handle())
+            targetHwnd = HWND(pw->winId());
+        localPos = targetHwnd == hwnd
+            ? eventPos
+            : QWindowsGeometryHint::mapFromGlobal(targetHwnd, globalPos);
     }
 
-    const Qt::KeyboardModifiers keyModifiers = QWindowsKeyMapper::queryKeyboardModifiers();
+    const auto *keyMapper = QWindowsContext::instance()->keyMapper();
+    const Qt::KeyboardModifiers keyModifiers = keyMapper->queryKeyboardModifiers();
     QWindow *currentWindowUnderPointer = getWindowUnderPointer(window, globalPos);
 
     if (et == QtWindows::MouseWheelEvent)
@@ -728,21 +785,35 @@ bool QWindowsPointerHandler::translateMouseEvent(QWindow *window,
     // X11 and macOS.
     bool discardEvent = false;
     if (msg.message == WM_MOUSEMOVE) {
-        static QPoint lastMouseMovePos;
+        Q_CONSTINIT static QPoint lastMouseMovePos;
         if (msg.wParam == 0 && (m_windowUnderPointer.isNull() || globalPos == lastMouseMovePos))
             discardEvent = true;
         lastMouseMovePos = globalPos;
     }
 
     Qt::MouseEventSource source = Qt::MouseEventNotSynthesized;
+    const QPointingDevice *device = primaryMouse();
+
     // Following the logic of the old mouse handler, only events synthesized
     // for touch screen are marked as such. On some systems, using the bit 7 of
     // the extra msg info for checking if synthesized for touch does not work,
     // so we use the pointer type of the last pointer message.
-    if (isMouseEventSynthesizedFromPenOrTouch() && m_pointerType == QT_PT_TOUCH) {
-        if (QWindowsIntegration::instance()->options() & QWindowsIntegration::DontPassOsMouseEventsSynthesizedFromTouch)
+    if (isMouseEventSynthesizedFromPenOrTouch()) {
+        switch (m_pointerType) {
+        case QT_PT_TOUCH:
+            if (QWindowsIntegration::instance()->options() & QWindowsIntegration::DontPassOsMouseEventsSynthesizedFromTouch)
+                return false;
+            source = Qt::MouseEventSynthesizedBySystem;
+            if (!m_touchDevice.isNull())
+                device = m_touchDevice.data();
+            break;
+        case QT_PT_PEN:
+#if QT_CONFIG(tabletevent)
+            qCDebug(lcQpaTablet) << "ignoring synth-mouse event for tablet event from" << device;
             return false;
-        source = Qt::MouseEventSynthesizedBySystem;
+#endif
+            break;
+        }
     }
 
     const MouseEvent mouseEvent = eventFromMsg(msg);
@@ -762,19 +833,16 @@ bool QWindowsPointerHandler::translateMouseEvent(QWindow *window,
     if (m_lastEventType == QEvent::NonClientAreaMouseButtonPress
             && (mouseEvent.type == QEvent::NonClientAreaMouseMove || mouseEvent.type == QEvent::MouseMove)
             && (m_lastEventButton & mouseButtons) == 0) {
-            if (mouseEvent.type == QEvent::NonClientAreaMouseMove) {
-                QWindowSystemInterface::handleFrameStrutMouseEvent(window, localPos, globalPos, mouseButtons, m_lastEventButton,
-                                                                   QEvent::NonClientAreaMouseButtonRelease, keyModifiers, source);
-            } else {
-                QWindowSystemInterface::handleMouseEvent(window, localPos, globalPos, mouseButtons, m_lastEventButton,
-                                                         QEvent::MouseButtonRelease, keyModifiers, source);
-            }
+            auto releaseType = mouseEvent.type == QEvent::NonClientAreaMouseMove ?
+                QEvent::NonClientAreaMouseButtonRelease : QEvent::MouseButtonRelease;
+            QWindowSystemInterface::handleMouseEvent(window, msg.time, device, localPos, globalPos, mouseButtons, m_lastEventButton,
+                                                     releaseType, keyModifiers, source);
     }
     m_lastEventType = mouseEvent.type;
     m_lastEventButton = mouseEvent.button;
 
     if (mouseEvent.type >= QEvent::NonClientAreaMouseMove && mouseEvent.type <= QEvent::NonClientAreaMouseButtonDblClick) {
-        QWindowSystemInterface::handleFrameStrutMouseEvent(window, localPos, globalPos, mouseButtons,
+        QWindowSystemInterface::handleMouseEvent(window, msg.time, device, localPos, globalPos, mouseButtons,
                                                            mouseEvent.button, mouseEvent.type, keyModifiers, source);
         return false; // Allow further event processing
     }
@@ -794,7 +862,7 @@ bool QWindowsPointerHandler::translateMouseEvent(QWindow *window,
     handleEnterLeave(window, currentWindowUnderPointer, globalPos);
 
     if (!discardEvent && mouseEvent.type != QEvent::None) {
-        QWindowSystemInterface::handleMouseEvent(window, localPos, globalPos, mouseButtons,
+        QWindowSystemInterface::handleMouseEvent(window, msg.time, device, localPos, globalPos, mouseButtons,
                                                  mouseEvent.button, mouseEvent.type, keyModifiers, source);
     }
 

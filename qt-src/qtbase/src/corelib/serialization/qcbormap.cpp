@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcbormap.h"
 #include "qcborvalue_p.h"
@@ -48,17 +12,22 @@ using namespace QtCbor;
     \class QCborMap
     \inmodule QtCore
     \ingroup cbor
+    \ingroup qtserialization
     \reentrant
     \since 5.12
 
     \brief The QCborMap class is used to hold an associative container representable in CBOR.
+
+    \compares strong
+    \compareswith strong QCborValue QCborValueConstRef
+    \endcompareswith
 
     This class can be used to hold an associative container in CBOR, a map
     between a key and a value type. CBOR is the Concise Binary Object
     Representation, a very compact form of binary data encoding that is a
     superset of JSON. It was created by the IETF Constrained RESTful
     Environments (CoRE) WG, which has used it in many new RFCs. It is meant to
-    be used alongside the \l{https://tools.ietf.org/html/rfc7252}{CoAP
+    be used alongside the \l{RFC 7252}{CoAP
     protocol}.
 
     Unlike JSON and \l QVariantMap, CBOR map keys can be of any type, not just
@@ -82,7 +51,9 @@ using namespace QtCbor;
     stringified using a one-way method that the conversion back to QCborMap
     will not undo.
 
-    \sa QCborArray, QCborValue, QJsonDocument, QVariantMap
+    \sa QCborArray, QCborValue, QJsonDocument, QVariantMap,
+        {Parsing and displaying CBOR data}, {Serialization Converter},
+        {Saving and Loading a Game}
  */
 
 /*!
@@ -247,8 +218,7 @@ QCborMap &QCborMap::operator=(const QCborMap &other) noexcept
 
 /*!
     \fn void QCborMap::swap(QCborMap &other)
-
-    Swaps the contents of this map and \a other.
+    \memberswap{map}
  */
 
 /*!
@@ -298,9 +268,9 @@ void QCborMap::clear()
 
     \sa QMap::keys(), QHash::keys()
  */
-QVector<QCborValue> QCborMap::keys() const
+QList<QCborValue> QCborMap::keys() const
 {
-    QVector<QCborValue> result;
+    QList<QCborValue> result;
     if (d) {
         result.reserve(size());
         for (qsizetype i = 0; i < d->elements.size(); i += 2)
@@ -328,7 +298,7 @@ QVector<QCborValue> QCborMap::keys() const
     duplicate keys is usually an indication of a problem in the sender.
 
     \sa operator[](qint64), find(qint64), constFind(qint64), remove(qint64), contains(qint64)
-        value(QLatin1String), value(const QString &), value(const QCborValue &)
+        value(QLatin1StringView), value(const QString &), value(const QCborValue &)
  */
 
 /*!
@@ -350,7 +320,8 @@ QVector<QCborValue> QCborMap::keys() const
     is usually an indication of a problem in the sender.
 
     \sa value(qint64), find(qint64), constFind(qint64), remove(qint64), contains(qint64)
-        operator[](QLatin1String), operator[](const QString &), operator[](const QCborOperator[] &)
+        operator[](QLatin1StringView), operator[](const QString &),
+        operator[](const QCborOperator[] &)
  */
 
 /*!
@@ -366,7 +337,7 @@ QVector<QCborValue> QCborMap::keys() const
     is usually an indication of a problem in the sender.
 
     \sa value(qint64), operator[](qint64), find(qint64), contains(qint64),
-      take(QLatin1String), take(const QString &), take(const QCborValue &), insert()
+        take(QLatin1StringView), take(const QString &), take(const QCborValue &), insert()
  */
 
 /*!
@@ -382,7 +353,7 @@ QVector<QCborValue> QCborMap::keys() const
     is usually an indication of a problem in the sender.
 
     \sa value(qint64), operator[](qint64), find(qint64), contains(qint64)
-        remove(QLatin1String), remove(const QString &), remove(const QCborValue &)
+        remove(QLatin1StringView), remove(const QString &), remove(const QCborValue &)
  */
 
 /*!
@@ -393,7 +364,7 @@ QVector<QCborValue> QCborMap::keys() const
     are simpler to encode and decode.
 
     \sa value(qint64), operator[](qint64), find(qint64), remove(qint64),
-        contains(QLatin1String), remove(const QString &), remove(const QCborValue &)
+        contains(QLatin1StringView), remove(const QString &), remove(const QCborValue &)
  */
 
 /*!
@@ -418,22 +389,15 @@ QVector<QCborValue> QCborMap::keys() const
     is usually an indication of a problem in the sender.
 
     \sa value(qint64), find(qint64), contains(qint64), remove(qint64),
-        operator[](QLatin1String), operator[](const QString &), operator[](const QCborValue &)
+        operator[](QLatin1StringView), operator[](const QString &), operator[](const QCborValue &)
  */
 QCborValueRef QCborMap::operator[](qint64 key)
 {
-    auto it = find(key);
-    if (it == constEnd()) {
-        // insert element
-        detach(it.item.i + 2);
-        d->append(key);
-        d->append(Undefined{});
-    }
-    return { d.data(), it.item.i };
+    return QCborContainerPrivate::findOrAddMapKey(*this, key);
 }
 
 /*!
-    \fn QCborValue QCborMap::value(QLatin1String key) const
+    \fn QCborValue QCborMap::value(QLatin1StringView key) const
     \overload
 
     Returns the QCborValue element in this map that corresponds to key \a key,
@@ -450,13 +414,13 @@ QCborValueRef QCborMap::operator[](qint64 key)
     stream with them. They are usually not permitted and having duplicate keys
     is usually an indication of a problem in the sender.
 
-    \sa operator[](QLatin1String), find(QLatin1String), constFind(QLatin1String),
-        remove(QLatin1String), contains(QLatin1String)
+    \sa operator[](QLatin1StringView), find(QLatin1StringView), constFind(QLatin1StringView),
+        remove(QLatin1StringView), contains(QLatin1StringView)
         value(qint64), value(const QString &), value(const QCborValue &)
  */
 
 /*!
-    \fn QCborValue QCborMap::operator[](QLatin1String key) const
+    \fn QCborValue QCborMap::operator[](QLatin1StringView key) const
     \overload
 
     Returns the QCborValue element in this map that corresponds to key \a key,
@@ -473,13 +437,13 @@ QCborValueRef QCborMap::operator[](qint64 key)
     stream with them. They are usually not permitted and having duplicate keys
     is usually an indication of a problem in the sender.
 
-    \sa value(QLatin1String), find(QLatin1String), constFind(QLatin1String),
-        remove(QLatin1String), contains(QLatin1String)
+    \sa value(QLatin1StringView), find(QLatin1StringView), constFind(QLatin1StringView),
+        remove(QLatin1StringView), contains(QLatin1StringView)
         operator[](qint64), operator[](const QString &), operator[](const QCborOperator[] &)
  */
 
 /*!
-    \fn QCborValue QCborMap::take(QLatin1String key)
+    \fn QCborValue QCborMap::take(QLatin1StringView key)
 
     Removes the key \a key and the corresponding value from the map and returns
     the value, if it is found. If the map contains no such key, this function does nothing.
@@ -490,12 +454,13 @@ QCborValueRef QCborMap::operator[](qint64 key)
     stream with them. They are usually not permitted and having duplicate keys
     is usually an indication of a problem in the sender.
 
-    \sa value(QLatin1String), operator[](QLatin1String), find(QLatin1String), contains(QLatin1String),
-      take(qint64), take(const QString &), take(const QCborValue &), insert()
+    \sa value(QLatin1StringView), operator[](QLatin1StringView), find(QLatin1StringView),
+        contains(QLatin1StringView), take(qint64), take(const QString &),
+        take(const QCborValue &), insert()
  */
 
 /*!
-    \fn void QCborMap::remove(QLatin1String key)
+    \fn void QCborMap::remove(QLatin1StringView key)
     \overload
 
     Removes the key \a key and the corresponding value from the map, if it is
@@ -507,19 +472,21 @@ QCborValueRef QCborMap::operator[](qint64 key)
     stream with them. They are usually not permitted and having duplicate keys
     is usually an indication of a problem in the sender.
 
-    \sa value(QLatin1String), operator[](QLatin1String), find(QLatin1String), contains(QLatin1String)
-        remove(qint64), remove(const QString &), remove(const QCborValue &)
+    \sa value(QLatin1StringView), operator[](QLatin1StringView), find(QLatin1StringView),
+        contains(QLatin1StringView), remove(qint64), remove(const QString &),
+        remove(const QCborValue &)
  */
 
 /*!
-    \fn bool QCborMap::contains(QLatin1String key) const
+    \fn bool QCborMap::contains(QLatin1StringView key) const
     \overload
 
     Returns true if this map contains a key-value pair identified by key \a
     key.
 
-    \sa value(QLatin1String), operator[](QLatin1String), find(QLatin1String), remove(QLatin1String),
-        contains(qint64), remove(const QString &), remove(const QCborValue &)
+    \sa value(QLatin1StringView), operator[](QLatin1StringView), find(QLatin1StringView),
+        remove(QLatin1StringView), contains(qint64), remove(const QString &),
+        remove(const QCborValue &)
  */
 
 /*!
@@ -544,19 +511,13 @@ QCborValueRef QCborMap::operator[](qint64 key)
     stream with them. They are usually not permitted and having duplicate keys
     is usually an indication of a problem in the sender.
 
-    \sa value(QLatin1String), find(QLatin1String), contains(QLatin1String), remove(QLatin1String),
-        operator[](qint64), operator[](const QString &), operator[](const QCborValue &)
+    \sa value(QLatin1StringView), find(QLatin1StringView), contains(QLatin1StringView),
+        remove(QLatin1StringView), operator[](qint64), operator[](const QString &),
+        operator[](const QCborValue &)
  */
-QCborValueRef QCborMap::operator[](QLatin1String key)
+QCborValueRef QCborMap::operator[](QLatin1StringView key)
 {
-    auto it = find(key);
-    if (it == constEnd()) {
-        // insert element
-        detach(it.item.i + 2);
-        d->append(key);
-        d->append(Undefined{});
-    }
-    return { d.data(), it.item.i };
+    return QCborContainerPrivate::findOrAddMapKey(*this, key);
 }
 
 /*!
@@ -579,7 +540,7 @@ QCborValueRef QCborMap::operator[](QLatin1String key)
 
     \sa operator[](const QString &), find(const QString &), constFind(const QString &),
         remove(const QString &), contains(const QString &)
-        value(qint64), value(QLatin1String), value(const QCborValue &)
+        value(qint64), value(QLatin1StringView), value(const QCborValue &)
  */
 
 /*!
@@ -602,7 +563,7 @@ QCborValueRef QCborMap::operator[](QLatin1String key)
 
     \sa value(const QString &), find(const QString &), constFind(const QString &),
         remove(const QString &), contains(const QString &)
-        operator[](qint64), operator[](QLatin1String), operator[](const QCborOperator[] &)
+        operator[](qint64), operator[](QLatin1StringView), operator[](const QCborOperator[] &)
  */
 
 /*!
@@ -617,8 +578,9 @@ QCborValueRef QCborMap::operator[](QLatin1String key)
     stream with them. They are usually not permitted and having duplicate keys
     is usually an indication of a problem in the sender.
 
-    \sa value(const QString &), operator[](const QString &), find(const QString &), contains(const QString &),
-      take(QLatin1String), take(qint64), take(const QCborValue &), insert()
+    \sa value(const QString &), operator[](const QString &), find(const QString &),
+        contains(const QString &), take(QLatin1StringView), take(qint64),
+        take(const QCborValue &), insert()
  */
 
 /*!
@@ -636,7 +598,7 @@ QCborValueRef QCborMap::operator[](QLatin1String key)
 
     \sa value(const QString &), operator[](const QString &), find(const QString &),
         contains(const QString &)
-        remove(qint64), remove(QLatin1String), remove(const QCborValue &)
+        remove(qint64), remove(QLatin1StringView), remove(const QCborValue &)
  */
 
 /*!
@@ -648,7 +610,7 @@ QCborValueRef QCborMap::operator[](QLatin1String key)
 
     \sa value(const QString &), operator[](const QString &), find(const QString &),
         remove(const QString &),
-        contains(qint64), remove(QLatin1String), remove(const QCborValue &)
+        contains(qint64), remove(QLatin1StringView), remove(const QCborValue &)
  */
 
 /*!
@@ -673,19 +635,13 @@ QCborValueRef QCborMap::operator[](QLatin1String key)
     stream with them. They are usually not permitted and having duplicate keys
     is usually an indication of a problem in the sender.
 
-    \sa value(const QString &), find(const QString &), contains(const QString &), remove(const QString &),
-        operator[](qint64), operator[](QLatin1String), operator[](const QCborValue &)
+    \sa value(const QString &), find(const QString &), contains(const QString &),
+        remove(const QString &), operator[](qint64), operator[](QLatin1StringView),
+        operator[](const QCborValue &)
  */
 QCborValueRef QCborMap::operator[](const QString & key)
 {
-    auto it = find(key);
-    if (it == constEnd()) {
-        // insert element
-        detach(it.item.i + 2);
-        d->append(key);
-        d->append(Undefined{});
-    }
-    return { d.data(), it.item.i };
+    return QCborContainerPrivate::findOrAddMapKey(*this, qToStringViewIgnoringNull(key));
 }
 
 /*!
@@ -707,7 +663,7 @@ QCborValueRef QCborMap::operator[](const QString & key)
 
     \sa operator[](const QCborValue &), find(const QCborValue &), constFind(const QCborValue &),
         remove(const QCborValue &), contains(const QCborValue &)
-        value(qint64), value(QLatin1String), value(const QString &)
+        value(qint64), value(QLatin1StringView), value(const QString &)
  */
 
 /*!
@@ -729,7 +685,7 @@ QCborValueRef QCborMap::operator[](const QString & key)
 
     \sa value(const QCborValue &), find(const QCborValue &), constFind(const QCborValue &),
         remove(const QCborValue &), contains(const QCborValue &)
-        operator[](qint64), operator[](QLatin1String), operator[](const QCborOperator[] &)
+        operator[](qint64), operator[](QLatin1StringView), operator[](const QCborOperator[] &)
  */
 
 /*!
@@ -744,8 +700,9 @@ QCborValueRef QCborMap::operator[](const QString & key)
     stream with them. They are usually not permitted and having duplicate keys
     is usually an indication of a problem in the sender.
 
-    \sa value(const QCborValue &), operator[](const QCborValue &), find(const QCborValue &), contains(const QCborValue &),
-      take(QLatin1String), take(const QString &), take(qint64), insert()
+    \sa value(const QCborValue &), operator[](const QCborValue &), find(const QCborValue &),
+        contains(const QCborValue &), take(QLatin1StringView), take(const QString &),
+        take(qint64), insert()
  */
 
 /*!
@@ -762,7 +719,7 @@ QCborValueRef QCborMap::operator[](const QString & key)
 
     \sa value(const QCborValue &), operator[](const QCborValue &), find(const QCborValue &),
         contains(const QCborValue &)
-        remove(qint64), remove(QLatin1String), remove(const QString &)
+        remove(qint64), remove(QLatin1StringView), remove(const QString &)
  */
 
 /*!
@@ -773,7 +730,7 @@ QCborValueRef QCborMap::operator[](const QString & key)
 
     \sa value(const QCborValue &), operator[](const QCborValue &), find(const QCborValue &),
         remove(const QCborValue &),
-        contains(qint64), remove(QLatin1String), remove(const QString &)
+        contains(qint64), remove(QLatin1StringView), remove(const QString &)
  */
 
 /*!
@@ -798,19 +755,21 @@ QCborValueRef QCborMap::operator[](const QString & key)
     stream with them. They are usually not permitted and having duplicate keys
     is usually an indication of a problem in the sender.
 
-    \sa value(const QCborValue &), find(const QCborValue &), contains(const QCborValue &), remove(const QCborValue &),
-        operator[](qint64), operator[](QLatin1String), operator[](const QString &)
+    \sa value(const QCborValue &), find(const QCborValue &), contains(const QCborValue &),
+        remove(const QCborValue &), operator[](qint64), operator[](QLatin1StringView),
+        operator[](const QString &)
  */
 QCborValueRef QCborMap::operator[](const QCborValue &key)
 {
-    auto it = find(key);
-    if (it == constEnd()) {
-        // insert element
-        detach(it.item.i + 2);
-        d->append(key);
-        d->append(Undefined{});
-    }
-    return { d.data(), it.item.i };
+    return QCborContainerPrivate::findOrAddMapKey<const QCborValue &>(*this, key);
+}
+
+template <typename KeyType> inline QCborValueRef
+QCborContainerPrivate::findOrAddMapKey(QCborMap &map, KeyType key)
+{
+    QCborValueRef result = findOrAddMapKey<KeyType>(map.d.data(), key);
+    map.d = result.d;
+    return result;
 }
 
 /*!
@@ -829,8 +788,8 @@ QCborValueRef QCborMap::operator[](const QCborValue &key)
     stream with them. They are usually not permitted and having duplicate keys
     is usually an indication of a problem in the sender.
 
-    \sa value(qint64), operator[](qint64), constFind(qint64), remove(qint64), contains(qint64)
-        value(QLatin1String), value(const QString &), value(const QCborValue &)
+    \sa value(qint64), operator[](qint64), constFind(qint64), remove(qint64), contains(qint64),
+        value(QLatin1StringView), value(const QString &), value(const QCborValue &)
  */
 QCborMap::iterator QCborMap::find(qint64 key)
 {
@@ -840,8 +799,8 @@ QCborMap::iterator QCborMap::find(qint64 key)
 }
 
 /*!
-    \fn QCborMap::iterator QCborMap::find(QLatin1String key)
-    \fn QCborMap::const_iterator QCborMap::find(QLatin1String key) const
+    \fn QCborMap::iterator QCborMap::find(QLatin1StringView key)
+    \fn QCborMap::const_iterator QCborMap::find(QLatin1StringView key) const
     \overload
 
     Returns a map iterator to the key-value pair whose key is \a key, if the
@@ -853,11 +812,11 @@ QCborMap::iterator QCborMap::find(qint64 key)
     stream with them. They are usually not permitted and having duplicate keys
     is usually an indication of a problem in the sender.
 
-    \sa value(QLatin1String), operator[](QLatin1String), constFind(QLatin1String),
-        remove(QLatin1String), contains(QLatin1String)
+    \sa value(QLatin1StringView), operator[](QLatin1StringView), constFind(QLatin1StringView),
+        remove(QLatin1StringView), contains(QLatin1StringView),
         value(qint64), value(const QString &), value(const QCborValue &)
  */
-QCborMap::iterator QCborMap::find(QLatin1String key)
+QCborMap::iterator QCborMap::find(QLatin1StringView key)
 {
     detach();
     auto it = constFind(key);
@@ -879,8 +838,8 @@ QCborMap::iterator QCborMap::find(QLatin1String key)
     is usually an indication of a problem in the sender.
 
     \sa value(const QString &), operator[](const QString &), constFind(const QString &),
-        remove(const QString &), contains(const QString &)
-        value(qint64), value(QLatin1String), value(const QCborValue &)
+        remove(const QString &), contains(const QString &),
+        value(qint64), value(QLatin1StringView), value(const QCborValue &)
  */
 QCborMap::iterator QCborMap::find(const QString & key)
 {
@@ -904,8 +863,8 @@ QCborMap::iterator QCborMap::find(const QString & key)
     is usually an indication of a problem in the sender.
 
     \sa value(const QCborValue &), operator[](const QCborValue &), constFind(const QCborValue &),
-        remove(const QCborValue &), contains(const QCborValue &)
-        value(qint64), value(QLatin1String), value(const QString &)
+        remove(const QCborValue &), contains(const QCborValue &),
+        value(qint64), value(QLatin1StringView), value(const QString &)
  */
 QCborMap::iterator QCborMap::find(const QCborValue &key)
 {
@@ -927,17 +886,12 @@ QCborMap::iterator QCborMap::find(const QCborValue &key)
     stream with them. They are usually not permitted and having duplicate keys
     is usually an indication of a problem in the sender.
 
-    \sa value(qint64), operator[](qint64), find(qint64), remove(qint64), contains(qint64)
-        value(QLatin1String), value(const QString &), value(const QCborValue &)
+    \sa value(qint64), operator[](qint64), find(qint64), remove(qint64), contains(qint64),
+        value(QLatin1StringView), value(const QString &), value(const QCborValue &)
  */
 QCborMap::const_iterator QCborMap::constFind(qint64 key) const
 {
-    for (qsizetype i = 0; i < 2 * size(); i += 2) {
-        const auto &e = d->elements.at(i);
-        if (e.type == QCborValue::Integer && e.value == key)
-            return { d.data(), i + 1 };
-    }
-    return constEnd();
+    return d ? d->findCborMapKey(key) : constEnd();
 }
 
 /*!
@@ -952,17 +906,13 @@ QCborMap::const_iterator QCborMap::constFind(qint64 key) const
     stream with them. They are usually not permitted and having duplicate keys
     is usually an indication of a problem in the sender.
 
-    \sa value(QLatin1String), operator[](QLatin1String), find(QLatin1String),
-        remove(QLatin1String), contains(QLatin1String)
+    \sa value(QLatin1StringView), operator[](QLatin1StringView), find(QLatin1StringView),
+        remove(QLatin1StringView), contains(QLatin1StringView),
         value(qint64), value(const QString &), value(const QCborValue &)
  */
-QCborMap::const_iterator QCborMap::constFind(QLatin1String key) const
+QCborMap::const_iterator QCborMap::constFind(QLatin1StringView key) const
 {
-    for (qsizetype i = 0; i < 2 * size(); i += 2) {
-        if (d->stringEqualsElement(i, key))
-            return { d.data(), i + 1 };
-    }
-    return constEnd();
+    return d ? d->findCborMapKey(key) : constEnd();
 }
 
 /*!
@@ -978,16 +928,12 @@ QCborMap::const_iterator QCborMap::constFind(QLatin1String key) const
     is usually an indication of a problem in the sender.
 
     \sa value(const QString &), operator[](const QString &), find(const QString &),
-        remove(const QString &), contains(const QString &)
-        value(qint64), value(QLatin1String), value(const QCborValue &)
+        remove(const QString &), contains(const QString &),
+        value(qint64), value(QLatin1StringView), value(const QCborValue &)
  */
-QCborMap::const_iterator QCborMap::constFind(const QString & key) const
+QCborMap::const_iterator QCborMap::constFind(const QString &key) const
 {
-    for (qsizetype i = 0; i < 2 * size(); i += 2) {
-        if (d->stringEqualsElement(i, key))
-            return { d.data(), i + 1 };
-    }
-    return constEnd();
+    return d ? d->findCborMapKey(qToStringViewIgnoringNull(key)) : constEnd();
 }
 
 /*!
@@ -1004,16 +950,11 @@ QCborMap::const_iterator QCborMap::constFind(const QString & key) const
 
     \sa value(const QCborValue &), operator[](const QCborValue &), find(const QCborValue &),
         remove(const QCborValue &), contains(const QCborValue &),
-        value(qint64), value(QLatin1String), value(const QString &)
+        value(qint64), value(QLatin1StringView), value(const QString &)
  */
 QCborMap::const_iterator QCborMap::constFind(const QCborValue &key) const
 {
-    for (qsizetype i = 0; i < 2 * size(); i += 2) {
-        int cmp = d->compareElement(i, key);
-        if (cmp == 0)
-            return { d.data(), i + 1 };
-    }
-    return constEnd();
+    return d ? d->findCborMapKey<const QCborValue &>(key) : constEnd();
 }
 
 /*!
@@ -1031,7 +972,7 @@ QCborMap::const_iterator QCborMap::constFind(const QCborValue &key) const
  */
 
 /*!
-    \fn QCborMap::iterator QCborMap::insert(QLatin1String key, const QCborValue &value)
+    \fn QCborMap::iterator QCborMap::insert(QLatin1StringView key, const QCborValue &value)
     \overload
 
     Inserts the key \a key and value \a value into this map and returns a map
@@ -1040,8 +981,8 @@ QCborMap::const_iterator QCborMap::constFind(const QCborValue &key) const
     If the map already had a key equal to \a key, its value will be overwritten
     by \a value.
 
-    \sa erase(), remove(QLatin1String), value(QLatin1String), operator[](QLatin1String),
-        find(QLatin1String), contains(QLatin1String), take(QLatin1String), extract()
+    \sa erase(), remove(QLatin1StringView), value(QLatin1StringView), operator[](QLatin1StringView),
+        find(QLatin1StringView), contains(QLatin1StringView), take(QLatin1StringView), extract()
  */
 
 /*!
@@ -1167,10 +1108,10 @@ QCborValue QCborMap::extract(iterator it)
  */
 
 /*!
-    \fn bool QCborMap::operator==(const QCborMap &other) const
+    \fn bool QCborMap::operator==(const QCborMap &lhs, const QCborMap &rhs)
 
-    Compares this map and \a other, comparing each element in sequence, and
-    returns true if the two maps contains the same elements in the same order,
+    Compares \a lhs and \a rhs maps, comparing each element in sequence, and
+    returns true if the two maps contain the same elements in the same order,
     false otherwise.
 
     Note that CBOR maps are unordered, which means that two maps containing the
@@ -1186,10 +1127,10 @@ QCborValue QCborMap::extract(iterator it)
  */
 
 /*!
-    \fn bool QCborMap::operator!=(const QCborMap &other) const
+    \fn bool QCborMap::operator!=(const QCborMap &lhs, const QCborMap &rhs)
 
-    Compares this map and \a other, comparing each element in sequence, and
-    returns true if the two maps contains any different elements or elements in
+    Compares \a lhs and \a rhs maps, comparing each element in sequence, and
+    returns true if the two maps contain any different elements or elements in
     different orders, false otherwise.
 
     Note that CBOR maps are unordered, which means that two maps containing the
@@ -1205,10 +1146,10 @@ QCborValue QCborMap::extract(iterator it)
  */
 
 /*!
-    \fn bool QCborMap::operator<(const QCborMap &other) const
+    \fn bool QCborMap::operator<(const QCborMap &lhs, const QCborMap &rhs)
 
-    Compares this map and \a other, comparing each element in sequence, and
-    returns true if this map should be sorted before \a other, false
+    Compares \a lhs and \a rhs maps, comparing each element in sequence, and
+    returns true if \a lhs map should be sorted before \a rhs, false
     otherwise.
 
     Note that CBOR maps are unordered, which means that two maps containing the
@@ -1223,6 +1164,65 @@ QCborValue QCborMap::extract(iterator it)
         operator==(), operator!=()
  */
 
+/*!
+    \fn bool QCborMap::operator<=(const QCborMap &lhs, const QCborMap &rhs)
+
+    Compares \a lhs and \a rhs maps, comparing each element in sequence, and
+    returns true if \a lhs map should be sorted before \a rhs or
+    if the two maps contain the same elements in the same order, false
+    otherwise.
+
+    Note that CBOR maps are unordered, which means that two maps containing the
+    very same pairs but in different order will still compare differently. To
+    avoid this, it is recommended to insert elements into the map in a
+    predictable order, such as by ascending key value. In fact, maps with keys
+    in sorted order are required for Canonical CBOR representation.
+
+    For more information on CBOR sorting order, see QCborValue::compare().
+
+    \sa compare(), QCborValue::operator==(), QCborMap::operator==(),
+        operator==(), operator!=()
+*/
+
+/*!
+    \fn bool QCborMap::operator>=(const QCborMap &lhs, const QCborMap &rhs)
+
+    Compares \a lhs and \a rhs maps, comparing each element in sequence, and
+    returns true if \a lhs map should be sorted after \a rhs or
+    if the two maps contain the same elements in the same order, false
+    otherwise.
+
+    Note that CBOR maps are unordered, which means that two maps containing the
+    very same pairs but in different order will still compare differently. To
+    avoid this, it is recommended to insert elements into the map in a
+    predictable order, such as by ascending key value. In fact, maps with keys
+    in sorted order are required for Canonical CBOR representation.
+
+    For more information on CBOR sorting order, see QCborValue::compare().
+
+    \sa compare(), QCborValue::operator==(), QCborMap::operator==(),
+        operator==(), operator!=()
+*/
+
+/*!
+    \fn bool QCborMap::operator>(const QCborMap &lhs, const QCborMap &rhs)
+
+    Compares \a lhs and \a rhs maps, comparing each element in sequence, and
+    returns true if \a lhs map should be sorted after \a rhs, false
+    otherwise.
+
+    Note that CBOR maps are unordered, which means that two maps containing the
+    very same pairs but in different order will still compare differently. To
+    avoid this, it is recommended to insert elements into the map in a
+    predictable order, such as by ascending key value. In fact, maps with keys
+    in sorted order are required for Canonical CBOR representation.
+
+    For more information on CBOR sorting order, see QCborValue::compare().
+
+    \sa compare(), QCborValue::operator==(), QCborMap::operator==(),
+        operator==(), operator!=()
+*/
+
 void QCborMap::detach(qsizetype reserved)
 {
     d = QCborContainerPrivate::detach(d.data(), reserved ? reserved : size() * 2);
@@ -1236,6 +1236,10 @@ void QCborMap::detach(qsizetype reserved)
     \since 5.12
 
     \brief The QCborMap::Iterator class provides an STL-style non-const iterator for QCborMap.
+
+    \compares strong
+    \compareswith strong ConstIterator
+    \endcompareswith
 
     QCborMap::Iterator allows you to iterate over a QCborMap and to modify the
     value (but not the key) stored under a particular key. If you want to
@@ -1358,63 +1362,63 @@ void QCborMap::detach(qsizetype reserved)
 */
 
 /*!
-    \fn bool QCborMap::Iterator::operator==(const Iterator &other) const
-    \fn bool QCborMap::Iterator::operator==(const ConstIterator &other) const
+    \fn bool QCborMap::Iterator::operator==(const Iterator &lhs, const Iterator &rhs)
+    \fn bool QCborMap::Iterator::operator==(const Iterator &lhs, const ConstIterator &rhs)
 
-    Returns \c true if \a other points to the same entry in the map as this
+    Returns \c true if \a lhs points to the same entry in the map as \a rhs
     iterator; otherwise returns \c false.
 
     \sa operator!=()
 */
 
 /*!
-    \fn bool QCborMap::Iterator::operator!=(const Iterator &other) const
-    \fn bool QCborMap::Iterator::operator!=(const ConstIterator &other) const
+    \fn bool QCborMap::Iterator::operator!=(const Iterator &lhs, const Iterator &rhs)
+    \fn bool QCborMap::Iterator::operator!=(const Iterator &lhs, const ConstIterator &rhs)
 
-    Returns \c true if \a other points to a different entry in the map than
-    this iterator; otherwise returns \c false.
+    Returns \c true if \a lhs points to a different entry in the map than
+    \a rhs iterator; otherwise returns \c false.
 
     \sa operator==()
 */
 
 /*!
-    \fn bool QCborMap::Iterator::operator<(const Iterator& other) const
-    \fn bool QCborMap::Iterator::operator<(const ConstIterator& other) const
+    \fn bool QCborMap::Iterator::operator<(const Iterator &lhs, const Iterator &rhs)
+    \fn bool QCborMap::Iterator::operator<(const Iterator &lhs, const ConstIterator &rhs)
 
-    Returns \c true if the entry in the map pointed to by this iterator
-    occurs before the entry pointed to by the \a other iterator.
+    Returns \c true if the entry in the map pointed to by \a lhs iterator
+    occurs before the entry pointed to by the \a rhs iterator.
 */
 
 /*!
-    \fn bool QCborMap::Iterator::operator<=(const Iterator& other) const
-    \fn bool QCborMap::Iterator::operator<=(const ConstIterator& other) const
+    \fn bool QCborMap::Iterator::operator<=(const Iterator &lhs, const Iterator &rhs)
+    \fn bool QCborMap::Iterator::operator<=(const Iterator &lhs, const ConstIterator &rhs)
 
-    Returns \c true if the entry in the map pointed to by this iterator
-    occurs before or is the same entry as is pointed to by the \a other
+    Returns \c true if the entry in the map pointed to by \a lhs iterator
+    occurs before or is the same entry as is pointed to by the \a rhs
     iterator.
 */
 
 /*!
-    \fn bool QCborMap::Iterator::operator>(const Iterator& other) const
-    \fn bool QCborMap::Iterator::operator>(const ConstIterator& other) const
+    \fn bool QCborMap::Iterator::operator>(const Iterator &lhs, const Iterator &rhs)
+    \fn bool QCborMap::Iterator::operator>(const Iterator &lhs, const ConstIterator &rhs)
 
-    Returns \c true if the entry in the map pointed to by this iterator
-    occurs after the entry pointed to by the \a other iterator.
+    Returns \c true if the entry in the map pointed to by \a lhs iterator
+    occurs after the entry pointed to by the \a rhs iterator.
  */
 
 /*!
-    \fn bool QCborMap::Iterator::operator>=(const Iterator& other) const
-    \fn bool QCborMap::Iterator::operator>=(const ConstIterator& other) const
+    \fn bool QCborMap::Iterator::operator>=(const Iterator &lhs, const Iterator &rhs)
+    \fn bool QCborMap::Iterator::operator>=(const Iterator &lhs, const ConstIterator &rhs)
 
-    Returns \c true if the entry in the map pointed to by this iterator
-    occurs after or is the same entry as is pointed to by the \a other
+    Returns \c true if the entry in the map pointed to by \a lhs iterator
+    occurs after or is the same entry as is pointed to by the \a rhs
     iterator.
 */
 
 /*!
     \fn QCborMap::Iterator &QCborMap::Iterator::operator++()
 
-    The prefix ++ operator, \c{++i}, advances the iterator to the next item in
+    The prefix \c{++} operator, \c{++i}, advances the iterator to the next item in
     the map and returns this iterator.
 
     Calling this function on QCborMap::end() leads to undefined results.
@@ -1426,14 +1430,14 @@ void QCborMap::detach(qsizetype reserved)
     \fn QCborMap::Iterator QCborMap::Iterator::operator++(int)
     \overload
 
-    The postfix ++ operator, \c{i++}, advances the iterator to the next item in
+    The postfix \c{++} operator, \c{i++}, advances the iterator to the next item in
     the map and returns an iterator to the previously current item.
 */
 
 /*!
     \fn QCborMap::Iterator QCborMap::Iterator::operator--()
 
-    The prefix -- operator, \c{--i}, makes the preceding item current and
+    The prefix \c{--} operator, \c{--i}, makes the preceding item current and
     returns this iterator.
 
     Calling this function on QCborMap::begin() leads to undefined results.
@@ -1445,7 +1449,7 @@ void QCborMap::detach(qsizetype reserved)
     \fn QCborMap::Iterator QCborMap::Iterator::operator--(int)
     \overload
 
-    The postfix -- operator, \c{i--}, makes the preceding item current and
+    The postfix \c{--} operator, \c{i--}, makes the preceding item current and
     returns an iterator pointing to the previously current item.
 */
 
@@ -1502,6 +1506,10 @@ void QCborMap::detach(qsizetype reserved)
     \since 5.12
 
     \brief The QCborMap::ConstIterator class provides an STL-style const iterator for QCborMap.
+
+    \compares strong
+    \compareswith strong Iterator
+    \endcompareswith
 
     QCborMap::ConstIterator allows you to iterate over a QCborMap. If you want
     to modify the QCborMap as you iterate over it, you must use
@@ -1591,7 +1599,7 @@ void QCborMap::detach(qsizetype reserved)
 /*!
     \fn QCborMap::ConstIterator::value_type QCborMap::ConstIterator::operator*() const
 
-    Returns a pair containing the curent item's key and value.
+    Returns a pair containing the current item's key and value.
 
     \sa key(), value()
  */
@@ -1603,63 +1611,57 @@ void QCborMap::detach(qsizetype reserved)
  */
 
 /*!
-    \fn bool QCborMap::ConstIterator::operator==(const ConstIterator &other) const
-    \fn bool QCborMap::ConstIterator::operator==(const Iterator &other) const
+    \fn bool QCborMap::ConstIterator::operator==(const ConstIterator &lhs, const ConstIterator &rhs)
 
-    Returns \c true if \a other points to the same entry in the map as this
+    Returns \c true if \a lhs points to the same entry in the map as \a rhs
     iterator; otherwise returns \c false.
 
     \sa operator!=()
 */
 
 /*!
-    \fn bool QCborMap::ConstIterator::operator!=(const ConstIterator &other) const
-    \fn bool QCborMap::ConstIterator::operator!=(const Iterator &other) const
+    \fn bool QCborMap::ConstIterator::operator!=(const ConstIterator &lhs, const ConstIterator &rhs)
 
-    Returns \c true if \a other points to a different entry in the map than
-    this iterator; otherwise returns \c false.
+    Returns \c true if \a lhs points to a different entry in the map than
+    \a rhs iterator; otherwise returns \c false.
 
     \sa operator==()
  */
 
 /*!
-    \fn bool QCborMap::ConstIterator::operator<(const Iterator &other) const
-    \fn bool QCborMap::ConstIterator::operator<(const ConstIterator &other) const
+    \fn bool QCborMap::ConstIterator::operator<(const ConstIterator &lhs, const ConstIterator &rhs)
 
-    Returns \c true if the entry in the map pointed to by this iterator
-    occurs before the entry pointed to by the \a other iterator.
+    Returns \c true if the entry in the map pointed to by \a lhs iterator
+    occurs before the entry pointed to by the \a rhs iterator.
 */
 
 /*!
-    \fn bool QCborMap::ConstIterator::operator<=(const Iterator &other) const
-    \fn bool QCborMap::ConstIterator::operator<=(const ConstIterator &other) const
+    \fn bool QCborMap::ConstIterator::operator<=(const ConstIterator &lhs, const ConstIterator &rhs)
 
-    Returns \c true if the entry in the map pointed to by this iterator
-    occurs before or is the same entry as is pointed to by the \a other
+    Returns \c true if the entry in the map pointed to by \a lhs iterator
+    occurs before or is the same entry as is pointed to by the \a rhs
     iterator.
 */
 
 /*!
-    \fn bool QCborMap::ConstIterator::operator>(const Iterator &other) const
-    \fn bool QCborMap::ConstIterator::operator>(const ConstIterator &other) const
+    \fn bool QCborMap::ConstIterator::operator>(const ConstIterator &lhs, const ConstIterator &rhs)
 
-    Returns \c true if the entry in the map pointed to by this iterator
-    occurs after the entry pointed to by the \a other iterator.
+    Returns \c true if the entry in the map pointed to by \a lhs iterator
+    occurs after the entry pointed to by the \a rhs iterator.
 */
 
 /*!
-    \fn bool QCborMap::ConstIterator::operator>=(const Iterator &other) const
-    \fn bool QCborMap::ConstIterator::operator>=(const ConstIterator &other) const
+    \fn bool QCborMap::ConstIterator::operator>=(const ConstIterator &lhs, const ConstIterator &rhs)
 
-    Returns \c true if the entry in the map pointed to by this iterator
-    occurs after or is the same entry as is pointed to by the \a other
+    Returns \c true if the entry in the map pointed to by \a lhs iterator
+    occurs after or is the same entry as is pointed to by the \a rhs
     iterator.
 */
 
 /*!
     \fn QCborMap::ConstIterator &QCborMap::ConstIterator::operator++()
 
-    The prefix ++ operator, \c{++i}, advances the iterator to the next item in
+    The prefix \c{++} operator, \c{++i}, advances the iterator to the next item in
     the map and returns this iterator.
 
     Calling this function on QCborMap::end() leads to undefined results.
@@ -1671,14 +1673,14 @@ void QCborMap::detach(qsizetype reserved)
     \fn QCborMap::ConstIterator QCborMap::ConstIterator::operator++(int)
     \overload
 
-    The postfix ++ operator, \c{i++}, advances the iterator to the next item in
+    The postfix \c{++} operator, \c{i++}, advances the iterator to the next item in
     the map and returns an iterator to the previously current item.
  */
 
 /*!
     \fn QCborMap::ConstIterator &QCborMap::ConstIterator::operator--()
 
-    The prefix -- operator, \c{--i}, makes the preceding item current and
+    The prefix \c{--} operator, \c{--i}, makes the preceding item current and
     returns this iterator.
 
     Calling this function on QCborMap::begin() leads to undefined results.
@@ -1690,7 +1692,7 @@ void QCborMap::detach(qsizetype reserved)
     \fn QCborMap::ConstIterator QCborMap::ConstIterator::operator--(int)
     \overload
 
-    The postfix -- operator, \c{i--}, makes the preceding item current and
+    The postfix \c{--} operator, \c{i--}, makes the preceding item current and
     returns an iterator pointing to the previously current item.
  */
 
@@ -1740,7 +1742,7 @@ void QCborMap::detach(qsizetype reserved)
     \sa operator+=(), operator-()
 */
 
-uint qHash(const QCborMap &map, uint seed)
+size_t qHash(const QCborMap &map, size_t seed)
 {
     return qHashRange(map.begin(), map.end(), seed);
 }
@@ -1760,11 +1762,13 @@ QDebug operator<<(QDebug dbg, const QCborMap &m)
 #endif
 
 #ifndef QT_NO_DATASTREAM
+#if QT_CONFIG(cborstreamwriter)
 QDataStream &operator<<(QDataStream &stream, const QCborMap &value)
 {
     stream << value.toCborValue().toCbor();
     return stream;
 }
+#endif
 
 QDataStream &operator>>(QDataStream &stream, QCborMap &value)
 {

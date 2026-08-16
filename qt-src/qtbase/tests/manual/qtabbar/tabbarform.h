@@ -1,3 +1,5 @@
+// Copyright (C) 2024 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 #ifndef TABBARFORM_H
 #define TABBARFORM_H
 
@@ -13,7 +15,7 @@ class TabBarForm : public QWidget
     Q_OBJECT
 
 public:
-    explicit TabBarForm(QWidget *parent = 0);
+    explicit TabBarForm(QWidget *parent = nullptr);
     ~TabBarForm();
 
     Ui::TabBarForm *ui;

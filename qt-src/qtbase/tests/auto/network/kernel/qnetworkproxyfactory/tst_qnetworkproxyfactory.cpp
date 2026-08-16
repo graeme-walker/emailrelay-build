@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QTest>
 #include <QtTest/QTestEventLoop>
@@ -53,7 +27,7 @@ public:
     class QDebugProxyFactory : public QNetworkProxyFactory
     {
     public:
-        virtual QList<QNetworkProxy> queryProxy(const QNetworkProxyQuery &query = QNetworkProxyQuery())
+        QList<QNetworkProxy> queryProxy(const QNetworkProxyQuery &query = QNetworkProxyQuery()) override
         {
             returnedList = QNetworkProxyFactory::systemProxyForQuery(query);
             requestCounter++;
@@ -119,7 +93,8 @@ void tst_QNetworkProxyFactory::systemProxyForQuery_data()
     QTest::newRow("autobind-server") << (int)QNetworkProxyQuery::TcpServer << QUrl() << QString() << QString() << 0 << (int)QNetworkProxy::ListeningCapability;
     QTest::newRow("web-server") << (int)QNetworkProxyQuery::TcpServer << QUrl() << QString() << QString() << 80 << (int)QNetworkProxy::ListeningCapability;
     //windows: these should be bypassed  if "bypass proxy server for local addresses" is ticked
-    foreach (QHostAddress address, QNetworkInterface::allAddresses()) {
+    const auto addresses = QNetworkInterface::allAddresses();
+    for (const QHostAddress &address : addresses) {
         QTest::newRow(qPrintable(address.toString())) << (int)QNetworkProxyQuery::TcpSocket << QUrl() << QString() << address.toString() << 0 << 0;
     }
 
@@ -172,16 +147,15 @@ void tst_QNetworkProxyFactory::systemProxyForQuery() const
 
     QElapsedTimer sw;
     sw.start();
-    QList<QNetworkProxy> systemProxyList = QNetworkProxyFactory::systemProxyForQuery(query);
+    const QList<QNetworkProxy> systemProxyList = QNetworkProxyFactory::systemProxyForQuery(query);
     qDebug() << sw.elapsed() << "ms";
     QVERIFY(!systemProxyList.isEmpty());
 
     // for manual comparison with system
     qDebug() << systemProxyList;
 
-    foreach (const QNetworkProxy &proxy, systemProxyList) {
+    for (const QNetworkProxy &proxy : systemProxyList)
         QVERIFY((requiredCapabilities == 0) || (proxy.capabilities() & requiredCapabilities));
-    }
 }
 
 void tst_QNetworkProxyFactory::systemProxyForQuery_local()
@@ -256,8 +230,6 @@ void tst_QNetworkProxyFactory::genericSystemProxy()
     QFETCH(QString, hostName);
     QFETCH(int, port);
 
-// We can only use the generic system proxy where available:
-#if !defined(Q_OS_WIN) && !defined(Q_OS_MACOS) && !QT_CONFIG(libproxy)
     qputenv(envVar, url);
     const QList<QNetworkProxy> systemProxy = QNetworkProxyFactory::systemProxyForQuery();
     QCOMPARE(systemProxy.size(), 1);
@@ -265,18 +237,14 @@ void tst_QNetworkProxyFactory::genericSystemProxy()
     QCOMPARE(systemProxy.first().hostName(), hostName);
     QCOMPARE(systemProxy.first().port(), static_cast<quint16>(port));
     qunsetenv(envVar);
-#else
-    Q_UNUSED(envVar)
-    Q_UNUSED(url)
-    Q_UNUSED(proxyType)
-    Q_UNUSED(hostName)
-    Q_UNUSED(port)
-    QSKIP("Generic system proxy not available on this platform.");
-#endif
 }
 
 void tst_QNetworkProxyFactory::genericSystemProxy_data()
 {
+    // We can only use the generic system proxy where available:
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS) || defined(Q_OS_ANDROID) || QT_CONFIG(libproxy)
+    QSKIP("Generic system proxy not available on this platform.");
+#else
     QTest::addColumn<QByteArray>("envVar");
     QTest::addColumn<QByteArray>("url");
     QTest::addColumn<QNetworkProxy::ProxyType>("proxyType");
@@ -289,12 +257,13 @@ void tst_QNetworkProxyFactory::genericSystemProxy_data()
                             << QNetworkProxy::Socks5Proxy << QString("127.0.0.1") << 4242;
     QTest::newRow("http") << QByteArray("http_proxy") << QByteArray("http://example.com:666")
                           << QNetworkProxy::HttpProxy << QString("example.com") << 666;
+#endif
 }
 
 class QSPFQThread : public QThread
 {
 protected:
-    virtual void run()
+    void run() override
     {
         proxies = QNetworkProxyFactory::systemProxyForQuery(query);
     }

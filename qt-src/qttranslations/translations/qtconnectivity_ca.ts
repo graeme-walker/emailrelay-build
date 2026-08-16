@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="ca">
+<TS version="2.1" language="ca_ES">
 <context>
     <name>QBluetoothDeviceDiscoveryAgent</name>
     <message>
@@ -24,12 +24,16 @@
         <translation>Error desconegut</translation>
     </message>
     <message>
+        <source>Missing permission</source>
+        <translation>Manca un permís</translation>
+    </message>
+    <message>
         <source>Cannot start device inquiry</source>
         <translation>No s&apos;ha pogut iniciar la consulta del dispositiu</translation>
     </message>
     <message>
         <source>Cannot start low energy device inquiry</source>
-        <translation>No s&apos;ha pogut iniciar la consulta del dispositiu per a un consum baix</translation>
+        <translation>No s&apos;ha pogut iniciar la consulta del dispositiu de baixa potència</translation>
     </message>
     <message>
         <source>Discovery cannot be stopped</source>
@@ -53,11 +57,15 @@
     </message>
     <message>
         <source>Missing Location permission. Search is not possible.</source>
-        <translation>Manca el permís d&apos;ubicació. No es pot cercar.</translation>
+        <translation type="vanished">Manca el permís d&apos;ubicació. No es pot cercar.</translation>
     </message>
     <message>
         <source>Location service turned off. Search is not possible.</source>
         <translation>El servei d&apos;ubicació està apagat. No es pot cercar.</translation>
+    </message>
+    <message>
+        <source>Failed to start device discovery due to missing permissions.</source>
+        <translation>Ha fallat en iniciar el descobriment de dispositius a causa de la manca de permisos.</translation>
     </message>
     <message>
         <source>Classic Discovery cannot be started</source>
@@ -65,7 +73,7 @@
     </message>
     <message>
         <source>Low Energy Discovery not supported</source>
-        <translation>No s&apos;admet el descobriment de baixa potència</translation>
+        <translation type="vanished">No s&apos;admet el descobriment de baixa potència</translation>
     </message>
     <message>
         <source>Discovery cannot be started</source>
@@ -82,6 +90,10 @@
     <message>
         <source>Cannot access adapter during service discovery</source>
         <translation>No s&apos;ha pogut accedir a l&apos;adaptador durant el descobriment dels serveis</translation>
+    </message>
+    <message>
+        <source>Bluetooth adapter powered off.</source>
+        <translation>L&apos;adaptador de Bluetooth està apagat.</translation>
     </message>
 </context>
 <context>
@@ -104,7 +116,11 @@
     </message>
     <message>
         <source>Android API below v15 does not support SDP discovery</source>
-        <translation>La API d&apos;Android per sota de la v15 no admet el descobriment SDP</translation>
+        <translation type="vanished">L&apos;API d&apos;Android per sota de la v15 no admet el descobriment SDP</translation>
+    </message>
+    <message>
+        <source>Failed to start service discovery due to missing permissions.</source>
+        <translation>Ha fallat en iniciar el descobriment de dispositius a causa de la manca de permisos.</translation>
     </message>
     <message>
         <source>Cannot create Android BluetoothDevice</source>
@@ -116,7 +132,7 @@
     </message>
     <message>
         <source>Serial Port Profile</source>
-        <translation>Perfil del port sèrie</translation>
+        <translation>Perfil del port en sèrie</translation>
     </message>
     <message>
         <source>Device is powered off</source>
@@ -124,7 +140,7 @@
     </message>
     <message>
         <source>Unable to find appointed local adapter</source>
-        <translation>No s&apos;ha pogut trobar l&apos;adaptador local apuntat</translation>
+        <translation type="vanished">No s&apos;ha pogut trobar l&apos;adaptador local apuntat</translation>
     </message>
     <message>
         <source>Cannot find local Bluetooth adapter</source>
@@ -140,7 +156,7 @@
     </message>
     <message>
         <source>Unable to access device</source>
-        <translation>No s&apos;ha pogut accedir al dispositiu</translation>
+        <translation type="vanished">No s&apos;ha pogut accedir al dispositiu</translation>
     </message>
     <message>
         <source>Custom Service</source>
@@ -160,11 +176,11 @@
     </message>
     <message>
         <source>LAN Access Profile</source>
-        <translation>Perfil d&apos;accès a la LAN</translation>
+        <translation>Perfil d&apos;accés a la LAN</translation>
     </message>
     <message>
         <source>Dial-Up Networking</source>
-        <translation>Accès telefònic a la xarxa</translation>
+        <translation>Accés telefònic a la xarxa</translation>
     </message>
     <message>
         <source>Synchronization</source>
@@ -192,11 +208,11 @@
     </message>
     <message>
         <source>Audio Sink</source>
-        <translation>Disipador de l&apos;àudio</translation>
+        <translation>Conducte de l&apos;àudio</translation>
     </message>
     <message>
         <source>Audio/Video Remote Control Target</source>
-        <translation>Objectiu del control remot per a l&apos;àudio/vídeo</translation>
+        <translation>Objectiu del control remot de l&apos;àudio/vídeo</translation>
     </message>
     <message>
         <source>Advanced Audio Distribution</source>
@@ -204,11 +220,11 @@
     </message>
     <message>
         <source>Audio/Video Remote Control</source>
-        <translation>Control remot per a l&apos;àudio/vídeo</translation>
+        <translation>Control remot de l&apos;àudio/vídeo</translation>
     </message>
     <message>
         <source>Audio/Video Remote Control Controller</source>
-        <translation>Controlador del control remot per a l&apos;àudio/vídeo</translation>
+        <translation>Controlador del control remot de l&apos;àudio/vídeo</translation>
     </message>
     <message>
         <source>Headset AG</source>
@@ -236,19 +252,19 @@
     </message>
     <message>
         <source>Basic Imaging Profile</source>
-        <translation>Perfil bàsic per a les imatges</translation>
+        <translation>Perfil bàsic d&apos;imatges</translation>
     </message>
     <message>
         <source>Basic Imaging Responder</source>
-        <translation>Contestador bàsic per a les imatges</translation>
+        <translation>Contestador bàsic d&apos;imatges</translation>
     </message>
     <message>
         <source>Basic Imaging Archive</source>
-        <translation>Arxiu bàsic per a les imatges</translation>
+        <translation>Arxiu bàsic d&apos;imatges</translation>
     </message>
     <message>
         <source>Basic Imaging Ref Objects</source>
-        <translation>Objectes de referència bàsica per a les imatges</translation>
+        <translation>Objectes de referència bàsica d&apos;imatges</translation>
     </message>
     <message>
         <source>Hands-Free</source>
@@ -260,11 +276,11 @@
     </message>
     <message>
         <source>Basic Printing RefObject Service</source>
-        <translation>Servei d&apos;objectes de referència per a la impressió bàsica</translation>
+        <translation>Servei d&apos;objectes de referència d&apos;impressió bàsica</translation>
     </message>
     <message>
         <source>Basic Printing Reflected UI</source>
-        <translation>La IU reflectida per a la impressió bàsica</translation>
+        <translation>La IU reflectida d&apos;impressió bàsica</translation>
     </message>
     <message>
         <source>Basic Printing</source>
@@ -280,31 +296,31 @@
     </message>
     <message>
         <source>Hardcopy Cable Replacement</source>
-        <translation>Substitucó del cable per una còpia</translation>
+        <translation>Substitució del cable per una còpia</translation>
     </message>
     <message>
         <source>Hardcopy Cable Replacement Print</source>
-        <translation>Impressió amb la substitucó del cable per una còpia</translation>
+        <translation>Impressió amb la substitució del cable per una còpia</translation>
     </message>
     <message>
         <source>Hardcopy Cable Replacement Scan</source>
-        <translation>Escaneig amb la substitucó del cable per una còpia</translation>
+        <translation>Escaneig amb la substitució del cable per una còpia</translation>
     </message>
     <message>
         <source>SIM Access Server</source>
-        <translation>Servidor d&apos;accès SIM</translation>
+        <translation>Servidor d&apos;accés SIM</translation>
     </message>
     <message>
         <source>Phonebook Access PCE</source>
-        <translation>Accès a la llibreta d&apos;adreces PCE</translation>
+        <translation>Accés a la llibreta d&apos;adreces PCE</translation>
     </message>
     <message>
         <source>Phonebook Access PSE</source>
-        <translation>Accès a la llibreta d&apos;adreces PSE</translation>
+        <translation>Accés a la llibreta d&apos;adreces PSE</translation>
     </message>
     <message>
         <source>Phonebook Access</source>
-        <translation>Accès a la llibreta d&apos;adreces</translation>
+        <translation>Accés a la llibreta d&apos;adreces</translation>
     </message>
     <message>
         <source>Headset HS</source>
@@ -312,15 +328,15 @@
     </message>
     <message>
         <source>Message Access Server</source>
-        <translation>Servidor per a l&apos;accès als missatges</translation>
+        <translation>Servidor d&apos;accés als missatges</translation>
     </message>
     <message>
         <source>Message Notification Server</source>
-        <translation>Servidor per a la notoficació dels missatges</translation>
+        <translation>Servidor de notificació dels missatges</translation>
     </message>
     <message>
         <source>Message Access</source>
-        <translation>Accès als missatges</translation>
+        <translation>Accés als missatges</translation>
     </message>
     <message>
         <source>Global Navigation Satellite System</source>
@@ -328,7 +344,7 @@
     </message>
     <message>
         <source>Global Navigation Satellite System Server</source>
-        <translation>Servidor per al sistema de navegació global per satèl·lit</translation>
+        <translation>Servidor del sistema de navegació global per satèl·lit</translation>
     </message>
     <message>
         <source>3D Synchronization Display</source>
@@ -376,7 +392,7 @@
     </message>
     <message>
         <source>Video Sink</source>
-        <translation>Disipador del vídeo</translation>
+        <translation>Conducte del vídeo</translation>
     </message>
     <message>
         <source>Video Distribution</source>
@@ -384,15 +400,15 @@
     </message>
     <message>
         <source>Health Device</source>
-        <translation>Dispositiu per a la salut</translation>
+        <translation>Dispositiu de salut</translation>
     </message>
     <message>
         <source>Health Device Source</source>
-        <translation>Origen del dispositiu per a la salut</translation>
+        <translation>Origen del dispositiu de salut</translation>
     </message>
     <message>
         <source>Health Device Sink</source>
-        <translation>Disipador del dispositiu per a la salut</translation>
+        <translation>Conducte del dispositiu de salut</translation>
     </message>
     <message>
         <source>Generic Access</source>
@@ -412,7 +428,7 @@
     </message>
     <message>
         <source>Tx Power</source>
-        <translation>Potència de la Tx</translation>
+        <translation>Potència de Tx</translation>
     </message>
     <message>
         <source>Current Time Service</source>
@@ -420,11 +436,11 @@
     </message>
     <message>
         <source>Reference Time Update Service</source>
-        <translation>Servei per a l&apos;actualització de l&apos;hora de referència</translation>
+        <translation>Servei d&apos;actualització de l&apos;hora de referència</translation>
     </message>
     <message>
         <source>Next DST Change Service</source>
-        <translation>Següent servei de canvi a l&apos;horari d&apos;estiu</translation>
+        <translation>Servei de canvi següent d&apos;horari d&apos;estiu</translation>
     </message>
     <message>
         <source>Glucose</source>
@@ -432,7 +448,7 @@
     </message>
     <message>
         <source>Health Thermometer</source>
-        <translation>Termòmetre per a la salut</translation>
+        <translation>Termòmetre de salut</translation>
     </message>
     <message>
         <source>Device Information</source>
@@ -444,11 +460,11 @@
     </message>
     <message>
         <source>Phone Alert Status Service</source>
-        <translation>Servei per a l&apos;estat d&apos;alerta del telèfon</translation>
+        <translation>Servei de l&apos;estat d&apos;alerta del telèfon</translation>
     </message>
     <message>
         <source>Battery Service</source>
-        <translation>Servei de la bateria</translation>
+        <translation>Servei de bateria</translation>
     </message>
     <message>
         <source>Blood Pressure</source>
@@ -456,11 +472,11 @@
     </message>
     <message>
         <source>Alert Notification Service</source>
-        <translation>Servei per a la notificació d&apos;alertes</translation>
+        <translation>Servei de notificació d&apos;alertes</translation>
     </message>
     <message>
         <source>Scan Parameters</source>
-        <translation>Paràmetres per a l&apos;escaneig</translation>
+        <translation>Paràmetres d&apos;escaneig</translation>
     </message>
     <message>
         <source>Running Speed and Cadence</source>
@@ -501,15 +517,15 @@
     </message>
     <message>
         <source>Continuous Glucose Monitoring</source>
-        <translation>Monitorització contínua de la glucosa</translation>
+        <translation>Monitoratge continu de la glucosa</translation>
     </message>
     <message>
         <source>Service Discovery Protocol</source>
-        <translation>Protocol per al descobriment de serveis</translation>
+        <translation>Protocol de descobriment de serveis</translation>
     </message>
     <message>
         <source>User Datagram Protocol</source>
-        <translation>Protocol per als datagrames d&apos;usuari</translation>
+        <translation>Protocol de datagrames d&apos;usuari</translation>
     </message>
     <message>
         <source>Radio Frequency Communication</source>
@@ -517,59 +533,59 @@
     </message>
     <message>
         <source>Transmission Control Protocol</source>
-        <translation>Protocol per al control de la transmissió</translation>
+        <translation>Protocol de control de la transmissió</translation>
     </message>
     <message>
         <source>Telephony Control Specification - Binary</source>
-        <translation>Especificació per al control de la telefonia - binari</translation>
+        <translation>Especificació de control de la telefonia - binari</translation>
     </message>
     <message>
         <source>Telephony Control Specification - AT</source>
-        <translation>Especificació per al control de la telefonia - AT</translation>
+        <translation>Especificació de control de la telefonia - AT</translation>
     </message>
     <message>
         <source>Attribute Protocol</source>
-        <translation>Protocol per als atributs</translation>
+        <translation>Protocol dels atributs</translation>
     </message>
     <message>
         <source>Object Exchange Protocol</source>
-        <translation>Protocol per a l&apos;intercanvi d&apos;objectes</translation>
+        <translation>Protocol d&apos;intercanvi d&apos;objectes</translation>
     </message>
     <message>
         <source>Internet Protocol</source>
-        <translation>Protocolo per a Internet</translation>
+        <translation>Protocol d&apos;Internet</translation>
     </message>
     <message>
         <source>File Transfer Protocol</source>
-        <translation>Protocol per a la transferència de fitxers</translation>
+        <translation>Protocol de transferència de fitxers</translation>
     </message>
     <message>
         <source>Hypertext Transfer Protocol</source>
-        <translation>Protocol per a la transferència d&apos;hipertext</translation>
+        <translation>Protocol de transferència d&apos;hipertext</translation>
     </message>
     <message>
         <source>Wireless Short Packet Protocol</source>
-        <translation>Protocol sense fils per a paquets de curt abast</translation>
+        <translation>Protocol sense fils de paquets de curt abast</translation>
     </message>
     <message>
         <source>Bluetooth Network Encapsulation Protocol</source>
-        <translation>Protocol per a l&apos;encapsulament a la xarxa Bluetooth</translation>
+        <translation>Protocol d&apos;encapsulament de la xarxa Bluetooth</translation>
     </message>
     <message>
         <source>Extended Service Discovery Protocol</source>
-        <translation>Protocol estès per al descobriment de serveis</translation>
+        <translation>Protocol ampliat de descobriment de serveis</translation>
     </message>
     <message>
         <source>Human Interface Device Protocol</source>
-        <translation>Protocol per als dispositius amb interfície humana</translation>
+        <translation>Protocol de dispositius d&apos;interfície humana</translation>
     </message>
     <message>
         <source>Hardcopy Control Channel</source>
-        <translation>Canal per al control de la còpia</translation>
+        <translation>Canal de control de la còpia</translation>
     </message>
     <message>
         <source>Hardcopy Data Channel</source>
-        <translation>Canal per a les dades de la còpia</translation>
+        <translation>Canal de dades de la còpia</translation>
     </message>
     <message>
         <source>Hardcopy Notification</source>
@@ -577,15 +593,15 @@
     </message>
     <message>
         <source>Audio/Video Control Transport Protocol</source>
-        <translation>Protocol per al transport del control de l&apos;àudio/vídeo</translation>
+        <translation>Protocol de transport del control de l&apos;àudio/vídeo</translation>
     </message>
     <message>
         <source>Audio/Video Distribution Transport Protocol</source>
-        <translation>Protocol per al transport de la distribució de l&apos;àudio/vídeo</translation>
+        <translation>Protocol de transport de la distribució de l&apos;àudio/vídeo</translation>
     </message>
     <message>
         <source>Common ISDN Access Protocol</source>
-        <translation>Protocol per a l&apos;accés XDSI comú</translation>
+        <translation>Protocol d&apos;accés XDSI comú</translation>
     </message>
     <message>
         <source>UdiCPlain</source>
@@ -593,15 +609,15 @@
     </message>
     <message>
         <source>Multi-Channel Adaptation Protocol - Control</source>
-        <translation>Protocol per a l&apos;adaptació multicanal - control</translation>
+        <translation>Protocol d&apos;adaptació multicanal - control</translation>
     </message>
     <message>
         <source>Multi-Channel Adaptation Protocol - Data</source>
-        <translation>Protocol per a l&apos;adaptació multicanal - dades</translation>
+        <translation>Protocol d&apos;adaptació multicanal - dades</translation>
     </message>
     <message>
         <source>Layer 2 Control Protocol</source>
-        <translation>Protocol per al control de capa 2</translation>
+        <translation>Protocol de control de capa 2</translation>
     </message>
     <message>
         <source>GAP Device Name</source>
@@ -625,7 +641,7 @@
     </message>
     <message>
         <source>GAP Peripheral Preferred Connection Parameters</source>
-        <translation>Paràmetres de connexió preferits pels perifèrics GAP</translation>
+        <translation>Paràmetres de connexió preferits dels perifèrics GAP</translation>
     </message>
     <message>
         <source>GATT Service Changed</source>
@@ -638,7 +654,7 @@
     </message>
     <message>
         <source>TX Power</source>
-        <translation>Potència de la TX</translation>
+        <translation>Potència de TX</translation>
     </message>
     <message>
         <source>Date Time</source>
@@ -658,7 +674,7 @@
     </message>
     <message>
         <source>DST Offset</source>
-        <translation>Compensació per a l&apos;horari d&apos;estiu</translation>
+        <translation>Compensació de l&apos;horari d&apos;estiu</translation>
     </message>
     <message>
         <source>Time Zone</source>
@@ -686,7 +702,7 @@
     </message>
     <message>
         <source>Time Update Control Point</source>
-        <translation>Punt de control per a actualitzar l&apos;hora</translation>
+        <translation>Punt de control d&apos;actualització de l&apos;hora</translation>
     </message>
     <message>
         <source>Time Update State</source>
@@ -718,7 +734,7 @@
     </message>
     <message>
         <source>Boot Keyboard Input Report</source>
-        <translation>Informe de l&apos;arrencada per a l&apos;entrada del teclat</translation>
+        <translation>Informe de l&apos;arrencada de l&apos;entrada del teclat</translation>
     </message>
     <message>
         <source>System ID</source>
@@ -726,31 +742,31 @@
     </message>
     <message>
         <source>Model Number String</source>
-        <translation>Cadena per al número del model</translation>
+        <translation>Cadena del número del model</translation>
     </message>
     <message>
         <source>Serial Number String</source>
-        <translation>Cadena per al número sèrie</translation>
+        <translation>Cadena del número sèrie</translation>
     </message>
     <message>
         <source>Firmware Revision String</source>
-        <translation>Cadena per a la revisió del microprogramari</translation>
+        <translation>Cadena de la revisió del microprogramari</translation>
     </message>
     <message>
         <source>Hardware Revision String</source>
-        <translation>Cadena per a la revisió del maquinari</translation>
+        <translation>Cadena de la revisió del maquinari</translation>
     </message>
     <message>
         <source>Software Revision String</source>
-        <translation>Cadena per a la revisió del programari</translation>
+        <translation>Cadena de la revisió del programari</translation>
     </message>
     <message>
         <source>Manufacturer Name String</source>
-        <translation>Cadena per al nom del fabricant</translation>
+        <translation>Cadena del nom del fabricant</translation>
     </message>
     <message>
         <source>IEEE 11073 20601 Regulatory Certification Data List</source>
-        <translation>Llista de dades per a la certificació reguladora IEEE 11073 20601</translation>
+        <translation>Llista de dades de la certificació reguladora IEEE 11073 20601</translation>
     </message>
     <message>
         <source>Current Time</source>
@@ -762,11 +778,11 @@
     </message>
     <message>
         <source>Boot Keyboard Output Report</source>
-        <translation>Informe de l&apos;arrencada per a la sortida del teclat</translation>
+        <translation>Informe de l&apos;arrencada de la sortida del teclat</translation>
     </message>
     <message>
         <source>Boot Mouse Input Report</source>
-        <translation>Informe de l&apos;arrencada per a l&apos;entrada del ratolí</translation>
+        <translation>Informe de l&apos;arrencada de l&apos;entrada del ratolí</translation>
     </message>
     <message>
         <source>Glucose Measurement Context</source>
@@ -802,11 +818,11 @@
     </message>
     <message>
         <source>Ringer Setting</source>
-        <translation>Ajustament del timbre</translation>
+        <translation>Paràmetre del timbre</translation>
     </message>
     <message>
         <source>Alert Category ID Bit Mask</source>
-        <translation>Màscara de bits per a l&apos;ID de la categoria d&apos;alerta</translation>
+        <translation>Màscara de bits de l&apos;ID de la categoria d&apos;alerta</translation>
     </message>
     <message>
         <source>Alert Category ID</source>
@@ -814,7 +830,7 @@
     </message>
     <message>
         <source>Alert Notification Control Point</source>
-        <translation>Punt de control per a la notificació d&apos;alertes</translation>
+        <translation>Punt de control de la notificació d&apos;alertes</translation>
     </message>
     <message>
         <source>Unread Alert Status</source>
@@ -826,11 +842,11 @@
     </message>
     <message>
         <source>Supported New Alert Category</source>
-        <translation>Categoria admesa per a alerta nova</translation>
+        <translation>Categoria admesa d&apos;alerta nova</translation>
     </message>
     <message>
         <source>Supported Unread Alert Category</source>
-        <translation>Categoria admesa per a alerta sense llegir</translation>
+        <translation>Categoria admesa d&apos;alerta sense llegir</translation>
     </message>
     <message>
         <source>Blood Pressure Feature</source>
@@ -873,7 +889,7 @@
     <message>
         <source>Record Access Control Point</source>
         <extracomment>Glucose Sensor patient record database.</extracomment>
-        <translation>Punt de control per a l&apos;accés al registre</translation>
+        <translation>Punt de control d&apos;accés al registre</translation>
     </message>
     <message>
         <source>RSC Measurement</source>
@@ -883,11 +899,11 @@
     <message>
         <source>RSC Feature</source>
         <extracomment>RSC: Running Speed and Cadence</extracomment>
-        <translation>Característica per a la velocitat i cadència de la carrera</translation>
+        <translation>Característica de la velocitat i cadència de la carrera</translation>
     </message>
     <message>
         <source>SC Control Point</source>
-        <translation>Punt de control per a la velocitat i cadència</translation>
+        <translation>Punt de control de la velocitat i cadència</translation>
     </message>
     <message>
         <source>CSC Measurement</source>
@@ -897,7 +913,7 @@
     <message>
         <source>CSC Feature</source>
         <extracomment>CSC: Cycling Speed and Cadence</extracomment>
-        <translation>Característica per a la velocitat i cadència fent ciclisme</translation>
+        <translation>Característica de la velocitat i cadència fent ciclisme</translation>
     </message>
     <message>
         <source>Sensor Location</source>
@@ -1002,7 +1018,7 @@
     </message>
     <message>
         <source>Wind Chill</source>
-        <translation>Fred del vent</translation>
+        <translation>Sensació tèrmica</translation>
     </message>
     <message>
         <source>Heat Index</source>
@@ -1130,7 +1146,7 @@
     <message>
         <source>Database Change Increment</source>
         <extracomment>Environmental sensing related</extracomment>
-        <translation>Increment del canvi de la base de dades</translation>
+        <translation>Increment de canvi de la base de dades</translation>
     </message>
     <message>
         <source>User Index</source>
@@ -1138,7 +1154,7 @@
     </message>
     <message>
         <source>Body Composition Feature</source>
-        <translation>Característica per a la composició corporal</translation>
+        <translation>Característica de la composició corporal</translation>
     </message>
     <message>
         <source>Body Composition Measurement</source>
@@ -1149,8 +1165,12 @@
         <translation>Mesura del pes</translation>
     </message>
     <message>
+        <source>Weight Scale Feature</source>
+        <translation>Característica de l&apos;escala de pes</translation>
+    </message>
+    <message>
         <source>User Control Point</source>
-        <translation>Punt de control per a l&apos;usuari</translation>
+        <translation>Punt de control de l&apos;usuari</translation>
     </message>
     <message>
         <source>Magnetic Flux Density 2D</source>
@@ -1174,7 +1194,7 @@
     </message>
     <message>
         <source>Characteristic User Description</source>
-        <translation>Característica per a la descripció de l&apos;usuari</translation>
+        <translation>Característica de descripció de l&apos;usuari</translation>
     </message>
     <message>
         <source>Client Characteristic Configuration</source>
@@ -1186,11 +1206,11 @@
     </message>
     <message>
         <source>Characteristic Presentation Format</source>
-        <translation>Format per a la presentació de la característica</translation>
+        <translation>Format de la presentació de la característica</translation>
     </message>
     <message>
         <source>Characteristic Aggregate Format</source>
-        <translation>Format per a l&apos;agregat de la característica</translation>
+        <translation>Format de l&apos;agregat de la característica</translation>
     </message>
     <message>
         <source>Valid Range</source>
@@ -1214,7 +1234,7 @@
     </message>
     <message>
         <source>Environmental Sensing Trigger Setting</source>
-        <translation>Configuració de l&apos;activador per a la detecció ambiental</translation>
+        <translation>Configuració de l&apos;activador de detecció ambiental</translation>
     </message>
     <message>
         <source>Unknown Service</source>
@@ -1229,11 +1249,11 @@
     </message>
     <message>
         <source>Cannot write while not connected</source>
-        <translation>No es pot escriure mentre s&apos;està desconnectat</translation>
+        <translation>No es pot escriure mentre no està connectat</translation>
     </message>
     <message>
         <source>Trying to connect while connection is in progress</source>
-        <translation>S&apos;ha intentat connectar quan ja hi ha una connexió en curs</translation>
+        <translation>S&apos;intenta connectar mentre la connexió és en curs</translation>
     </message>
     <message>
         <source>Service cannot be found</source>
@@ -1245,7 +1265,7 @@
     </message>
     <message>
         <source>Cannot read while not connected</source>
-        <translation>No es pot llegir quan no s&apos;està connectat</translation>
+        <translation>No es pot llegir quan no està connectat</translation>
     </message>
     <message>
         <source>Socket type not supported</source>
@@ -1261,12 +1281,16 @@
     </message>
     <message>
         <source>Connecting to port is not supported</source>
-        <translation type="vanished">El connectar amb un port no está admès</translation>
+        <translation type="vanished">No s&apos;admet connectar amb el port</translation>
     </message>
     <message>
         <source>Cannot connect to %1</source>
         <comment>%1 = uuid</comment>
         <translation>No s&apos;ha pogut connectar a %1</translation>
+    </message>
+    <message>
+        <source>Bluetooth socket connect failed due to missing permissions.</source>
+        <translation>Ha fallat la connexió al sòcol de Bluetooth a causa de la manca de permisos.</translation>
     </message>
     <message>
         <source>Device does not support Bluetooth</source>
@@ -1336,19 +1360,19 @@
     </message>
     <message>
         <source>Unsupported protocol. Win32 only supports RFCOMM sockets</source>
-        <translation>Protocol no admès. El Win32 només admet sòcols RFCOMM</translation>
+        <translation type="vanished">Protocol no admès. El Win32 només admet sòcols RFCOMM</translation>
     </message>
     <message>
         <source>Failed to create socket</source>
-        <translation>Ha fallat en crear el sòcol</translation>
+        <translation type="vanished">Ha fallat en crear el sòcol</translation>
     </message>
     <message>
         <source>Socket type not handled: %1</source>
-        <translation>Tipus de sòcol no gestionat: %1</translation>
+        <translation type="vanished">Tipus de sòcol no gestionat: %1</translation>
     </message>
     <message>
         <source>Logic error: more bytes sent than passed to ::send</source>
-        <translation>Error lògic: s&apos;han enviat més bytes que els passats a «::send»</translation>
+        <translation type="vanished">Error lògic: s&apos;han enviat més bytes que els passats a «::send»</translation>
     </message>
     <message>
         <source>Network error</source>
@@ -1393,11 +1417,11 @@
     </message>
     <message>
         <source>Push session cannot be started</source>
-        <translation>La sessió de pujada no s&apos;ha pogut iniciar</translation>
+        <translation>No s&apos;ha pogut iniciar la sessió de pujada</translation>
     </message>
     <message>
         <source>Push session cannot connect</source>
-        <translation>La sessió de pujada no ha pogut connectar</translation>
+        <translation>No s&apos;ha pogut connectar la sessió de pujada</translation>
     </message>
     <message>
         <source>Source file does not exist</source>
@@ -1425,26 +1449,26 @@
     </message>
     <message>
         <source>Push service not found</source>
-        <translation>El servei de pujada no es pot trobar</translation>
+        <translation>No s&apos;ha pogut trobar el servei de pujada</translation>
     </message>
 </context>
 <context>
     <name>QBluetoothTransferReplyBluez</name>
     <message>
         <source>Unknown Error</source>
-        <translation>Error desconegut</translation>
+        <translation type="vanished">Error desconegut</translation>
     </message>
     <message>
         <source>Could not open file for sending</source>
-        <translation>No s&apos;ha pogut obrir el fitxer per enviar-lo</translation>
+        <translation type="vanished">No s&apos;ha pogut obrir el fitxer per a enviar-lo</translation>
     </message>
     <message>
         <source>The transfer was canceled</source>
-        <translation>La transferència s&apos;ha cancel·lat</translation>
+        <translation type="vanished">La transferència s&apos;ha cancel·lat</translation>
     </message>
     <message>
         <source>Operation canceled</source>
-        <translation>Operació cancel·lada</translation>
+        <translation type="vanished">Operació cancel·lada</translation>
     </message>
 </context>
 <context>
@@ -1466,6 +1490,10 @@
         <translation>Error desconegut</translation>
     </message>
     <message>
+        <source>Missing permission</source>
+        <translation>Manca un permís</translation>
+    </message>
+    <message>
         <source>Error occurred trying to connect to remote device.</source>
         <translation>Ha succeït un error en intentar connectar amb el dispositiu remot.</translation>
     </message>
@@ -1476,6 +1504,14 @@
     <message>
         <source>Failed to authorize on the remote device</source>
         <translation>Ha fallat l&apos;autorització al dispositiu remot</translation>
+    </message>
+    <message>
+        <source>Missing permissions error</source>
+        <translation>Error de manca de permisos</translation>
+    </message>
+    <message>
+        <source>Error reading RSSI value</source>
+        <translation>Error en llegir el valor del RSSI</translation>
     </message>
     <message>
         <source>Advertisement data is larger than 31 bytes</source>

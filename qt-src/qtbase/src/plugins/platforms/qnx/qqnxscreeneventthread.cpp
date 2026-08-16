@@ -1,42 +1,6 @@
-/***************************************************************************
-**
-** Copyright (C) 2017 QNX Software Systems. All rights reserved.
-** Copyright (C) 2011 - 2012 Research In Motion
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 QNX Software Systems. All rights reserved.
+// Copyright (C) 2011 - 2012 Research In Motion
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqnxglobal.h"
 
@@ -49,12 +13,6 @@
 #include <unistd.h>
 
 #include <cctype>
-
-#if defined(QQNXSCREENEVENTTHREAD_DEBUG)
-#define qScreenEventThreadDebug qDebug
-#else
-#define qScreenEventThreadDebug QT_NO_QDEBUG_MACRO
-#endif
 
 static const int c_screenCode = _PULSE_CODE_MINAVAIL + 0;
 static const int c_armCode = _PULSE_CODE_MINAVAIL + 1;
@@ -110,7 +68,7 @@ QQnxScreenEventThread::~QQnxScreenEventThread()
 
 void QQnxScreenEventThread::run()
 {
-    qScreenEventThreadDebug("screen event thread started");
+    qCDebug(lcQpaScreenEvents) << "Screen event thread started";
 
     while (1) {
         struct _pulse msg;
@@ -126,7 +84,7 @@ void QQnxScreenEventThread::run()
             qWarning() << "MsgReceive error" << strerror(errno);
     }
 
-    qScreenEventThreadDebug("screen event thread stopped");
+    qCDebug(lcQpaScreenEvents) << "Screen event thread stopped";
 }
 
 void QQnxScreenEventThread::armEventsPending(int count)
@@ -170,10 +128,10 @@ void QQnxScreenEventThread::shutdown()
 {
     MsgSendPulse(m_connectionId, SIGEV_PULSE_PRIO_INHERIT, c_quitCode, 0);
 
-    qScreenEventThreadDebug("screen event thread shutdown begin");
+    qCDebug(lcQpaScreenEvents) << "Screen event thread shutdown begin";
 
     // block until thread terminates
     wait();
 
-    qScreenEventThreadDebug("screen event thread shutdown end");
+    qCDebug(lcQpaScreenEvents) << "Screen event thread shutdown end";
 }

@@ -1,57 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2018 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2018 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "connection.h"
 
-#include <QtNetwork>
+#include <QTimerEvent>
 
 static const int TransferTimeout = 30 * 1000;
 static const int PongTimeout = 60 * 1000;
@@ -68,18 +21,12 @@ static const int PingInterval = 5 * 1000;
  *  plaintext   = { 0 => text }
  *  ping        = { 1 => null }
  *  pong        = { 2 => null }
- *  greeting    = { 3 => text }
+ *  greeting    = { 3 => { text, bytes } }
  */
 
 Connection::Connection(QObject *parent)
     : QTcpSocket(parent), writer(this)
 {
-    greetingMessage = tr("undefined");
-    username = tr("unknown");
-    state = WaitingForGreeting;
-    currentDataType = Undefined;
-    transferTimerId = -1;
-    isGreetingMessageSent = false;
     pingTimer.setInterval(PingInterval);
 
     connect(this, &QTcpSocket::readyRead, this,
@@ -101,7 +48,7 @@ Connection::Connection(qintptr socketDescriptor, QObject *parent)
 
 Connection::~Connection()
 {
-    if (isGreetingMessageSent) {
+    if (isGreetingMessageSent && QAbstractSocket::state() != QAbstractSocket::UnconnectedState) {
         // Indicate clean shutdown.
         writer.endArray();
         waitForBytesWritten(2000);
@@ -113,9 +60,15 @@ QString Connection::name() const
     return username;
 }
 
-void Connection::setGreetingMessage(const QString &message)
+void Connection::setGreetingMessage(const QString &message, const QByteArray &uniqueId)
 {
     greetingMessage = message;
+    localUniqueId = uniqueId;
+}
+
+QByteArray Connection::uniqueId() const
+{
+    return peerUniqueId;
 }
 
 bool Connection::sendMessage(const QString &message)
@@ -171,7 +124,29 @@ void Connection::processReadyRead()
             reader.next();
         } else {
             // Current state: read command payload
-            if (reader.isString()) {
+            if (currentDataType == Greeting) {
+                if (state == ReadingGreeting) {
+                    if (!reader.isContainer() || !reader.isLengthKnown() || reader.length() != 2)
+                        break; // protocol error
+                    state = ProcessingGreeting;
+                    reader.enterContainer();
+                }
+                if (state != ProcessingGreeting)
+                    break; // protocol error
+                if (reader.isString()) {
+                    auto r = reader.readString();
+                    buffer += r.data;
+                } else if (reader.isByteArray()) {
+                    auto r = reader.readByteArray();
+                    peerUniqueId += r.data;
+                    if (r.status == QCborStreamReader::EndOfString) {
+                        reader.leaveContainer();
+                        processGreeting();
+                    }
+                }
+                if (state == ProcessingGreeting)
+                    continue;
+            } else if (reader.isString()) {
                 auto r = reader.readString();
                 buffer += r.data;
                 if (r.status != QCborStreamReader::EndOfString)
@@ -179,7 +154,7 @@ void Connection::processReadyRead()
             } else if (reader.isNull()) {
                 reader.next();
             } else {
-                break;                   // protocol error
+                break; // protocol error
             }
 
             // Next state: no command read
@@ -189,13 +164,7 @@ void Connection::processReadyRead()
                 transferTimerId = -1;
             }
 
-            if (state == ReadingGreeting) {
-                if (currentDataType != Greeting)
-                    break;              // protocol error
-                processGreeting();
-            } else {
-                processData();
-            }
+            processData();
         }
     }
 
@@ -225,7 +194,10 @@ void Connection::sendGreetingMessage()
 
     writer.startMap(1);
     writer.append(Greeting);
+    writer.startArray(2);
     writer.append(greetingMessage);
+    writer.append(localUniqueId);
+    writer.endArray();
     writer.endMap();
     isGreetingMessageSent = true;
 

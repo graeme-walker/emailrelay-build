@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef CPP_H
 #define CPP_H
@@ -32,6 +7,7 @@
 #include "lupdate.h"
 
 #include <QtCore/QSet>
+#include <QtCore/QStack>
 
 #include <iostream>
 
@@ -104,19 +80,63 @@ struct IncludeCycle {
     QSet<const ParseResults *> results;
 };
 
-typedef QHash<QString, IncludeCycle *> IncludeCycleHash;
+struct CppParserState
+{
+    NamespaceList namespaces;
+    QStack<qsizetype> namespaceDepths;
+    NamespaceList functionContext;
+    QString functionContextUnresolved;
+    QString pendingContext;
+
+    bool operator==(const CppParserState &other) const
+    {
+        return namespaces == other.namespaces
+            && namespaceDepths == other.namespaceDepths
+            && functionContext == other.functionContext
+            && functionContextUnresolved == other.functionContextUnresolved
+            && pendingContext == other.pendingContext;
+    }
+};
+
+size_t qHash(const CppParserState &s, size_t seed);
+
+struct ResultsCacheKey
+{
+    const QString cleanFile;
+    const CppParserState parserState;
+
+    ResultsCacheKey(const QString &filePath)
+        : cleanFile(filePath)
+    {
+    }
+
+    ResultsCacheKey(const QString &filePath, const CppParserState &state)
+        : cleanFile(filePath),
+          parserState(state)
+    {
+    }
+
+    bool operator==(const ResultsCacheKey &other) const
+    {
+        return cleanFile == other.cleanFile
+            && parserState == other.parserState;
+    }
+};
+
+size_t qHash(const ResultsCacheKey &key, size_t seed);
+
+typedef QHash<ResultsCacheKey, IncludeCycle *> IncludeCycleHash;
 typedef QHash<QString, const Translator *> TranslatorHash;
 
 class CppFiles {
-
 public:
-    static QSet<const ParseResults *> getResults(const QString &cleanFile);
-    static void setResults(const QString &cleanFile, const ParseResults *results);
+    static QSet<const ParseResults *> getResults(const ResultsCacheKey &key);
+    static void setResults(const ResultsCacheKey &key, const ParseResults *results);
     static const Translator *getTranslator(const QString &cleanFile);
     static void setTranslator(const QString &cleanFile, const Translator *results);
     static bool isBlacklisted(const QString &cleanFile);
     static void setBlacklisted(const QString &cleanFile);
-    static void addIncludeCycle(const QSet<QString> &fileNames);
+    static void addIncludeCycle(const QSet<QString> &fileNames, const CppParserState &parserState);
 
 private:
     static IncludeCycleHash &includeCycles();

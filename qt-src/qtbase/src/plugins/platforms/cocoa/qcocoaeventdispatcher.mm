@@ -1,75 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (c) 2007-2008, Apple, Inc.
+// SPDX-License-Identifier: BSD-3-Clause
 
-/****************************************************************************
-**
-** Copyright (c) 2007-2008, Apple, Inc.
-**
-** All rights reserved.
-**
-** Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are met:
-**
-**   * Redistributions of source code must retain the above copyright notice,
-**     this list of conditions and the following disclaimer.
-**
-**   * Redistributions in binary form must reproduce the above copyright notice,
-**     this list of conditions and the following disclaimer in the documentation
-**     and/or other materials provided with the distribution.
-**
-**   * Neither the name of Apple, Inc. nor the names of its contributors
-**     may be used to endorse or promote products derived from this software
-**     without specific prior written permission.
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
-** CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-** EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-** PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-** PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-** LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-** NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-** SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-**
-****************************************************************************/
+#include <AppKit/AppKit.h>
 
 #include "qcocoaeventdispatcher.h"
 #include "qcocoawindow.h"
@@ -83,15 +16,16 @@
 #include <QtCore/qscopeguard.h>
 #include <QtCore/qsocketnotifier.h>
 #include <QtCore/private/qthread_p.h>
+#include <QtCore/private/qcore_mac_p.h>
 
 #include <qpa/qplatformwindow.h>
 #include <qpa/qplatformnativeinterface.h>
 
 #include <QtCore/qdebug.h>
 
-#include <AppKit/AppKit.h>
-
 QT_BEGIN_NAMESPACE
+
+Q_LOGGING_CATEGORY(lcEventDispatcher, "qt.eventdispatcher");
 
 static inline CFRunLoopRef mainRunLoop()
 {
@@ -122,6 +56,13 @@ void QCocoaEventDispatcherPrivate::runLoopTimerCallback(CFRunLoopTimerRef, void 
 void QCocoaEventDispatcherPrivate::activateTimersSourceCallback(void *info)
 {
     QCocoaEventDispatcherPrivate *d = static_cast<QCocoaEventDispatcherPrivate *>(info);
+    if (d->initializingNSApplication) {
+        qCDebug(lcEventDispatcher) << "Deferring" << __FUNCTION__ << "due to NSApp initialization";
+        // We don't want to process any sources during explicit NSApplication
+        // initialization, so defer the source until the actual event processing.
+        CFRunLoopSourceSignal(d->activateTimersSourceRef);
+        return;
+    }
     d->processTimers();
     d->maybeCancelWaitForMoreEvents();
 }
@@ -141,6 +82,7 @@ void QCocoaEventDispatcherPrivate::maybeStartCFRunLoopTimer()
         return;
     }
 
+    using DoubleSeconds = std::chrono::duration<double, std::ratio<1>>;
     if (!runLoopTimerRef) {
         // start the CFRunLoopTimer
         CFAbsoluteTime ttf = CFAbsoluteTimeGetCurrent();
@@ -148,10 +90,10 @@ void QCocoaEventDispatcherPrivate::maybeStartCFRunLoopTimer()
         CFTimeInterval oneyear = CFTimeInterval(3600. * 24. * 365.);
 
         // Q: when should the CFRunLoopTimer fire for the first time?
-        struct timespec tv;
-        if (timerInfoList.timerWait(tv)) {
+        if (auto opt = timerInfoList.timerWait()) {
             // A: when we have timers to fire, of course
-            interval = qMax(tv.tv_sec + tv.tv_nsec / 1000000000., 0.0000001);
+            DoubleSeconds secs{*opt};
+            interval = qMax(secs.count(), 0.0000001);
         } else {
             // this shouldn't really happen, but in case it does, set the timer to fire a some point in the distant future
             interval = oneyear;
@@ -171,10 +113,10 @@ void QCocoaEventDispatcherPrivate::maybeStartCFRunLoopTimer()
         CFTimeInterval interval;
 
         // Q: when should the timer first next?
-        struct timespec tv;
-        if (timerInfoList.timerWait(tv)) {
+        if (auto opt = timerInfoList.timerWait()) {
             // A: when we have timers to fire, of course
-            interval = qMax(tv.tv_sec + tv.tv_nsec / 1000000000., 0.0000001);
+            DoubleSeconds secs{*opt};
+            interval = qMax(secs.count(), 0.0000001);
         } else {
             // no timers can fire, but we cannot stop the CFRunLoopTimer, set the timer to fire at some
             // point in the distant future (the timer interval is one year)
@@ -196,10 +138,11 @@ void QCocoaEventDispatcherPrivate::maybeStopCFRunLoopTimer()
     runLoopTimerRef = nullptr;
 }
 
-void QCocoaEventDispatcher::registerTimer(int timerId, int interval, Qt::TimerType timerType, QObject *obj)
+void QCocoaEventDispatcher::registerTimer(Qt::TimerId timerId, Duration interval,
+                                          Qt::TimerType timerType, QObject *obj)
 {
 #ifndef QT_NO_DEBUG
-    if (timerId < 1 || interval < 0 || !obj) {
+    if (qToUnderlying(timerId) < 1 || interval.count() < 0 || !obj) {
         qWarning("QCocoaEventDispatcher::registerTimer: invalid arguments");
         return;
     } else if (obj->thread() != thread() || thread() != QThread::currentThread()) {
@@ -213,10 +156,10 @@ void QCocoaEventDispatcher::registerTimer(int timerId, int interval, Qt::TimerTy
     d->maybeStartCFRunLoopTimer();
 }
 
-bool QCocoaEventDispatcher::unregisterTimer(int timerId)
+bool QCocoaEventDispatcher::unregisterTimer(Qt::TimerId timerId)
 {
 #ifndef QT_NO_DEBUG
-    if (timerId < 1) {
+    if (qToUnderlying(timerId) < 1) {
         qWarning("QCocoaEventDispatcher::unregisterTimer: invalid argument");
         return false;
     } else if (thread() != QThread::currentThread()) {
@@ -255,13 +198,13 @@ bool QCocoaEventDispatcher::unregisterTimers(QObject *obj)
     return returnValue;
 }
 
-QList<QCocoaEventDispatcher::TimerInfo>
-QCocoaEventDispatcher::registeredTimers(QObject *object) const
+QList<QCocoaEventDispatcher::TimerInfoV2>
+QCocoaEventDispatcher::timersForObject(QObject *object) const
 {
 #ifndef QT_NO_DEBUG
     if (!object) {
         qWarning("QCocoaEventDispatcher:registeredTimers: invalid argument");
-        return QList<TimerInfo>();
+        return {};
     }
 #endif
 
@@ -286,13 +229,6 @@ void QCocoaEventDispatcher::unregisterSocketNotifier(QSocketNotifier *notifier)
 {
     Q_D(QCocoaEventDispatcher);
     d->cfSocketNotifier.unregisterSocketNotifier(notifier);
-}
-
-bool QCocoaEventDispatcher::hasPendingEvents()
-{
-    extern uint qGlobalPostedEventsCount();
-    extern bool qt_is_gui_used; //qapplication.cpp
-    return qGlobalPostedEventsCount() || (qt_is_gui_used && !CFRunLoopIsWaiting(CFRunLoopGetMain()));
 }
 
 static bool isUserInputEvent(NSEvent* event)
@@ -407,6 +343,7 @@ bool QCocoaEventDispatcher::processEvents(QEventLoop::ProcessEventsFlags flags)
             // [NSApp run], which is the normal code path for cocoa applications.
             if (NSModalSession session = d->currentModalSession()) {
                 QBoolBlocker execGuard(d->currentExecIsNSAppRun, false);
+                qCDebug(lcEventDispatcher) << "Running modal session" << session;
                 while ([NSApp runModalSession:session] == NSModalResponseContinue && !d->interrupt) {
                     qt_mac_waitForMoreEvents(NSModalPanelRunLoopMode);
                     if (session != d->currentModalSessionCached) {
@@ -450,6 +387,7 @@ bool QCocoaEventDispatcher::processEvents(QEventLoop::ProcessEventsFlags flags)
                     // to use cocoa's native way of running modal sessions:
                     if (flags & QEventLoop::WaitForMoreEvents)
                         qt_mac_waitForMoreEvents(NSModalPanelRunLoopMode);
+                    qCDebug(lcEventDispatcher) << "Running modal session" << session;
                     NSInteger status = [NSApp runModalSession:session];
                     if (status != NSModalResponseContinue && session == d->currentModalSessionCached) {
                         // INVARIANT: Someone called [NSApp stopModal:] from outside the event
@@ -504,6 +442,11 @@ bool QCocoaEventDispatcher::processEvents(QEventLoop::ProcessEventsFlags flags)
                         retVal = true;
                     }
                 }
+
+                // Clean up the modal session list, call endModalSession.
+                if (d->cleanupModalSessionsNeeded)
+                    d->cleanupModalSessions();
+
             } while (!d->interrupt && event);
 
             if ((d->processEventsFlags & QEventLoop::EventLoopExec) == 0) {
@@ -565,17 +508,17 @@ bool QCocoaEventDispatcher::processEvents(QEventLoop::ProcessEventsFlags flags)
     return retVal;
 }
 
-int QCocoaEventDispatcher::remainingTime(int timerId)
+auto QCocoaEventDispatcher::remainingTime(Qt::TimerId timerId) const -> Duration
 {
 #ifndef QT_NO_DEBUG
-    if (timerId < 1) {
+    if (qToUnderlying(timerId) < 1) {
         qWarning("QCocoaEventDispatcher::remainingTime: invalid argument");
-        return -1;
+        return Duration::min();
     }
 #endif
 
-    Q_D(QCocoaEventDispatcher);
-    return d->timerInfoList.timerRemainingTime(timerId);
+    Q_D(const QCocoaEventDispatcher);
+    return d->timerInfoList.remainingDuration(timerId);
 }
 
 void QCocoaEventDispatcher::wakeUp()
@@ -592,22 +535,42 @@ void QCocoaEventDispatcher::wakeUp()
 
 void QCocoaEventDispatcherPrivate::ensureNSAppInitialized()
 {
-    // Some elements in Cocoa require NSApplication to be running before
-    // they get fully initialized, in particular the menu bar. This
-    // function is intended for cases where a dialog is told to execute before
-    // QGuiApplication::exec is called, or the application spins the events loop
-    // manually rather than calling QGuiApplication:exec.
-    // The function makes sure that NSApplication starts running, but stops
-    // it again as soon as the send posted events callback is called. That way
-    // we let Cocoa finish the initialization it seems to need. We'll only
-    // apply this trick at most once for any application, and we avoid doing it
-    // for the common case where main just starts QGuiApplication::exec.
+    // Some elements in Cocoa require NSApplication to be initialized before
+    // use, for example the menu bar. Under normal circumstances this happens
+    // as part of [NSApp run], as a result of a call to QGuiApplication:exec(),
+    // but in the cases where a dialog is asked to execute before that happens,
+    // or the application spins the event loop manually via processEvents(),
+    // we need to explicitly ensure NSApplication initialization.
+
+    // We can unfortunately not do this via NSApplicationLoad(), as the function
+    // bails out early if there's already an NSApplication instance, which is
+    // the case if any code has called [NSApplication sharedApplication],
+    // or its short form 'NSApp'.
+
+    // Instead we do an actual [NSApp run], but stop the application as soon
+    // as possible, ensuring that AppKit will do the required initialization,
+    // including calling [NSApplication finishLaunching].
+
+    // We only apply this trick at most once for any application, and we avoid
+    // doing it for the common case where main just starts QGuiApplication::exec.
     if (nsAppRunCalledByQt || [NSApp isRunning])
         return;
+
+    qCDebug(lcEventDispatcher) << "Ensuring NSApplication is initialized";
     nsAppRunCalledByQt = true;
-    QBoolBlocker block1(interrupt, true);
-    QBoolBlocker block2(currentExecIsNSAppRun, true);
+
+    // Stopping the application will still process runloop sources before
+    // actually stopping, so we need to explicitly guard our sources from
+    // doing anything, deferring their actions until later.
+    QBoolBlocker initializationGuard(initializingNSApplication, true);
+
+    CFRunLoopPerformBlock(mainRunLoop(), kCFRunLoopCommonModes, ^{
+        qCDebug(lcEventDispatcher) << "NSApplication has been initialized; Stopping NSApp";
+        [NSApp stop:NSApp];
+        cancelWaitForMoreEvents(); // Post event that wakes up the runloop
+    });
     [NSApp run];
+    qCDebug(lcEventDispatcher) << "Finished ensuring NSApplication is initialized";
 }
 
 void QCocoaEventDispatcherPrivate::temporarilyStopAllModalSessions()
@@ -625,6 +588,8 @@ void QCocoaEventDispatcherPrivate::temporarilyStopAllModalSessions()
     for (int i=0; i<stackSize; ++i) {
         QCocoaModalSessionInfo &info = cocoaModalSessionStack[i];
         if (info.session) {
+            qCDebug(lcEventDispatcher) << "Temporarily ending modal session" << info.session
+                                       << "for" << info.nswindow;
             [NSApp endModalSession:info.session];
             info.session = nullptr;
             [(NSWindow*) info.nswindow release];
@@ -664,6 +629,8 @@ NSModalSession QCocoaEventDispatcherPrivate::currentModalSession()
             [(NSWindow*) info.nswindow retain];
             QRect rect = cocoaWindow->geometry();
             info.session = [NSApp beginModalSessionForWindow:nswindow];
+            qCDebug(lcEventDispatcher) << "Begun modal session" << info.session
+                                       << "for" << nswindow;
 
             // The call to beginModalSessionForWindow above processes events and may
             // have deleted or destroyed the window. Check if it's still valid.
@@ -690,7 +657,7 @@ bool QCocoaEventDispatcherPrivate::hasModalSession() const
 void QCocoaEventDispatcherPrivate::cleanupModalSessions()
 {
     // Go through the list of modal sessions, and end those
-    // that no longer has a window assosiated; no window means
+    // that no longer has a window associated; no window means
     // the session has logically ended. The reason we wait like
     // this to actually end the sessions for real (rather than at the
     // point they were marked as stopped), is that ending a session
@@ -712,6 +679,8 @@ void QCocoaEventDispatcherPrivate::cleanupModalSessions()
         currentModalSessionCached = nullptr;
         if (info.session) {
             Q_ASSERT(info.nswindow);
+            qCDebug(lcEventDispatcher) << "Ending modal session" << info.session
+                                       << "for" << info.nswindow;
             [NSApp endModalSession:info.session];
             [(NSWindow *)info.nswindow release];
         }
@@ -724,6 +693,14 @@ void QCocoaEventDispatcherPrivate::cleanupModalSessions()
 
 void QCocoaEventDispatcherPrivate::beginModalSession(QWindow *window)
 {
+    qCDebug(lcEventDispatcher) << "Adding modal session for" << window;
+
+    if (std::any_of(cocoaModalSessionStack.constBegin(), cocoaModalSessionStack.constEnd(),
+        [&](const auto &sessionInfo) { return sessionInfo.window == window; })) {
+        qCWarning(lcEventDispatcher) << "Modal session for" << window << "already exists!";
+        return;
+    }
+
     // We need to start spinning the modal session. Usually this is done with
     // QDialog::exec() for Qt Widgets based applications, but for others that
     // just call show(), we need to interrupt().
@@ -744,6 +721,8 @@ void QCocoaEventDispatcherPrivate::beginModalSession(QWindow *window)
 
 void QCocoaEventDispatcherPrivate::endModalSession(QWindow *window)
 {
+    qCDebug(lcEventDispatcher) << "Removing modal session for" << window;
+
     Q_Q(QCocoaEventDispatcher);
 
     // Mark all sessions attached to window as pending to be stopped. We do this
@@ -784,13 +763,16 @@ QCocoaEventDispatcherPrivate::QCocoaEventDispatcherPrivate()
 {
 }
 
+QCocoaEventDispatcherPrivate::~QCocoaEventDispatcherPrivate()
+    = default;
+
 void qt_mac_maybeCancelWaitForMoreEventsForwarder(QAbstractEventDispatcher *eventDispatcher)
 {
     static_cast<QCocoaEventDispatcher *>(eventDispatcher)->d_func()->maybeCancelWaitForMoreEvents();
 }
 
 QCocoaEventDispatcher::QCocoaEventDispatcher(QObject *parent)
-    : QAbstractEventDispatcher(*new QCocoaEventDispatcherPrivate, parent)
+    : QAbstractEventDispatcherV2(*new QCocoaEventDispatcherPrivate, parent)
 {
     Q_D(QCocoaEventDispatcher);
 
@@ -827,21 +809,6 @@ QCocoaEventDispatcher::QCocoaEventDispatcher(QObject *parent)
                                                  QCocoaEventDispatcherPrivate::waitingObserverCallback,
                                                  &observerContext);
     CFRunLoopAddObserver(mainRunLoop(), d->waitingObserver, kCFRunLoopCommonModes);
-
-    /* The first cycle in the loop adds the source and the events of the source
-       are not processed.
-       We use an observer to process the posted events for the first
-       execution of the loop. */
-    CFRunLoopObserverContext firstTimeObserverContext;
-    bzero(&firstTimeObserverContext, sizeof(CFRunLoopObserverContext));
-    firstTimeObserverContext.info = d;
-    d->firstTimeObserver = CFRunLoopObserverCreate(kCFAllocatorDefault,
-                                                   kCFRunLoopEntry,
-                                                   /* repeats = */ false,
-                                                   0,
-                                                   QCocoaEventDispatcherPrivate::firstLoopEntry,
-                                                   &firstTimeObserverContext);
-    CFRunLoopAddObserver(mainRunLoop(), d->firstTimeObserver, kCFRunLoopCommonModes);
 }
 
 void QCocoaEventDispatcherPrivate::waitingObserverCallback(CFRunLoopObserverRef,
@@ -906,18 +873,17 @@ void QCocoaEventDispatcherPrivate::processPostedEvents()
     }
 }
 
-void QCocoaEventDispatcherPrivate::firstLoopEntry(CFRunLoopObserverRef ref,
-                                                CFRunLoopActivity activity,
-                                                void *info)
-{
-    Q_UNUSED(ref);
-    Q_UNUSED(activity);
-    static_cast<QCocoaEventDispatcherPrivate *>(info)->processPostedEvents();
-}
-
 void QCocoaEventDispatcherPrivate::postedEventsSourceCallback(void *info)
 {
     QCocoaEventDispatcherPrivate *d = static_cast<QCocoaEventDispatcherPrivate *>(info);
+    if (d->initializingNSApplication) {
+        qCDebug(lcEventDispatcher) << "Deferring" << __FUNCTION__ << "due to NSApp initialization";
+        // We don't want to process any sources during explicit NSApplication
+        // initialization, so defer the source until the actual event processing.
+        CFRunLoopSourceSignal(d->postedEventsSource);
+        return;
+    }
+
     if (d->processEventsCalled && (d->processEventsFlags & QEventLoop::EventLoopExec) == 0) {
         // processEvents() was called "manually," ignore this source for now
         d->maybeCancelWaitForMoreEvents();
@@ -964,9 +930,6 @@ void QCocoaEventDispatcher::interrupt()
     d->cancelWaitForMoreEvents();
 }
 
-void QCocoaEventDispatcher::flush()
-{ }
-
 // QTBUG-56746: The behavior of processEvents() has been changed to not clear
 // the interrupt flag. Use this function to clear it.
  void QCocoaEventDispatcher::clearCurrentThreadCocoaEventDispatcherInterruptFlag()
@@ -984,7 +947,7 @@ QCocoaEventDispatcher::~QCocoaEventDispatcher()
 {
     Q_D(QCocoaEventDispatcher);
 
-    qDeleteAll(d->timerInfoList);
+    d->timerInfoList.clearTimers();
     d->maybeStopCFRunLoopTimer();
     CFRunLoopRemoveSource(mainRunLoop(), d->activateTimersSourceRef, kCFRunLoopCommonModes);
     CFRelease(d->activateTimersSourceRef);
@@ -993,6 +956,8 @@ QCocoaEventDispatcher::~QCocoaEventDispatcher()
     for (int i = 0; i < d->cocoaModalSessionStack.count(); ++i) {
         QCocoaModalSessionInfo &info = d->cocoaModalSessionStack[i];
         if (info.session) {
+            qCDebug(lcEventDispatcher) << "Ending modal session" << info.session
+                                       << "for" << info.nswindow << "during shutdown";
             [NSApp endModalSession:info.session];
             [(NSWindow *)info.nswindow release];
         }
@@ -1011,9 +976,6 @@ QCocoaEventDispatcher::~QCocoaEventDispatcher()
 
     CFRunLoopObserverInvalidate(d->waitingObserver);
     CFRelease(d->waitingObserver);
-
-    CFRunLoopObserverInvalidate(d->firstTimeObserver);
-    CFRelease(d->firstTimeObserver);
 }
 
 QtCocoaInterruptDispatcher* QtCocoaInterruptDispatcher::instance = nullptr;

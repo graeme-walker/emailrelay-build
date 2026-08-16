@@ -1,33 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <QBuffer>
 #include <QColorSpace>
@@ -36,7 +10,7 @@
 #include <QImageReader>
 #include <QImageWriter>
 #include <QPixmap>
-#include <QSet>
+#include <QScopeGuard>
 #include <QTcpSocket>
 #include <QTcpServer>
 #include <QTimer>
@@ -88,11 +62,16 @@ private slots:
     void setScaledSize_data();
     void setScaledSize();
 
+    void setScaledSizeOneDimension_data();
+    void setScaledSizeOneDimension();
+
     void setClipRect_data();
     void setClipRect();
 
     void setScaledClipRect_data();
     void setScaledClipRect();
+
+    void setFormat();
 
     void imageFormat_data();
     void imageFormat();
@@ -324,25 +303,52 @@ void tst_QImageReader::jpegRgbCmyk()
     QImage image1(prefix + QLatin1String("YCbCr_cmyk.jpg"));
     QImage image2(prefix + QLatin1String("YCbCr_cmyk.png"));
 
-    if (image1 != image2) {
-        // first, do some obvious tests
-        QCOMPARE(image1.height(), image2.height());
-        QCOMPARE(image1.width(), image2.width());
-        QCOMPARE(image1.format(), image2.format());
-        QCOMPARE(image1.format(), QImage::Format_RGB32);
+    QVERIFY(!image1.isNull());
+    QVERIFY(!image2.isNull());
 
-        // compare all the pixels with a slack of 3. This ignores rounding errors
-        // in libjpeg/libpng, where some versions sacrifice accuracy for speed.
-        for (int h = 0; h < image1.height(); ++h) {
-            const uchar *s1 = image1.constScanLine(h);
-            const uchar *s2 = image2.constScanLine(h);
-            for (int w = 0; w < image1.width() * 4; ++w) {
-                if (*s1 != *s2) {
-                    QVERIFY2(qAbs(*s1 - *s2) <= 3, qPrintable(QString("images differ in line %1, col %2 (image1: %3, image2: %4)").arg(h).arg(w).arg(*s1, 0, 16).arg(*s2, 0, 16)));
-                }
-                s1++;
-                s2++;
-            }
+    QCOMPARE(image1.height(), image2.height());
+    QCOMPARE(image1.width(), image2.width());
+
+    QCOMPARE(image1.format(), QImage::Format_CMYK8888);
+    QCOMPARE(image2.format(), QImage::Format_RGB32);
+
+    // compare all the pixels with a slack of 3. This ignores rounding errors
+    // in libjpeg/libpng, where some versions sacrifice accuracy for speed.
+    const auto fuzzyCompareColors = [](const QColor &c1, const QColor &c2) {
+        int c1rgba[4];
+        int c2rgba[4];
+
+        c1.getRgb(c1rgba + 0,
+                  c1rgba + 1,
+                  c1rgba + 2,
+                  c1rgba + 3);
+
+        c2.getRgb(c2rgba + 0,
+                  c2rgba + 1,
+                  c2rgba + 2,
+                  c2rgba + 3);
+
+        const auto fuzzyCompare = [](int a, int b) {
+            return qAbs(a - b) <= 3;
+        };
+
+        return fuzzyCompare(c1rgba[0], c2rgba[0]) &&
+               fuzzyCompare(c1rgba[1], c2rgba[1]) &&
+               fuzzyCompare(c1rgba[2], c2rgba[2]) &&
+               fuzzyCompare(c1rgba[3], c2rgba[3]);
+    };
+
+    for (int h = 0; h < image1.height(); ++h) {
+        const uchar *sl1 = image1.constScanLine(h);
+        const uchar *sl2 = image2.constScanLine(h);
+        for (int w = 0; w < image1.width(); ++w) {
+            const uchar *s1 = sl1 + w * 4;
+            const uchar *s2 = sl2 + w * 4;
+
+            QColor c1 = QColor::fromCmyk(s1[0], s1[1], s1[2], s1[3]);
+            QColor c2 = QColor::fromRgb(s2[2], s2[1], s2[0]);
+            QVERIFY2(fuzzyCompareColors(c1, c2),
+                     qPrintable(QString("images differ in line %1, col %2").arg(h).arg(w)));
         }
     }
 }
@@ -393,6 +399,60 @@ void tst_QImageReader::setScaledSize()
     QVERIFY(!image.isNull());
 
     QCOMPARE(image.size(), newSize);
+}
+
+void tst_QImageReader::setScaledSizeOneDimension_data()
+{
+    QTest::addColumn<QString>("fileName");
+    QTest::addColumn<QByteArray>("format");
+
+    QTest::newRow("PNG: kollada") << QString("kollada") << QByteArray("png");
+    QTest::newRow("JPEG: beavis") << QString("beavis") << QByteArray("jpeg");
+    QTest::newRow("GIF: earth") << QString("earth") << QByteArray("gif");
+    QTest::newRow("SVG: rect") << QString("rect") << QByteArray("svg");
+    QTest::newRow("BMP: colorful") << QString("colorful") << QByteArray("bmp");
+    QTest::newRow("XPM: marble") << QString("marble") << QByteArray("xpm");
+    QTest::newRow("PPM: teapot") << QString("teapot") << QByteArray("ppm");
+    QTest::newRow("XBM: gnus") << QString("gnus") << QByteArray("xbm");
+}
+
+void tst_QImageReader::setScaledSizeOneDimension()
+{
+    QFETCH(QString, fileName);
+    QFETCH(QByteArray, format);
+
+    SKIP_IF_UNSUPPORTED(format);
+
+    const QSize originalSize = QImageReader(prefix + fileName).size();
+    QVERIFY(!originalSize.isEmpty());
+
+    auto testScaledSize = [&] (const QSize &scaledSize) {
+        QSize expectedSize = scaledSize;
+        if (scaledSize.width() <= 0)
+            expectedSize.setWidth(qRound(originalSize.width() *
+                                         (qreal(scaledSize.height()) / originalSize.height())));
+        else if (scaledSize.height() <= 0)
+            expectedSize.setHeight(qRound(originalSize.height() *
+                                          (qreal(scaledSize.width()) / originalSize.width())));
+
+        QImageReader reader(prefix + fileName);
+        reader.setScaledSize(scaledSize);
+        QImage image = reader.read();
+        QVERIFY(!image.isNull());
+        QCOMPARE(image.size(), expectedSize);
+    };
+
+    // downscale
+    testScaledSize(QSize(originalSize.width() / 2, 0));
+    testScaledSize(QSize(originalSize.width() / 2, -1));
+    testScaledSize(QSize(0, originalSize.height() / 2));
+    testScaledSize(QSize(-1, originalSize.height() / 2));
+
+    // upscale
+    testScaledSize(QSize(originalSize.width() * 2, 0));
+    testScaledSize(QSize(originalSize.width() * 2, -1));
+    testScaledSize(QSize(0, originalSize.height() * 2));
+    testScaledSize(QSize(-1, originalSize.height() * 2));
 }
 
 void tst_QImageReader::task255627_setNullScaledSize_data()
@@ -510,7 +570,36 @@ void tst_QImageReader::setScaledClipRect()
     QImageReader originalReader(prefix + fileName);
     originalReader.setScaledSize(QSize(300, 300));
     QImage originalImage = originalReader.read();
+    if (format.contains("svg")) {
+        // rendering of subrect may yield slight rounding differences, truncate them away
+        image.convertTo(QImage::Format_RGB444);
+        originalImage.convertTo(QImage::Format_RGB444);
+    }
     QCOMPARE(originalImage.copy(newRect), image);
+}
+
+void tst_QImageReader::setFormat()
+{
+    QByteArray ppmImage = "P1 2 2\n1 0\n0 1";
+    QBuffer buf(&ppmImage);
+    QImageReader reader(&buf);
+
+    // read image in autodetected format
+    QCOMPARE(reader.size(), QSize(2,2));
+    buf.close();
+
+    // try reading with non-matching format, must not succeed
+    reader.setDecideFormatFromContent(false);
+    reader.setFormat("bmp");
+    reader.setDevice(&buf);
+    QCOMPARE(reader.size(), QSize());
+    buf.close();
+
+    // read with manually set matching format
+    reader.setFormat("ppm");
+    reader.setDevice(&buf);
+    QCOMPARE(reader.size(), QSize(2,2));
+    buf.close();
 }
 
 void tst_QImageReader::imageFormat_data()
@@ -527,7 +616,7 @@ void tst_QImageReader::imageFormat_data()
     QTest::newRow("ppm-4") << QString("test.ppm") << QByteArray("ppm") << QImage::Format_RGB32;
 
     QTest::newRow("jpeg-1") << QString("beavis.jpg") << QByteArray("jpeg") << QImage::Format_Grayscale8;
-    QTest::newRow("jpeg-2") << QString("YCbCr_cmyk.jpg") << QByteArray("jpeg") << QImage::Format_RGB32;
+    QTest::newRow("jpeg-2") << QString("YCbCr_cmyk.jpg") << QByteArray("jpeg") << QImage::Format_CMYK8888;
     QTest::newRow("jpeg-3") << QString("YCbCr_rgb.jpg") << QByteArray("jpeg") << QImage::Format_RGB32;
 
     QTest::newRow("gif-1") << QString("earth.gif") << QByteArray("gif") << QImage::Format_Invalid;
@@ -588,41 +677,31 @@ void tst_QImageReader::multiWordNamedColorXPM()
     QCOMPARE(image.pixel(0, 2), qRgb(255, 250, 205)); // lemon chiffon
 }
 
+namespace {
+template <typename ForwardIterator>
+bool is_sorted_unique(ForwardIterator first, ForwardIterator last)
+{
+    // a range is sorted with no dups iff each *i < *(i+1), so check that none are >=:
+    return std::adjacent_find(first, last, std::greater_equal<>{}) == last;
+}
+}
+
 void tst_QImageReader::supportedFormats()
 {
-    QList<QByteArray> formats = QImageReader::supportedImageFormats();
-    QList<QByteArray> sortedFormats = formats;
-    std::sort(sortedFormats.begin(), sortedFormats.end());
-
-    // check that the list is sorted
-    QCOMPARE(formats, sortedFormats);
-
-    QSet<QByteArray> formatSet;
-    foreach (QByteArray format, formats)
-        formatSet << format;
-
-    // check that the list does not contain duplicates
-    QCOMPARE(formatSet.size(), formats.size());
+    const QList<QByteArray> formats = QImageReader::supportedImageFormats();
+    auto printOnFailure = qScopeGuard([&] { qDebug() << formats; });
+    QVERIFY(is_sorted_unique(formats.begin(), formats.end()));
+    printOnFailure.dismiss();
 }
 
 void tst_QImageReader::supportedMimeTypes()
 {
-    QList<QByteArray> mimeTypes = QImageReader::supportedMimeTypes();
-    QList<QByteArray> sortedMimeTypes = mimeTypes;
-    std::sort(sortedMimeTypes.begin(), sortedMimeTypes.end());
-
-    // check that the list is sorted
-    QCOMPARE(mimeTypes, sortedMimeTypes);
-
-    QSet<QByteArray> mimeTypeSet;
-    foreach (QByteArray mimeType, mimeTypes)
-        mimeTypeSet << mimeType;
-
+    const QList<QByteArray> mimeTypes = QImageReader::supportedMimeTypes();
+    auto printOnFailure = qScopeGuard([&] { qDebug() << mimeTypes; });
+    QVERIFY(is_sorted_unique(mimeTypes.begin(), mimeTypes.end()));
     // check the list as a minimum contains image/bmp
-    QVERIFY(mimeTypeSet.contains("image/bmp"));
-
-    // check that the list does not contain duplicates
-    QCOMPARE(mimeTypeSet.size(), mimeTypes.size());
+    QVERIFY(mimeTypes.contains("image/bmp"));
+    printOnFailure.dismiss();
 }
 
 void tst_QImageReader::setBackgroundColor_data()
@@ -667,7 +746,7 @@ void tst_QImageReader::supportsAnimation_data()
     QTest::newRow("BMP: colorful") << QString("colorful.bmp") << false;
     QTest::newRow("BMP: font") << QString("font.bmp") << false;
     QTest::newRow("BMP: signed char") << QString("crash-signed-char.bmp") << false;
-    QTest::newRow("BMP: test32bfv4") << QString("test32bfv4.bmp") << false;;
+    QTest::newRow("BMP: test32bfv4") << QString("test32bfv4.bmp") << false;
     QTest::newRow("BMP: test32v5") << QString("test32v5.bmp") << false;
     QTest::newRow("XPM: marble") << QString("marble.xpm") << false;
     QTest::newRow("PNG: kollada") << QString("kollada.png") << false;
@@ -1319,10 +1398,10 @@ void tst_QImageReader::devicePosition()
     QVERIFY2(imageFile.open(QFile::ReadOnly), msgFileOpenReadFailed(imageFile).constData());
     QByteArray imageData = imageFile.readAll();
     QVERIFY(!imageData.isNull());
-    int imageDataSize = imageData.size();
+    const qint64 imageDataSize = imageData.size();
 
     const char *preStr = "prebeef\n";
-    int preLen = qstrlen(preStr);
+    const qint64 preLen = qstrlen(preStr);
     imageData.prepend(preStr);
     if (format != "svg" && format != "svgz") // Doesn't handle trailing data
         imageData.append("\npostbeef");
@@ -1335,7 +1414,7 @@ void tst_QImageReader::devicePosition()
         format != "pgm" &&
         format != "pbm" &&
         format != "gif")  // Known not to work
-        QCOMPARE(buf.pos(), qint64(preLen+imageDataSize));
+        QCOMPARE(buf.pos(), preLen + imageDataSize);
 }
 
 
@@ -1462,10 +1541,10 @@ void tst_QImageReader::readFromResources_data()
                                      << QString("");
     QTest::newRow("corrupt-colors.xpm") << QString("corrupt-colors.xpm")
                                                << QByteArray("xpm") << QSize(0, 0)
-                                               << QString("QImage: XPM color specification is missing: bla9an.n#x");
+                                               << QString("XPM color specification is missing: bla9an.n#x");
     QTest::newRow("corrupt-pixels.xpm") << QString("corrupt-pixels.xpm")
                                                << QByteArray("xpm") << QSize(0, 0)
-                                               << QString("QImage: XPM pixels missing on image line 3");
+                                               << QString("XPM pixels missing on image line 3");
     QTest::newRow("corrupt-pixel-count.xpm") << QString("corrupt-pixel-count.xpm")
                                              << QByteArray("xpm") << QSize(0, 0)
                                              << QString("");
@@ -1580,10 +1659,10 @@ void tst_QImageReader::readCorruptImage_data()
     QTest::newRow("corrupt bmp") << QString("corrupt.bmp") << true << QString("") << QByteArray("bmp");
     QTest::newRow("corrupt bmp (clut)") << QString("corrupt_clut.bmp") << true << QString("") << QByteArray("bmp");
     QTest::newRow("corrupt xpm (colors)") << QString("corrupt-colors.xpm") << true
-                                          << QString("QImage: XPM color specification is missing: bla9an.n#x")
+                                          << QString("XPM color specification is missing: bla9an.n#x")
                                           << QByteArray("xpm");
     QTest::newRow("corrupt xpm (pixels)") << QString("corrupt-pixels.xpm") << true
-                                          << QString("QImage: XPM pixels missing on image line 3")
+                                          << QString("XPM pixels missing on image line 3")
                                           << QByteArray("xpm");
     QTest::newRow("corrupt xbm") << QString("corrupt.xbm") << false << QString("") << QByteArray("xbm");
     QTest::newRow("corrupt svg") << QString("corrupt.svg") << true << QString("") << QByteArray("svg");
@@ -1617,43 +1696,55 @@ void tst_QImageReader::supportsOption_data()
     QTest::addColumn<QIntList>("options");
 
     QTest::newRow("png") << QString("black.png")
-                         << (QIntList() << QImageIOHandler::Gamma
-                              << QImageIOHandler::Description
-                              << QImageIOHandler::Quality
-                              << QImageIOHandler::CompressionRatio
-                              << QImageIOHandler::Size
-                              << QImageIOHandler::ScaledSize);
+                         << QIntList{
+                                QImageIOHandler::Gamma,
+                                QImageIOHandler::Description,
+                                QImageIOHandler::Quality,
+                                QImageIOHandler::CompressionRatio,
+                                QImageIOHandler::Size,
+                                QImageIOHandler::ImageFormat,
+                            };
 }
 
 void tst_QImageReader::supportsOption()
 {
     QFETCH(QString, fileName);
-    QFETCH(QIntList, options);
-
-    QSet<QImageIOHandler::ImageOption> allOptions;
-    allOptions << QImageIOHandler::Size
-               << QImageIOHandler::ClipRect
-               << QImageIOHandler::Description
-               << QImageIOHandler::ScaledClipRect
-               << QImageIOHandler::ScaledSize
-               << QImageIOHandler::CompressionRatio
-               << QImageIOHandler::Gamma
-               << QImageIOHandler::Quality
-               << QImageIOHandler::Name
-               << QImageIOHandler::SubType
-               << QImageIOHandler::IncrementalReading
-               << QImageIOHandler::Endianness
-               << QImageIOHandler::Animation
-               << QImageIOHandler::BackgroundColor;
+    QFETCH(const QIntList, options);
 
     QImageReader reader(prefix + fileName);
-    for (int i = 0; i < options.size(); ++i) {
-        QVERIFY(reader.supportsOption(QImageIOHandler::ImageOption(options.at(i))));
-        allOptions.remove(QImageIOHandler::ImageOption(options.at(i)));
-    }
 
-    foreach (QImageIOHandler::ImageOption option, allOptions)
-        QVERIFY(!reader.supportsOption(option));
+    for (int i = 0; ; ++i) {
+        // this switch ensures the compiler warns when we miss an enumerator [-Wswitch]
+        // do _not_ add a default case!
+        switch (const auto o = QImageIOHandler::ImageOption(i)) {
+        case QImageIOHandler::Size:
+        case QImageIOHandler::ClipRect:
+        case QImageIOHandler::Description:
+        case QImageIOHandler::ScaledClipRect:
+        case QImageIOHandler::ScaledSize:
+        case QImageIOHandler::CompressionRatio:
+        case QImageIOHandler::Gamma:
+        case QImageIOHandler::Quality:
+        case QImageIOHandler::Name:
+        case QImageIOHandler::SubType:
+        case QImageIOHandler::IncrementalReading:
+        case QImageIOHandler::Endianness:
+        case QImageIOHandler::Animation:
+        case QImageIOHandler::BackgroundColor:
+        case QImageIOHandler::ImageFormat:
+        case QImageIOHandler::SupportedSubTypes:
+        case QImageIOHandler::OptimizedWrite:
+        case QImageIOHandler::ProgressiveScanWrite:
+        case QImageIOHandler::ImageTransformation:
+            {
+                auto printOnFailure = qScopeGuard([&] { qDebug("failed at %d", i); });
+                QCOMPARE(reader.supportsOption(o), options.contains(i));
+                printOnFailure.dismiss();
+                continue; // ... as long as `i` represents a valid ImageOption value
+            }
+        }
+        break; // ... once `i` no longer represents a valid ImageOption value
+    }
 }
 
 void tst_QImageReader::autoDetectImageFormat()
@@ -1822,13 +1913,13 @@ void tst_QImageReader::testIgnoresFormatAndExtension()
 
     SKIP_IF_UNSUPPORTED(expected.toLatin1());
 
-    QList<QByteArray> formats = QImageReader::supportedImageFormats();
+    const QList<QByteArray> formats = QImageReader::supportedImageFormats();
     QString fileNameBase = prefix + name + QLatin1Char('.');
     QString tempPath = m_temporaryDir.path();
     if (!tempPath.endsWith(QLatin1Char('/')))
         tempPath += QLatin1Char('/');
 
-    foreach (const QByteArray &f, formats) {
+    for (const QByteArray &f : formats) {
         if (f == extension.toLocal8Bit())
             continue;
 
@@ -1953,6 +2044,10 @@ void tst_QImageReader::readText_data()
 
 void tst_QImageReader::readText()
 {
+#ifdef QT_NO_IMAGEIO_TEXT_LOADING
+    QSKIP("Reading text from image is configured away");
+#endif
+
     QFETCH(QString, fileName);
     QFETCH(QString, key);
     QFETCH(QString, text);
@@ -1974,19 +2069,31 @@ void tst_QImageReader::preserveTexts_data()
     for (int c = 0xa0; c <= 0xff; c++)
         latin1set.append(QLatin1Char(c));
 
-    QStringList fileNames;
-    fileNames << QLatin1String(":/images/kollada.png")
-              << QLatin1String(":/images/txts.jpg");
-    foreach (const QString &fileName, fileNames) {
-        QTest::newRow("Simple") << fileName << "simpletext";
-        QTest::newRow("Whitespace") << fileName << " A text  with whitespace ";
-        QTest::newRow("Newline") << fileName << "A text\nwith newlines\n";
-        QTest::newRow("Double newlines") << fileName << "A text\n\nwith double newlines\n\n";
-        QTest::newRow("Long") << fileName << QString("A rather long text, at least after many repetitions. ").repeated(100);
-        QTest::newRow("All Latin1 chars") << fileName << latin1set;
+    const QList<QLatin1StringView> fileNames{
+        QLatin1StringView(":/images/kollada.png"),
+        QLatin1StringView(":/images/txts.jpg")
+        // Common prefix of length 9 before file names: ":/images/", skipped below by + 9.
+    };
+    for (const auto &fileName : fileNames) {
+        QTest::addRow("Simple %s", fileName.data() + 9)
+            << QString(fileName) << "simpletext";
+        QTest::addRow("Whitespace %s", fileName.data() + 9)
+            << QString(fileName) << " A text  with whitespace ";
+        QTest::addRow("Newline %s", fileName.data() + 9)
+            << QString(fileName) << "A text\nwith newlines\n";
+        QTest::addRow("Double newlines %s", fileName.data() + 9)
+            << QString(fileName) << "A text\n\nwith double newlines\n\n";
+        QTest::addRow("Long %s", fileName.data() + 9)
+            << QString(fileName)
+            << QString("A rather long text, at least after many repetitions. ").repeated(100);
+        QTest::addRow("All Latin1 chars %s", fileName.data() + 9)
+            << QString(fileName) << latin1set;
 #if 0
         // Depends on iTXt support in libpng
-        QTest::newRow("Multibyte string") << fileName << QString::fromUtf8("\341\233\222\341\233\226\341\232\251\341\232\271\341\232\242\341\233\232\341\232\240");
+        QTest::addRow("Multibyte string %s", fileName.data() + 9)
+            << QString(fileName)
+            << QString::fromUtf8("\341\233\222\341\233\226\341\232\251\341\232"
+                                 "\271\341\232\242\341\233\232\341\232\240");
 #endif
     }
 }
@@ -1994,6 +2101,10 @@ void tst_QImageReader::preserveTexts_data()
 
 void tst_QImageReader::preserveTexts()
 {
+#ifdef QT_NO_IMAGEIO_TEXT_LOADING
+    QSKIP("Reading text from image is configured away");
+#endif
+
     QFETCH(QString, fileName);
     QByteArray format = fileName.right(3).toLatin1();
     QFETCH(QString, text);

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qpaintengineex_p.h"
 #include "qpainter_p.h"
@@ -183,7 +147,7 @@ void QPaintEngineExPrivate::replayClipOperations()
     if (!p || !p->d_ptr)
         return;
 
-    const QVector<QPainterClipInfo> &clipInfo = p->d_ptr->state->clipInfo;
+    const QList<QPainterClipInfo> &clipInfo = p->d_ptr->state->clipInfo;
 
     QTransform transform = q->state()->matrix;
 
@@ -385,10 +349,10 @@ QPainterState *QPaintEngineEx::createState(QPainterState *orig) const
 
 Q_GUI_EXPORT extern bool qt_scaleForTransform(const QTransform &transform, qreal *scale); // qtransform.cpp
 
-void QPaintEngineEx::stroke(const QVectorPath &path, const QPen &pen)
+void QPaintEngineEx::stroke(const QVectorPath &path, const QPen &inPen)
 {
 #ifdef QT_DEBUG_DRAW
-    qDebug() << "QPaintEngineEx::stroke()" << pen;
+    qDebug() << "QPaintEngineEx::stroke()" << inPen;
 #endif
 
     Q_D(QPaintEngineEx);
@@ -401,6 +365,38 @@ void QPaintEngineEx::stroke(const QVectorPath &path, const QPen &pen)
         d->stroker.setMoveToHook(qpaintengineex_moveTo);
         d->stroker.setLineToHook(qpaintengineex_lineTo);
         d->stroker.setCubicToHook(qpaintengineex_cubicTo);
+    }
+
+    QRectF clipRect;
+    QPen pen = inPen;
+    if (pen.style() > Qt::SolidLine) {
+        QRectF cpRect = path.controlPointRect();
+        const QTransform &xf = state()->matrix;
+        if (pen.isCosmetic()) {
+            clipRect = d->exDeviceRect;
+            cpRect.translate(xf.dx(), xf.dy());
+        } else {
+            clipRect = xf.inverted().mapRect(QRectF(d->exDeviceRect));
+        }
+        // Check to avoid generating unwieldy amount of dashes that will not be visible anyway
+        qreal pw = pen.widthF() ? pen.widthF() : 1;
+        QRectF extentRect = cpRect.adjusted(-pw, -pw, pw, pw) & clipRect;
+        qreal extent = qMax(extentRect.width(), extentRect.height());
+        qreal patternLength = 0;
+        const QList<qreal> pattern = pen.dashPattern();
+        const int patternSize = qMin(pattern.size(), 32);
+        for (int i = 0; i < patternSize; i++)
+            patternLength += qMax(pattern.at(i), qreal(0));
+        patternLength *= pw;
+        if (qFuzzyIsNull(patternLength)) {
+            pen.setStyle(Qt::NoPen);
+        } else if (extent / patternLength > QDashStroker::repetitionLimit()) {
+            // approximate stream of tiny dashes with semi-transparent solid line
+            pen.setStyle(Qt::SolidLine);
+            QColor color(pen.color());
+            color.setAlpha(color.alpha() / 2);
+            pen.setColor(color);
+        }
     }
 
     if (!qpen_fast_equals(pen, d->strokerPen)) {
@@ -430,14 +426,8 @@ void QPaintEngineEx::stroke(const QVectorPath &path, const QPen &pen)
         return;
     }
 
-    if (pen.style() > Qt::SolidLine) {
-        if (qt_pen_is_cosmetic(pen, state()->renderHints)){
-            d->activeStroker->setClipRect(d->exDeviceRect);
-        } else {
-            QRectF clipRect = state()->matrix.inverted().mapRect(QRectF(d->exDeviceRect));
-            d->activeStroker->setClipRect(clipRect);
-        }
-    }
+    if (!clipRect.isNull())
+        d->activeStroker->setClipRect(clipRect);
 
     if (d->activeStroker == &d->stroker)
         d->stroker.setForceOpen(path.hasExplicitOpen());
@@ -461,7 +451,7 @@ void QPaintEngineEx::stroke(const QVectorPath &path, const QPen &pen)
         flags |= QVectorPath::CurvedShapeMask;
 
     // ### Perspective Xforms are currently not supported...
-    if (!qt_pen_is_cosmetic(pen, state()->renderHints)) {
+    if (!pen.isCosmetic()) {
         // We include cosmetic pens in this case to avoid having to
         // change the current transform. Normal transformed,
         // non-cosmetic pens will be transformed as part of fill
@@ -912,6 +902,7 @@ void QPaintEngineEx::drawPoints(const QPoint *points, int pointCount)
 
 void QPaintEngineEx::drawPolygon(const QPointF *points, int pointCount, PolygonDrawMode mode)
 {
+    Q_ASSERT(pointCount >= 2);
     QVectorPath path((const qreal *) points, pointCount, nullptr, QVectorPath::polygonFlags(mode));
 
     if (mode == PolylineMode)
@@ -922,6 +913,7 @@ void QPaintEngineEx::drawPolygon(const QPointF *points, int pointCount, PolygonD
 
 void QPaintEngineEx::drawPolygon(const QPoint *points, int pointCount, PolygonDrawMode mode)
 {
+    Q_ASSERT(pointCount >= 2);
     int count = pointCount<<1;
     QVarLengthArray<qreal> pts(count);
 
@@ -939,20 +931,20 @@ void QPaintEngineEx::drawPolygon(const QPoint *points, int pointCount, PolygonDr
 
 void QPaintEngineEx::drawPixmap(const QPointF &pos, const QPixmap &pm)
 {
-    drawPixmap(QRectF(pos, pm.size() / pm.devicePixelRatio()), pm, pm.rect());
+    drawPixmap(QRectF(pos, pm.deviceIndependentSize()), pm, pm.rect());
 }
 
 void QPaintEngineEx::drawImage(const QPointF &pos, const QImage &image)
 {
-    drawImage(QRectF(pos, image.size() / image.devicePixelRatio()), image, image.rect());
+    drawImage(QRectF(pos, image.deviceIndependentSize()), image, image.rect());
 }
 
 void QPaintEngineEx::drawTiledPixmap(const QRectF &r, const QPixmap &pixmap, const QPointF &s)
 {
     QBrush brush(state()->pen.color(), pixmap);
     QTransform xform = QTransform::fromTranslate(r.x() - s.x(), r.y() - s.y());
-    if (!qFuzzyCompare(pixmap.devicePixelRatioF(), 1.0))
-        xform.scale(1.0/pixmap.devicePixelRatioF(), 1.0/pixmap.devicePixelRatioF());
+    if (!qFuzzyCompare(pixmap.devicePixelRatio(), qreal(1.0)))
+        xform.scale(1.0/pixmap.devicePixelRatio(), 1.0/pixmap.devicePixelRatio());
     brush.setTransform(xform);
 
     qreal pts[] = { r.x(), r.y(),

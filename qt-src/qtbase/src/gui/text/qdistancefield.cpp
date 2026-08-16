@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdistancefield_p.h"
 #include <qmath.h>
@@ -44,6 +8,8 @@
 #include <private/qpathsimplifier_p.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 Q_LOGGING_CATEGORY(lcDistanceField, "qt.distanceField");
 
@@ -508,6 +474,11 @@ static void makeDistanceField(QDistanceFieldData *data, const QPainterPath &path
     QDataBuffer<quint32> pathIndices(0);
     QDataBuffer<QPoint> pathVertices(0);
     qSimplifyPath(path, pathVertices, pathIndices, transform);
+    if (pathVertices.isEmpty()) {
+        qCWarning(lcDistanceField) << "Unexpected glyph path structure, bailing out";
+        memset(data->data, 0, data->nbytes);
+        return;
+    }
 
     const qint32 interiorColor = -0x7f80; // 8:8 signed format, -127.5
     const qint32 exteriorColor = 0x7f80; // 8:8 signed format, 127.5
@@ -564,14 +535,14 @@ static void makeDistanceField(QDistanceFieldData *data, const QPainterPath &path
                                  || (to.y() < offs << 8) || (to.y() >= (imgHeight - offs) << 8));
         }
 
-        isConvex.resize(normals.count());
-        for (int next = 0, prev = normals.count() - 1; next < normals.count(); prev = next++) {
+        isConvex.resize(normals.size());
+        for (int next = 0, prev = normals.size() - 1; next < normals.size(); prev = next++) {
             isConvex[prev] = normals.at(prev).x() * normals.at(next).y()
                            - normals.at(prev).y() * normals.at(next).x() < 0;
         }
 
         // Draw quads.
-        for (int next = 0, prev = normals.count() - 1; next < normals.count(); prev = next++) {
+        for (int next = 0, prev = normals.size() - 1; next < normals.size(); prev = next++) {
             QPoint n = normals.at(next);
             QPoint intPrev = vertices.at(prev);
             QPoint extPrev = vertices.at(prev);
@@ -761,7 +732,7 @@ static void initialDistanceFieldFactor()
     }
     if (qEnvironmentVariableIsSet("QT_DISTANCEFIELD_DEFAULT_RADIUS")) {
         QT_DISTANCEFIELD_DEFAULT_RADIUS = qEnvironmentVariableIntValue("QT_DISTANCEFIELD_DEFAULT_RADIUS");
-        qDebug(lcDistanceField) << "set the QT_DISTANCEFIELD_DEFAULT_RADIUS:" << QT_DISTANCEFIELD_DEFAULT_RADIUS;
+        qCDebug(lcDistanceField) << "set the QT_DISTANCEFIELD_DEFAULT_RADIUS:" << QT_DISTANCEFIELD_DEFAULT_RADIUS;
     }
     if (qEnvironmentVariableIsSet("QT_DISTANCEFIELD_DEFAULT_HIGHGLYPHCOUNT")) {
         QT_DISTANCEFIELD_DEFAULT_HIGHGLYPHCOUNT = qEnvironmentVariableIntValue("QT_DISTANCEFIELD_DEFAULT_HIGHGLYPHCOUNT");
@@ -780,7 +751,7 @@ bool qt_fontHasNarrowOutlines(QFontEngine *fontEngine)
 
     const glyph_t glyph = fe->glyphIndex('O');
     if (glyph != 0)
-        im = fe->alphaMapForGlyph(glyph, QFixed(), QTransform());
+        im = fe->alphaMapForGlyph(glyph, QFixedPoint(), QTransform());
 
     Q_ASSERT(fe->ref.loadRelaxed() == 0);
     delete fe;
@@ -796,7 +767,7 @@ bool qt_fontHasNarrowOutlines(const QRawFont &f)
     if (!font.isValid())
         return false;
 
-    QVector<quint32> glyphIndices = font.glyphIndexesForString(QLatin1String("O"));
+    QList<quint32> glyphIndices = font.glyphIndexesForString("O"_L1);
     if (glyphIndices.isEmpty() || glyphIndices[0] == 0)
         return false;
 
@@ -873,19 +844,24 @@ QDistanceFieldData *QDistanceFieldData::create(const QSize &size)
     return data;
 }
 
+QDistanceFieldData *QDistanceFieldData::create(QSize size, const QPainterPath &path, bool doubleResolution)
+{
+    QDistanceFieldData *data = create(size);
+    makeDistanceField(data,
+                      path,
+                      QT_DISTANCEFIELD_SCALE(doubleResolution),
+                      QT_DISTANCEFIELD_RADIUS(doubleResolution) / QT_DISTANCEFIELD_SCALE(doubleResolution));
+    return data;
+}
+
+
 QDistanceFieldData *QDistanceFieldData::create(const QPainterPath &path, bool doubleResolution)
 {
     int dfMargin = QT_DISTANCEFIELD_RADIUS(doubleResolution) / QT_DISTANCEFIELD_SCALE(doubleResolution);
     int glyphWidth = qCeil(path.boundingRect().width() / QT_DISTANCEFIELD_SCALE(doubleResolution)) + dfMargin * 2;
     int glyphHeight = qCeil(path.boundingRect().height() / QT_DISTANCEFIELD_SCALE(doubleResolution)) + dfMargin * 2;
 
-    QDistanceFieldData *data = create(QSize(glyphWidth, glyphHeight));
-
-    makeDistanceField(data,
-                      path,
-                      QT_DISTANCEFIELD_SCALE(doubleResolution),
-                      QT_DISTANCEFIELD_RADIUS(doubleResolution) / QT_DISTANCEFIELD_SCALE(doubleResolution));
-    return data;
+    return create(QSize(glyphWidth, glyphHeight), path, doubleResolution);
 }
 
 
@@ -907,6 +883,16 @@ QDistanceField::QDistanceField(const QRawFont &font, glyph_t glyph, bool doubleR
 QDistanceField::QDistanceField(QFontEngine *fontEngine, glyph_t glyph, bool doubleResolution)
 {
     setGlyph(fontEngine, glyph, doubleResolution);
+}
+
+QDistanceField::QDistanceField(QSize size, const QPainterPath &path, glyph_t glyph, bool doubleResolution)
+{
+    QPainterPath dfPath = path;
+    dfPath.translate(-dfPath.boundingRect().topLeft());
+    dfPath.setFillRule(Qt::WindingFill);
+
+    d = QDistanceFieldData::create(size, dfPath, doubleResolution);
+    d->glyph = glyph;
 }
 
 QDistanceField::QDistanceField(const QPainterPath &path, glyph_t glyph, bool doubleResolution)
@@ -1092,7 +1078,7 @@ QImage QDistanceField::toImage(QImage::Format format) const
         }
 
         if (image.format() != format)
-            image = image.convertToFormat(format);
+            image = std::move(image).convertToFormat(format);
     }
 
     return image;

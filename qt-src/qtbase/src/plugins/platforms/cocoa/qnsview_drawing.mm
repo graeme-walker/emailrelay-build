@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 // This file is included from qnsview.mm, and only used to organize the code
 
@@ -43,7 +7,21 @@
 
 - (void)initDrawing
 {
-    [self updateLayerBacking];
+    if (qt_mac_resolveOption(-1, m_platformWindow->window(),
+        "_q_mac_wantsLayer", "QT_MAC_WANTS_LAYER") != -1) {
+        qCWarning(lcQpaDrawing) << "Layer-backing is always enabled."
+            << " QT_MAC_WANTS_LAYER/_q_mac_wantsLayer has no effect.";
+    }
+
+    // Pick up and persist requested color space from surface format
+    const QSurfaceFormat surfaceFormat = m_platformWindow->format();
+    if (QColorSpace colorSpace = surfaceFormat.colorSpace(); colorSpace.isValid()) {
+        NSData *iccData = colorSpace.iccProfile().toNSData();
+        self.colorSpace = [[[NSColorSpace alloc] initWithICCProfileData:iccData] autorelease];
+    }
+
+    // Trigger creation of the layer
+    self.wantsLayer = YES;
 }
 
 - (BOOL)isOpaque
@@ -58,41 +36,13 @@
     return YES;
 }
 
+- (NSColorSpace*)colorSpace
+{
+    // If no explicit color space was set, use the NSWindow's color space
+    return m_colorSpace ? m_colorSpace : self.window.colorSpace;
+}
+
 // ----------------------- Layer setup -----------------------
-
-- (void)updateLayerBacking
-{
-    self.wantsLayer = [self layerEnabledByMacOS]
-        || [self layerExplicitlyRequested]
-        || [self shouldUseMetalLayer];
-}
-
-- (BOOL)layerEnabledByMacOS
-{
-    // AppKit has its own logic for this, but if we rely on that, our layers are created
-    // by AppKit at a point where we've already set up other parts of the platform plugin
-    // based on the presence of layers or not. Once we've rewritten these parts to support
-    // dynamically picking up layer enablement we can let AppKit do its thing.
-    return QMacVersion::buildSDK() >= QOperatingSystemVersion::MacOSMojave
-        && QMacVersion::currentRuntime() >= QOperatingSystemVersion::MacOSMojave;
-}
-
-- (BOOL)layerExplicitlyRequested
-{
-    static bool wantsLayer = [&]() {
-        int wantsLayer = qt_mac_resolveOption(-1, m_platformWindow->window(),
-            "_q_mac_wantsLayer", "QT_MAC_WANTS_LAYER");
-
-        if (wantsLayer != -1 && [self layerEnabledByMacOS]) {
-            qCWarning(lcQpaDrawing) << "Layer-backing cannot be explicitly controlled on 10.14 when built against the 10.14 SDK";
-            return true;
-        }
-
-        return wantsLayer == 1;
-    }();
-
-    return wantsLayer;
-}
 
 - (BOOL)shouldUseMetalLayer
 {
@@ -125,7 +75,10 @@
         // too late at this point and the QWindow will be non-functional,
         // but we can at least print a warning.
         if ([MTLCreateSystemDefaultDevice() autorelease]) {
-            return [CAMetalLayer layer];
+            static bool allowPresentsWithTransaction =
+                !qEnvironmentVariableIsSet("QT_MTL_NO_TRANSACTION");
+            return allowPresentsWithTransaction ?
+                [QMetalLayer layer] : [CAMetalLayer layer];
         } else {
             qCWarning(lcQpaDrawing) << "Failed to create QWindow::MetalSurface."
                 << "Metal is not supported by any of the GPUs in this system.";
@@ -146,8 +99,7 @@
 {
     qCDebug(lcQpaDrawing) << "Making" << self
         << (self.wantsLayer ? "layer-backed" : "layer-hosted")
-        << "with" << layer << "due to being" << ([self layerExplicitlyRequested] ? "explicitly requested"
-            : [self shouldUseMetalLayer] ? "needed by surface type" : "enabled by macOS");
+        << "with" << layer;
 
     if (layer.delegate && layer.delegate != self) {
         qCWarning(lcQpaDrawing) << "Layer already has delegate" << layer.delegate
@@ -158,12 +110,7 @@
 
     [super setLayer:layer];
 
-    // When adding a view to a view hierarchy the backing properties will change
-    // which results in updating the contents scale, but in case of switching the
-    // layer on a view that's already in a view hierarchy we need to manually ensure
-    // the scale is up to date.
-    if (self.superview)
-        [self updateLayerContentsScale];
+    [self propagateBackingProperties];
 
     if (self.opaque && lcQpaDrawing().isDebugEnabled()) {
         // If the view claims to be opaque we expect it to fill the entire
@@ -196,18 +143,28 @@
 {
     qCDebug(lcQpaDrawing) << "Backing properties changed for" << self;
 
-    if (self.layer)
-        [self updateLayerContentsScale];
+    [self propagateBackingProperties];
 
     // Ideally we would plumb this situation through QPA in a way that lets
     // clients invalidate their own caches, recreate QBackingStore, etc.
-    // For now we trigger an expose, and let QCocoaBackingStore deal with
+
+    // QPA supports DPR (scale) change notifications. We are not sure
+    // based on this event that it is the scale that has changed (it
+    // could be the color space), however QPA will determine if it has
+    // actually changed.
+    QWindowSystemInterface::handleWindowDevicePixelRatioChanged
+        <QWindowSystemInterface::SynchronousDelivery>(m_platformWindow->window());
+
+    // Trigger an expose, and let QCocoaBackingStore deal with
     // buffer invalidation internally.
     [self setNeedsDisplay:YES];
 }
 
-- (void)updateLayerContentsScale
+- (void)propagateBackingProperties
 {
+    if (!self.layer)
+        return;
+
     // We expect clients to fill the layer with retina aware content,
     // based on the devicePixelRatio of the QWindow, so we set the
     // layer's content scale to match that. By going via devicePixelRatio
@@ -218,6 +175,12 @@
     auto devicePixelRatio = m_platformWindow->devicePixelRatio();
     qCDebug(lcQpaDrawing) << "Updating" << self.layer << "content scale to" << devicePixelRatio;
     self.layer.contentsScale = devicePixelRatio;
+
+    if ([self.layer isKindOfClass:CAMetalLayer.class]) {
+        CAMetalLayer *metalLayer = static_cast<CAMetalLayer *>(self.layer);
+        metalLayer.colorspace = self.colorSpace.CGColorSpace;
+        qCDebug(lcQpaDrawing) << "Set" << metalLayer << "color space to" << metalLayer.colorspace;
+    }
 }
 
 /*
@@ -228,7 +191,9 @@
 */
 - (BOOL)layer:(CALayer *)layer shouldInheritContentsScale:(CGFloat)scale fromWindow:(NSWindow *)window
 {
-    Q_UNUSED(layer); Q_UNUSED(scale); Q_UNUSED(window);
+    Q_UNUSED(layer);
+    Q_UNUSED(scale);
+    Q_UNUSED(window);
     return NO;
 }
 
@@ -240,24 +205,11 @@
 */
 - (void)drawRect:(NSRect)dirtyBoundingRect
 {
-    Q_ASSERT_X(!self.layer, "QNSView",
-        "The drawRect code path should not be hit when we are layer backed");
-
-    if (!m_platformWindow)
-        return;
-
-    QRegion exposedRegion;
-    const NSRect *dirtyRects;
-    NSInteger numDirtyRects;
-    [self getRectsBeingDrawn:&dirtyRects count:&numDirtyRects];
-    for (int i = 0; i < numDirtyRects; ++i)
-        exposedRegion += QRectF::fromCGRect(dirtyRects[i]).toRect();
-
-    if (exposedRegion.isEmpty())
-        exposedRegion = QRectF::fromCGRect(dirtyBoundingRect).toRect();
-
-    qCDebug(lcQpaDrawing) << "[QNSView drawRect:]" << m_platformWindow->window() << exposedRegion;
-    m_platformWindow->handleExposeEvent(exposedRegion);
+    Q_UNUSED(dirtyBoundingRect);
+    // As we are layer backed we shouldn't really end up here, but AppKit will
+    // in some cases call this method just because we implement it.
+    // FIXME: Remove drawRect and switch from displayLayer to updateLayer
+    qCWarning(lcQpaDrawing) << "[QNSView drawRect] called for layer backed view";
 }
 
 /*
@@ -281,8 +233,50 @@
         return;
     }
 
-    qCDebug(lcQpaDrawing) << "[QNSView displayLayer]" << m_platformWindow->window();
-    m_platformWindow->handleExposeEvent(QRectF::fromCGRect(self.bounds).toRect());
+    const auto handleExposeEvent = [&]{
+        const auto bounds = QRectF::fromCGRect(self.bounds).toRect();
+        qCDebug(lcQpaDrawing) << "[QNSView displayLayer]" << m_platformWindow->window() << bounds;
+        m_platformWindow->handleExposeEvent(bounds);
+    };
+
+    if (auto *qtMetalLayer = qt_objc_cast<QMetalLayer*>(self.layer)) {
+        const bool presentedWithTransaction = qtMetalLayer.presentsWithTransaction;
+        qtMetalLayer.presentsWithTransaction = YES;
+
+        handleExposeEvent();
+
+        {
+            // Clearing the mainThreadPresentation below will auto-release the
+            // block held by the property, which in turn holds on to drawables,
+            // so we want to clean up as soon as possible, to prevent stalling
+            // when requesting new drawables. But merely referencing the block
+            // below for the nil-check will make another auto-released copy of
+            // the block, so the scope of the auto-release pool needs to include
+            // that check as well.
+            QMacAutoReleasePool pool;
+
+            // If the expose event resulted in a secondary thread requesting that its
+            // drawable should be presented on the main thread with transaction, do so.
+            if (auto mainThreadPresentation = qtMetalLayer.mainThreadPresentation) {
+                mainThreadPresentation();
+                qtMetalLayer.mainThreadPresentation = nil;
+            }
+        }
+
+        qtMetalLayer.presentsWithTransaction = presentedWithTransaction;
+
+        // We're done presenting, but we must wait to unlock the display lock
+        // until the display cycle finishes, as otherwise the render thread may
+        // step in and present before the transaction commits. The display lock
+        // is recursive, so setNeedsDisplay can be safely called in the meantime
+        // without any issue.
+        QMetaObject::invokeMethod(m_platformWindow, [qtMetalLayer]{
+            qCDebug(lcMetalLayer) << "Unlocking" << qtMetalLayer << "after finishing display-cycle";
+            qtMetalLayer.displayLock.unlock();
+        }, Qt::QueuedConnection);
+    } else {
+        handleExposeEvent();
+    }
 }
 
 @end

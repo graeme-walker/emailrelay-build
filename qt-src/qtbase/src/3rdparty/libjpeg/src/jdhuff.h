@@ -3,14 +3,18 @@
  *
  * This file was part of the Independent JPEG Group's software:
  * Copyright (C) 1991-1997, Thomas G. Lane.
+ * Lossless JPEG Modifications:
+ * Copyright (C) 1999, Ken Murchison.
  * libjpeg-turbo Modifications:
- * Copyright (C) 2010-2011, 2015-2016, D. R. Commander.
+ * Copyright (C) 2010-2011, 2015-2016, 2021, D. R. Commander.
+ * Copyright (C) 2018, Matthias Räncker.
  * For conditions of distribution and use, see the accompanying README.ijg
  * file.
  *
  * This file contains declarations for Huffman entropy decoding routines
- * that are shared between the sequential decoder (jdhuff.c) and the
- * progressive decoder (jdphuff.c).  No other modules need to see these.
+ * that are shared between the sequential decoder (jdhuff.c), the progressive
+ * decoder (jdphuff.c), and the lossless decoder (jdlhuff.c).  No other modules
+ * need to see these.
  */
 
 #include "jconfigint.h"
@@ -77,6 +81,11 @@ EXTERN(void) jpeg_make_d_derived_tbl(j_decompress_ptr cinfo, boolean isDC,
 
 typedef size_t bit_buf_type;            /* type of bit-extraction buffer */
 #define BIT_BUF_SIZE  64                /* size of buffer in bits */
+
+#elif defined(__x86_64__) && defined(__ILP32__)
+
+typedef unsigned long long bit_buf_type; /* type of bit-extraction buffer */
+#define BIT_BUF_SIZE  64                 /* size of buffer in bits */
 
 #else
 
@@ -228,7 +237,10 @@ slowlabel: \
       s |= GET_BITS(1); \
       nb++; \
     } \
-    s = htbl->pub->huffval[(int)(s + htbl->valoffset[nb]) & 0xFF]; \
+    if (nb > 16) \
+      s = 0; \
+    else \
+      s = htbl->pub->huffval[(int)(s + htbl->valoffset[nb]) & 0xFF]; \
   }
 
 /* Out-of-line case for Huffman code fetching */

@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 //
 //  W A R N I N G
@@ -59,17 +23,18 @@
 
 #include <QtCore/qatomic.h>
 #include <QtCore/qhash.h>
+#include <QtCore/qlist.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qpointer.h>
 #include <QtCore/qreadwritelock.h>
 #include <QtCore/qstringlist.h>
 #include <QtCore/qvarlengtharray.h>
-#include <QtCore/qvector.h>
 
 #include "qdbus_symbols_p.h"
 
 #include <qdbusmessage.h>
 #include <qdbusservicewatcher.h>    // for the WatchMode enum
+Q_MOC_INCLUDE(<QtDBus/private/qdbuspendingcall_p.h>)
 
 #ifndef QT_NO_DBUS
 
@@ -136,7 +101,7 @@ public:
         QString service, path, signature;
         QObject* obj;
         int midx;
-        QVector<int> params;
+        QList<QMetaType> params;
         ArgMatchRules argumentMatch;
         QByteArray matchRule;
     };
@@ -148,15 +113,17 @@ public:
 
     struct ObjectTreeNode
     {
-        typedef QVector<ObjectTreeNode> DataList;
+        typedef QList<ObjectTreeNode> DataList;
 
-        inline ObjectTreeNode() : obj(nullptr), flags(0) { }
+        inline ObjectTreeNode() : obj(nullptr) { }
         inline ObjectTreeNode(const QString &n) // intentionally implicit
-            : name(n), obj(nullptr), flags(0) { }
+            : name(n), obj(nullptr)
+        {
+        }
         inline bool operator<(const QString &other) const
             { return name < other; }
-        inline bool operator<(const QStringRef &other) const
-            { return QStringRef(&name) < other; }
+        inline bool operator<(QStringView other) const
+            { return name < other; }
         inline bool isActive() const
         { return obj || !children.isEmpty(); }
 
@@ -166,21 +133,20 @@ public:
             QObject *obj;
             QDBusVirtualObject *treeNode;
         };
-        int flags;
+        QDBusConnection::RegisterOptions flags;
 
         DataList children;
     };
 
-public:
     // typedefs
     typedef QMultiHash<qintptr, Watcher> WatcherHash;
     typedef QHash<int, DBusTimeout *> TimeoutHash;
-    typedef QVector<QDBusMessage> PendingMessageList;
+    typedef QList<QDBusMessage> PendingMessageList;
 
     typedef QMultiHash<QString, SignalHook> SignalHookHash;
     typedef QHash<QString, QDBusMetaObject* > MetaObjectHash;
     typedef QHash<QByteArray, int> MatchRefCountHash;
-    typedef QVector<QDBusPendingCallPrivate*> PendingCallList;
+    typedef QList<QDBusPendingCallPrivate *> PendingCallList;
 
     struct WatchedServiceData {
         WatchedServiceData() : refcount(0) {}
@@ -192,9 +158,8 @@ public:
     };
     typedef QHash<QString, WatchedServiceData> WatchedServicesHash;
 
-public:
     // public methods are entry points from other objects
-    explicit QDBusConnectionPrivate(QObject *parent = nullptr);
+    QDBusConnectionPrivate();
     ~QDBusConnectionPrivate();
 
     void createBusService();
@@ -212,7 +177,7 @@ public:
                         QObject *obj, const char *member);
 
     bool send(const QDBusMessage &message);
-    QDBusMessage sendWithReply(const QDBusMessage &message, int mode, int timeout = -1);
+    QDBusMessage sendWithReply(const QDBusMessage &message, QDBus::CallMode mode, int timeout = -1);
     QDBusMessage sendWithReplyLocal(const QDBusMessage &message);
     QDBusPendingCallPrivate *sendWithReplyAsync(const QDBusMessage &message, QObject *receiver,
                                                 const char *returnMethod, const char *errorMethod,int timeout = -1);
@@ -247,6 +212,8 @@ public:
 
     void postEventToThread(int action, QObject *target, QEvent *event);
 
+    void enableDispatchDelayed(QObject *context);
+
 private:
     void checkThread();
     bool handleError(const QDBusErrorInternal &error);
@@ -258,12 +225,13 @@ private:
     void activateSignal(const SignalHook& hook, const QDBusMessage &msg);
     void activateObject(ObjectTreeNode &node, const QDBusMessage &msg, int pathStartPos);
     bool activateInternalFilters(const ObjectTreeNode &node, const QDBusMessage &msg);
-    bool activateCall(QObject *object, int flags, const QDBusMessage &msg);
+    bool activateCall(QObject *object, QDBusConnection::RegisterOptions flags,
+                      const QDBusMessage &msg);
 
     void sendInternal(QDBusPendingCallPrivate *pcall, void *msg, int timeout);
     void sendError(const QDBusMessage &msg, QDBusError::ErrorType code);
-    void deliverCall(QObject *object, int flags, const QDBusMessage &msg,
-                     const QVector<int> &metaTypes, int slotIdx);
+    void deliverCall(QObject *object, const QDBusMessage &msg, const QList<QMetaType> &metaTypes,
+                     int slotIdx);
 
     SignalHookHash::Iterator removeSignalHookNoLock(SignalHookHash::Iterator it);
     void collectAllObjects(ObjectTreeNode &node, QSet<QObject *> &set);
@@ -274,9 +242,13 @@ private:
 
     void watchForDBusDisconnection();
 
-    void _q_newConnection(QDBusConnectionPrivate *newConnection);
-
     void handleAuthentication();
+
+    bool addSignalHook(const QString &key, const SignalHook &hook);
+    bool removeSignalHook(const QString &key, const SignalHook &hook);
+
+    bool addSignalHookImpl(const QString &key, const SignalHook &hook);
+    bool removeSignalHookImpl(const QString &key, const SignalHook &hook);
 
 protected:
     void timerEvent(QTimerEvent *e) override;
@@ -289,8 +261,6 @@ public slots:
     void socketWrite(qintptr);
     void objectDestroyed(QObject *o);
     void relaySignal(QObject *obj, const QMetaObject *, int signalId, const QVariantList &args);
-    bool addSignalHook(const QString &key, const SignalHook &hook);
-    bool removeSignalHook(const QString &key, const SignalHook &hook);
 
 private slots:
     void serviceOwnerChangedNoLock(const QString &name, const QString &oldOwner, const QString &newOwner);
@@ -302,18 +272,22 @@ signals:
     void dispatchStatusChanged();
     void spyHooksFinished(const QDBusMessage &msg);
     void messageNeedsSending(QDBusPendingCallPrivate *pcall, void *msg, int timeout = -1);
-    bool signalNeedsConnecting(const QString &key, const QDBusConnectionPrivate::SignalHook &hook);
-    bool signalNeedsDisconnecting(const QString &key, const QDBusConnectionPrivate::SignalHook &hook);
     void serviceOwnerChanged(const QString &name, const QString &oldOwner, const QString &newOwner);
     void callWithCallbackFailed(const QDBusError &error, const QDBusMessage &message);
-    void newServerConnection(QDBusConnectionPrivate *newConnection);
 
 public:
+    static constexpr QDBusConnection::ConnectionCapabilities ConnectionIsBus =
+            QDBusConnection::ConnectionCapabilities::fromInt(0x8000'0000);
+    static constexpr QDBusConnection::ConnectionCapabilities InternalCapabilitiesMask = ConnectionIsBus;
+
     QAtomicInt ref;
     QAtomicInt capabilities;
     QDBusConnection::ConnectionCapabilities connectionCapabilities() const
     {
-        return (QDBusConnection::ConnectionCapabilities)capabilities.loadRelaxed();
+        uint capa = capabilities.loadRelaxed();
+        if (mode == ClientMode)
+            capa |= ConnectionIsBus;
+        return QDBusConnection::ConnectionCapabilities(capa);
     }
     QString name;               // this connection's name
     QString baseService;        // this connection's base service
@@ -349,18 +323,16 @@ public:
     bool dispatchEnabled;               // protected by the dispatch lock, not the main lock
     bool isAuthenticated;
 
-public:
     // static methods
-    static int findSlot(QObject *obj, const QByteArray &normalizedName, QVector<int> &params);
+    static int findSlot(QObject *obj, const QByteArray &normalizedName, QList<QMetaType> &params,
+                        QString &errorMsg);
     static bool prepareHook(QDBusConnectionPrivate::SignalHook &hook, QString &key,
-                            const QString &service,
-                            const QString &path, const QString &interface, const QString &name,
-                            const ArgMatchRules &argMatch,
-                            QObject *receiver, const char *signal, int minMIdx,
-                            bool buildSignature);
-    static DBusHandlerResult messageFilter(DBusConnection *, DBusMessage *, void *);
+                            const QString &service, const QString &path, const QString &interface,
+                            const QString &name, const ArgMatchRules &argMatch, QObject *receiver,
+                            const char *signal, int minMIdx, bool buildSignature,
+                            QString &errorMsg);
     static QDBusCallDeliveryEvent *prepareReply(QDBusConnectionPrivate *target, QObject *object,
-                                                int idx, const QVector<int> &metaTypes,
+                                                int idx, const QList<QMetaType> &metaTypes,
                                                 const QDBusMessage &msg);
     static void processFinishedCall(QDBusPendingCallPrivate *call);
 
@@ -373,9 +345,10 @@ public:
 };
 
 // in qdbusmisc.cpp
-extern int qDBusParametersForMethod(const QMetaMethod &mm, QVector<int> &metaTypes, QString &errorMsg);
-#endif // QT_BOOTSTRAPPED
-extern Q_DBUS_EXPORT int qDBusParametersForMethod(const QList<QByteArray> &parameters, QVector<int>& metaTypes, QString &errorMsg);
+extern int qDBusParametersForMethod(const QMetaMethod &mm, QList<QMetaType> &metaTypes, QString &errorMsg);
+#    endif // QT_BOOTSTRAPPED
+extern Q_DBUS_EXPORT int qDBusParametersForMethod(const QList<QByteArray> &parameters,
+                                                  QList<QMetaType> &metaTypes, QString &errorMsg);
 extern Q_DBUS_EXPORT bool qDBusCheckAsyncTag(const char *tag);
 #ifndef QT_BOOTSTRAPPED
 extern bool qDBusInterfaceInObject(QObject *obj, const QString &interface_name);
@@ -389,26 +362,6 @@ extern QDBusMessage qDBusPropertySet(const QDBusConnectionPrivate::ObjectTreeNod
                                      const QDBusMessage &msg);
 extern QDBusMessage qDBusPropertyGetAll(const QDBusConnectionPrivate::ObjectTreeNode &node,
                                         const QDBusMessage &msg);
-
-// can be replaced with a lambda in Qt 5.7
-class QDBusConnectionDispatchEnabler : public QObject
-{
-    Q_OBJECT
-    QDBusConnectionPrivate *con;
-public:
-    QDBusConnectionDispatchEnabler(QDBusConnectionPrivate *con) : con(con) {}
-
-public slots:
-    void execute()
-    {
-        // This call cannot race with something disabling dispatch only because dispatch is
-        // never re-disabled from Qt code on an in-use connection once it has been enabled.
-        QMetaObject::invokeMethod(con, "setDispatchEnabled", Qt::QueuedConnection, Q_ARG(bool, true));
-        if (!con->ref.deref())
-            con->deleteLater();
-        deleteLater();
-    }
-};
 
 #endif // QT_BOOTSTRAPPED
 

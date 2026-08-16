@@ -1,48 +1,45 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+/* WARNING: this source-code is reused by another test.
+
+   As Qt built with GUI support may use a different backend for its event loops
+   and other timer-related matters, it is important to test it in that form, as
+   well as in its GUI-less form. So this source file is reused by a build config
+   in the GUI module. Similarly, testing with and without glib is supported,
+   where relevant (see DISABLE_GLIB below).
+*/
 #ifdef QT_GUI_LIB
+// When compiled as tests/auto/gui/kernel/qguitimer/'s source-code:
 #  include <QtGui/QGuiApplication>
 #else
+// When compiled as tests/auto/corelib/kernel/qtimer/'s source-code:
 #  include <QtCore/QCoreApplication>
 #endif
 
 #include <QtCore/private/qglobal_p.h>
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QSignalSpy>
+#include <QtTest/private/qpropertytesthelper_p.h>
 
 #include <qtimer.h>
 #include <qthread.h>
 #include <qelapsedtimer.h>
+#include <qproperty.h>
 
 #if defined Q_OS_UNIX
 #include <unistd.h>
 #endif
+
+#ifdef DISABLE_GLIB
+static bool glibDisabled = []() {
+    qputenv("QT_NO_GLIB", "1");
+    return true;
+}();
+#endif
+
+using namespace std::chrono_literals;
 
 class tst_QTimer : public QObject
 {
@@ -55,6 +52,12 @@ private slots:
     void zeroTimer();
     void singleShotTimeout();
     void timeout();
+    void singleShotNormalizes_data();
+    void singleShotNormalizes();
+    void sequentialTimers_data();
+    void sequentialTimers();
+    void singleShotSequentialTimers_data();
+    void singleShotSequentialTimers();
     void remainingTime();
     void remainingTimeInitial_data();
     void remainingTimeInitial();
@@ -79,6 +82,7 @@ private slots:
     void singleShotToFunctors();
     void singleShot_chrono();
     void singleShot_static();
+    void crossThreadSingleShotToFunctor_data();
     void crossThreadSingleShotToFunctor();
     void timerOrder();
     void timerOrder_data();
@@ -88,33 +92,46 @@ private slots:
     void dontBlockEvents();
     void postedEventsShouldNotStarveTimers();
     void callOnTimeout();
+
+    void bindToTimer();
+    void bindTimer();
+    void automatedBindingTests();
+
+    void negativeInterval();
+    void testTimerId();
 };
 
 void tst_QTimer::zeroTimer()
 {
     QTimer timer;
+    QVERIFY(!timer.isSingleShot());
     timer.setInterval(0);
+    timer.setSingleShot(true);
+    QVERIFY(timer.isSingleShot());
 
     QSignalSpy timeoutSpy(&timer, &QTimer::timeout);
     timer.start();
 
-    QCoreApplication::processEvents();
+    // Pass timeout to work round glib issue, see QTBUG-84291.
+    QCoreApplication::processEvents(QEventLoop::AllEvents, INT_MAX);
 
-    QCOMPARE(timeoutSpy.count(), 1);
+    QCOMPARE(timeoutSpy.size(), 1);
 }
 
 void tst_QTimer::singleShotTimeout()
 {
     QTimer timer;
+    QVERIFY(!timer.isSingleShot());
     timer.setSingleShot(true);
+    QVERIFY(timer.isSingleShot());
 
     QSignalSpy timeoutSpy(&timer, &QTimer::timeout);
     timer.start(100);
 
     QVERIFY(timeoutSpy.wait(500));
-    QCOMPARE(timeoutSpy.count(), 1);
+    QCOMPARE(timeoutSpy.size(), 1);
     QTest::qWait(500);
-    QCOMPARE(timeoutSpy.count(), 1);
+    QCOMPARE(timeoutSpy.size(), 1);
 }
 
 #define TIMEOUT_TIMEOUT 200
@@ -125,34 +142,198 @@ void tst_QTimer::timeout()
     QSignalSpy timeoutSpy(&timer, &QTimer::timeout);
     timer.start(100);
 
-    QCOMPARE(timeoutSpy.count(), 0);
+    QCOMPARE(timeoutSpy.size(), 0);
 
-    QTRY_VERIFY_WITH_TIMEOUT(timeoutSpy.count() > 0, TIMEOUT_TIMEOUT);
-    int oldCount = timeoutSpy.count();
+    QTRY_VERIFY_WITH_TIMEOUT(timeoutSpy.size() > 0, TIMEOUT_TIMEOUT);
+    int oldCount = timeoutSpy.size();
 
-    QTRY_VERIFY_WITH_TIMEOUT(timeoutSpy.count() > oldCount, TIMEOUT_TIMEOUT);
+    QTRY_VERIFY_WITH_TIMEOUT(timeoutSpy.size() > oldCount, TIMEOUT_TIMEOUT);
+}
+
+void tst_QTimer::singleShotNormalizes_data()
+{
+    QTest::addColumn<QByteArray>("slotName");
+
+    QTest::newRow("normalized") << QByteArray(SLOT(exitLoop()));
+
+    QTest::newRow("space-before") << QByteArray(SLOT( exitLoop()));
+    QTest::newRow("space-after") << QByteArray(SLOT(exitLoop ()));
+    QTest::newRow("space-around") << QByteArray(SLOT( exitLoop ()));
+    QTest::newRow("spaces-before") << QByteArray(SLOT(  exitLoop()));
+    QTest::newRow("spaces-after") << QByteArray(SLOT(exitLoop  ()));
+    QTest::newRow("spaces-around") << QByteArray(SLOT(  exitLoop  ()));
+
+    QTest::newRow("space-in-parens") << QByteArray(SLOT(exitLoop( )));
+    QTest::newRow("spaces-in-parens") << QByteArray(SLOT(exitLoop(  )));
+    QTest::newRow("space-after-parens") << QByteArray(SLOT(exitLoop() ));
+    QTest::newRow("spaces-after-parens") << QByteArray(SLOT(exitLoop()  ));
+}
+
+void tst_QTimer::singleShotNormalizes()
+{
+    static constexpr auto TestTimeout = 250ms;
+    QFETCH(QByteArray, slotName);
+    QEventLoop loop;
+
+    // control test: regular connection
+    {
+        QTimer timer;
+        QVERIFY(QObject::connect(&timer, SIGNAL(timeout()), &QTestEventLoop::instance(), slotName));
+        timer.setSingleShot(true);
+        timer.start(1);
+        QTestEventLoop::instance().enterLoop(TestTimeout);
+        QVERIFY(!QTestEventLoop::instance().timeout());
+    }
+
+    // non-zero time
+    QTimer::singleShot(1, &QTestEventLoop::instance(), slotName);
+    QTestEventLoop::instance().enterLoop(TestTimeout);
+    QVERIFY(!QTestEventLoop::instance().timeout());
+
+    QTimer::singleShot(1ms, &QTestEventLoop::instance(), slotName);
+    QTestEventLoop::instance().enterLoop(TestTimeout);
+    QVERIFY(!QTestEventLoop::instance().timeout());
+
+    // zero time
+    QTimer::singleShot(0, &QTestEventLoop::instance(), slotName);
+    QTestEventLoop::instance().enterLoop(TestTimeout);
+    QVERIFY(!QTestEventLoop::instance().timeout());
+
+    QTimer::singleShot(0ms, &QTestEventLoop::instance(), slotName);
+    QTestEventLoop::instance().enterLoop(TestTimeout);
+    QVERIFY(!QTestEventLoop::instance().timeout());
+}
+
+void tst_QTimer::sequentialTimers_data()
+{
+#ifdef Q_OS_WIN
+    QSKIP("The API used by QEventDispatcherWin32 doesn't respect the order");
+#endif
+    QTest::addColumn<QList<int>>("timeouts");
+    auto addRow = [](const QList<int> &l) {
+        QByteArray name;
+        int last = -1;
+        for (int i = 0; i < l.size(); ++i) {
+            Q_ASSERT_X(l[i] >= last, "tst_QTimer", "input list must be sorted");
+            name += QByteArray::number(l[i]) + ',';
+        }
+        name.chop(1);
+        QTest::addRow("%s", name.constData()) << l;
+    };
+    // PreciseTimers
+    addRow({0, 0, 0, 0, 0, 0});
+    addRow({0, 1, 2});
+    addRow({1, 1, 1, 2, 2, 2, 2});
+    addRow({1, 2, 3});
+    addRow({19, 19, 19});
+    // CoarseTimer for setInterval
+    addRow({20, 20, 20, 20, 20});
+    addRow({25, 25, 25, 25, 25, 25, 50});
+}
+
+void tst_QTimer::sequentialTimers()
+{
+    QFETCH(const QList<int>, timeouts);
+    QByteArray result, expected;
+    std::vector<std::unique_ptr<QTimer>> timers;
+    expected.resize(timeouts.size());
+    result.reserve(timeouts.size());
+    timers.reserve(timeouts.size());
+    for (int i = 0; i < timeouts.size(); ++i) {
+        auto timer = std::make_unique<QTimer>();
+        timer->setSingleShot(true);
+        timer->setInterval(timeouts[i]);
+
+        char c = 'A' + i;
+        expected[i] = c;
+        QObject::connect(timer.get(), &QTimer::timeout, this, [&result, c = c]() {
+            result.append(c);
+        });
+        timers.push_back(std::move(timer));
+    }
+
+    // start the timers
+    for (auto &timer : timers)
+        timer->start();
+
+    QTestEventLoop::instance().enterLoopMSecs(timeouts.last() * 2 + 10);
+
+    QCOMPARE(result, expected);
+}
+
+void tst_QTimer::singleShotSequentialTimers_data()
+{
+    sequentialTimers_data();
+}
+
+void tst_QTimer::singleShotSequentialTimers()
+{
+    QFETCH(const QList<int>, timeouts);
+    QByteArray result, expected;
+    expected.resize(timeouts.size());
+    result.reserve(timeouts.size());
+    for (int i = 0; i < timeouts.size(); ++i) {
+        char c = 'A' + i;
+        expected[i] = c;
+        QTimer::singleShot(timeouts[i], this, [&result, c = c]() {
+            result.append(c);
+        });
+    }
+
+    QTestEventLoop::instance().enterLoopMSecs(timeouts.last() * 2 + 10);
+
+    QCOMPARE(result, expected);
 }
 
 void tst_QTimer::remainingTime()
 {
-    QTimer timer;
-    QSignalSpy timeoutSpy(&timer, &QTimer::timeout);
-    timer.setTimerType(Qt::PreciseTimer);
-    timer.start(200);
+    QTimer tested;
+    tested.setTimerType(Qt::PreciseTimer);
 
-    QCOMPARE(timeoutSpy.count(), 0);
-    QTest::qWait(50);
-    QCOMPARE(timeoutSpy.count(), 0);
+    QTimer tester;
+    tester.setTimerType(Qt::PreciseTimer);
+    tester.setSingleShot(true);
 
-    int remainingTime = timer.remainingTime();
-    QVERIFY2(remainingTime >= 50 && remainingTime <= 200, qPrintable(QString::number(remainingTime)));
+    const int testedInterval = 200;
+    const int testerInterval = 50;
+    const int expectedRemainingTime = testedInterval - testerInterval;
 
-    QVERIFY(timeoutSpy.wait());
-    QCOMPARE(timeoutSpy.count(), 1);
+    int testIteration = 0;
+    const int desiredTestCount = 2;
 
-    // the timer is still active, so it should have a non-zero remaining time
-    remainingTime = timer.remainingTime();
-    QVERIFY2(remainingTime >= 50, qPrintable(QString::number(remainingTime)));
+    auto connection = QObject::connect(&tested, &QTimer::timeout, [&tester]() {
+        // We let tested (which isn't a single-shot) run repeatedly, to verify
+        // it *does* repeat, and check that the single-shot tester, starting
+        // at the same time, does finish first each time, by about the right duration.
+        tester.start(); // Start tester again.
+    });
+
+    QObject::connect(&tester, &QTimer::timeout, [&]() {
+        const int remainingTime = tested.remainingTime();
+        // We expect that remainingTime is at most 150 and not overdue.
+        const bool remainingTimeInRange = remainingTime > 0
+                                       && remainingTime <= expectedRemainingTime;
+        if (remainingTimeInRange)
+            ++testIteration;
+        else
+            testIteration = desiredTestCount; // We are going to fail on QVERIFY2()
+                                              // below, so we don't want to iterate
+                                              // anymore and quickly exit the QTRY_...()
+                                              // with this failure.
+        if (testIteration == desiredTestCount)
+            QObject::disconnect(connection); // Last iteration, don't start tester again.
+        QVERIFY2(remainingTimeInRange, qPrintable("Remaining time "
+                 + QByteArray::number(remainingTime) + "ms outside expected range (0ms, "
+                 + QByteArray::number(expectedRemainingTime) + "ms]"));
+    });
+
+    tested.start(testedInterval);
+    tester.start(testerInterval); // Start tester for the 1st time.
+
+    // Test it desiredTestCount times, give it reasonable amount of time
+    // (twice as much as needed).
+    QTRY_COMPARE_WITH_TIMEOUT(testIteration, desiredTestCount,
+                              testedInterval * desiredTestCount * 2);
 }
 
 void tst_QTimer::remainingTimeInitial_data()
@@ -175,7 +356,9 @@ void tst_QTimer::remainingTimeInitial()
     QFETCH(Qt::TimerType, timerType);
 
     QTimer timer;
+    QCOMPARE(timer.timerType(), Qt::CoarseTimer);
     timer.setTimerType(timerType);
+    QCOMPARE(timer.timerType(), timerType);
     timer.start(startTimeMs);
 
     const int rt = timer.remainingTime();
@@ -223,19 +406,14 @@ void tst_QTimer::remainingTimeDuringActivation()
 
 namespace {
 
-#if __has_include(<chrono>)
     template <typename T>
     std::chrono::milliseconds to_ms(T t)
     { return std::chrono::duration_cast<std::chrono::milliseconds>(t); }
-#endif
 
 } // unnamed namespace
 
 void tst_QTimer::basic_chrono()
 {
-#if !__has_include(<chrono>)
-    QSKIP("This test requires C++11 <chrono> support");
-#else
     // duplicates zeroTimer, singleShotTimeout, interval and remainingTime
     using namespace std::chrono;
     QTimer timer;
@@ -247,24 +425,24 @@ void tst_QTimer::basic_chrono()
 
     QCoreApplication::processEvents();
 
-    QCOMPARE(timeoutSpy.count(), 1);
+    QCOMPARE(timeoutSpy.size(), 1);
 
     timeoutSpy.clear();
     timer.start(milliseconds(100));
-    QCOMPARE(timeoutSpy.count(), 0);
+    QCOMPARE(timeoutSpy.size(), 0);
 
     QVERIFY(timeoutSpy.wait(TIMEOUT_TIMEOUT));
-    QVERIFY(timeoutSpy.count() > 0);
-    int oldCount = timeoutSpy.count();
+    QVERIFY(timeoutSpy.size() > 0);
+    int oldCount = timeoutSpy.size();
 
     QVERIFY(timeoutSpy.wait(TIMEOUT_TIMEOUT));
-    QVERIFY(timeoutSpy.count() > oldCount);
+    QVERIFY(timeoutSpy.size() > oldCount);
 
     timeoutSpy.clear();
     timer.start(to_ms(microseconds(200000)));
     QCOMPARE(timer.intervalAsDuration().count(), milliseconds::rep(200));
     QTest::qWait(50);
-    QCOMPARE(timeoutSpy.count(), 0);
+    QCOMPARE(timeoutSpy.size(), 0);
 
     milliseconds rt = timer.remainingTimeAsDuration();
     QVERIFY2(rt.count() >= 50 && rt.count() <= 200, qPrintable(QString::number(rt.count())));
@@ -273,10 +451,9 @@ void tst_QTimer::basic_chrono()
     timer.setSingleShot(true);
     timer.start(milliseconds(100));
     QVERIFY(timeoutSpy.wait(TIMEOUT_TIMEOUT));
-    QCOMPARE(timeoutSpy.count(), 1);
+    QCOMPARE(timeoutSpy.size(), 1);
     QTest::qWait(500);
-    QCOMPARE(timeoutSpy.count(), 1);
-#endif
+    QCOMPARE(timeoutSpy.size(), 1);
 }
 
 void tst_QTimer::livelock_data()
@@ -306,7 +483,8 @@ public:
         secondTimerId = -1; // started later
     }
 
-    bool event(QEvent *e) {
+    bool event(QEvent *e) override
+    {
         if (e->type() == 4002) {
             // got the posted event
             if (timeoutsForFirst == 1 && timeoutsForSecond == 0)
@@ -316,7 +494,8 @@ public:
         return QObject::event(e);
     }
 
-    void timerEvent(QTimerEvent *te) {
+    void timerEvent(QTimerEvent *te) override
+    {
         if (te->timerId() == firstTimerId) {
             if (++timeoutsForFirst == 1) {
                 killTimer(extraTimerId);
@@ -374,7 +553,7 @@ public:
         : inTimerEvent(false), timerEventRecursed(false), interval(interval)
     { }
 
-    void timerEvent(QTimerEvent *timerEvent)
+    void timerEvent(QTimerEvent *timerEvent) override
     {
         timerEventRecursed = inTimerEvent;
         if (timerEventRecursed) {
@@ -431,7 +610,7 @@ public:
         : times(0), target(target), recurse(false)
     { }
 
-    void timerEvent(QTimerEvent *timerEvent)
+    void timerEvent(QTimerEvent *timerEvent) override
     {
         if (++times == target) {
             killTimer(timerEvent->timerId());
@@ -499,6 +678,7 @@ void tst_QTimer::moveToThread()
 #endif
     QTimer ti1;
     QTimer ti2;
+    ti1.setSingleShot(true);
     ti1.start(MOVETOTHREAD_TIMEOUT);
     ti2.start(MOVETOTHREAD_TIMEOUT);
     QVERIFY((ti1.timerId() & 0xffffff) != (ti2.timerId() & 0xffffff));
@@ -550,7 +730,7 @@ public:
         interval = interval ? 0 : 1000;
     }
 
-    void timerEvent(QTimerEvent* ev)
+    void timerEvent(QTimerEvent* ev) override
     {
         if (ev->timerId() != m_timer.timerId())
             return;
@@ -637,27 +817,29 @@ void tst_QTimer::timerFiresOnlyOncePerProcessEvents()
 class TimerIdPersistsAfterThreadExitThread : public QThread
 {
 public:
-    QTimer *timer;
-    int timerId, returnValue;
+    QTimer *timer = nullptr;
+    Qt::TimerId timerId = Qt::TimerId::Invalid;
+    int returnValue = -1;
 
-    TimerIdPersistsAfterThreadExitThread()
-        : QThread(), timer(0), timerId(-1), returnValue(-1)
-    { }
     ~TimerIdPersistsAfterThreadExitThread()
     {
         delete timer;
     }
 
-    void run()
+    void run() override
     {
         QEventLoop eventLoop;
         timer = new QTimer;
         connect(timer, SIGNAL(timeout()), &eventLoop, SLOT(quit()));
         timer->start(100);
-        timerId = timer->timerId();
+        timerId = timer->id();
         returnValue = eventLoop.exec();
     }
 };
+
+namespace {
+int operator&(Qt::TimerId id, int i) { return qToUnderlying(id) & i; }
+}
 
 void tst_QTimer::timerIdPersistsAfterThreadExit()
 {
@@ -682,6 +864,19 @@ void tst_QTimer::cancelLongTimer()
     QVERIFY(timer.isActive()); //if the timer completes immediately with an error, then this will fail
     timer.stop();
     QVERIFY(!timer.isActive());
+}
+
+void tst_QTimer::testTimerId()
+{
+    QTimer timer;
+    timer.start(100ms);
+    QVERIFY(timer.isActive());
+    QCOMPARE_GT(timer.timerId(), 0);
+    QCOMPARE_GT(timer.id(), Qt::TimerId::Invalid);
+    timer.stop();
+    QVERIFY(!timer.isActive());
+    QCOMPARE(timer.timerId(), -1);
+    QCOMPARE(timer.id(), Qt::TimerId::Invalid);
 }
 
 class TimeoutCounter : public QObject
@@ -858,7 +1053,7 @@ void tst_QTimer::singleShotToFunctors()
     thread.wait();
 
     struct MoveOnly : CountedStruct {
-        Q_DISABLE_COPY(MoveOnly);
+        Q_DISABLE_COPY(MoveOnly)
         MoveOnly(MoveOnly &&o) : CountedStruct(std::move(o)) {};
         MoveOnly(int *c) : CountedStruct(c) {}
     };
@@ -871,9 +1066,6 @@ void tst_QTimer::singleShotToFunctors()
 
 void tst_QTimer::singleShot_chrono()
 {
-#if !__has_include(<chrono>)
-    QSKIP("This test requires C++11 <chrono> support");
-#else
     // duplicates singleShotStaticFunctionZeroTimeout and singleShotToFunctors
     using namespace std::chrono;
     {
@@ -910,7 +1102,6 @@ void tst_QTimer::singleShot_chrono()
     QTRY_COMPARE(count, 3);
 
     _e.reset();
-#endif
 }
 
 class DontBlockEvents : public QObject
@@ -918,7 +1109,7 @@ class DontBlockEvents : public QObject
     Q_OBJECT
 public:
     DontBlockEvents();
-    void timerEvent(QTimerEvent*);
+    void timerEvent(QTimerEvent*) override;
 
     int count;
     int total;
@@ -992,30 +1183,57 @@ void tst_QTimer::postedEventsShouldNotStarveTimers()
     timer.start();
     SlotRepeater slotRepeater;
     slotRepeater.repeatThisSlot();
-    QTRY_VERIFY_WITH_TIMEOUT(timeoutSpy.count() > 5, 100);
+    QTRY_VERIFY_WITH_TIMEOUT(timeoutSpy.size() > 5, 100);
 }
 
 struct DummyFunctor {
-    void operator()() {}
+    static QThread *callThread;
+    void operator()() {
+        callThread = QThread::currentThread();
+        callThread->quit();
+    }
 };
+QThread *DummyFunctor::callThread = nullptr;
+
+void tst_QTimer::crossThreadSingleShotToFunctor_data()
+{
+    QTest::addColumn<int>("timeout");
+
+    QTest::addRow("zero-timer") << 0;
+    QTest::addRow("1ms") << 1;
+}
 
 void tst_QTimer::crossThreadSingleShotToFunctor()
 {
-    // We're testing for crashes here, so the test simply running to
-    // completion is considered a success
-    QThread t;
-    t.start();
+    QFETCH(int, timeout);
+    // We're also testing for crashes here, so the test simply running to
+    // completion is part of the success
+    DummyFunctor::callThread = nullptr;
 
-    QObject* o = new QObject();
+    QThread t;
+    std::unique_ptr<QObject> o(new QObject());
     o->moveToThread(&t);
 
-    for (int i = 0; i < 10000; i++) {
-        QTimer::singleShot(0, o, DummyFunctor());
-    }
+    QTimer::singleShot(timeout, o.get(), DummyFunctor());
 
-    t.quit();
+    // wait enough time for the timer to have timed out before the timer
+    // could be start in the receiver's thread.
+    QTest::qWait(10 + timeout * 10);
+    t.start();
     t.wait();
-    delete o;
+    QCOMPARE(DummyFunctor::callThread, &t);
+
+    // continue with a stress test - the calling thread is busy, the
+    // timer should still fire and no crashes.
+    DummyFunctor::callThread = nullptr;
+    t.start();
+    for (int i = 0; i < 10000; i++)
+        QTimer::singleShot(timeout, o.get(), DummyFunctor());
+
+    t.wait();
+    o.reset();
+
+    QCOMPARE(DummyFunctor::callThread, &t);
 }
 
 void tst_QTimer::callOnTimeout()
@@ -1035,12 +1253,185 @@ void tst_QTimer::callOnTimeout()
 
     QTest::qWait(100);
     QCOMPARE(count, 2);
-    QCOMPARE(timeoutSpy.count(), 1);
+    QCOMPARE(timeoutSpy.size(), 1);
 
     // Test that connection is bound to context lifetime
     QVERIFY(connection);
     delete context;
     QVERIFY(!connection);
+}
+
+void tst_QTimer::bindToTimer()
+{
+    QTimer timer;
+
+    // singleShot property
+    QProperty<bool> singleShot;
+    singleShot.setBinding(timer.bindableSingleShot().makeBinding());
+    QCOMPARE(timer.isSingleShot(), singleShot);
+
+    timer.setSingleShot(true);
+    QVERIFY(singleShot);
+    timer.setSingleShot(false);
+    QVERIFY(!singleShot);
+
+    // interval property
+    QProperty<int> interval;
+    interval.setBinding([&](){ return timer.interval(); });
+    QCOMPARE(timer.interval(), interval);
+
+    timer.setInterval(10);
+    QCOMPARE(interval, 10);
+    timer.setInterval(100);
+    QCOMPARE(interval, 100);
+
+    // timerType property
+    QProperty<Qt::TimerType> timerType;
+    timerType.setBinding(timer.bindableTimerType().makeBinding());
+    QCOMPARE(timer.timerType(), timerType);
+
+    timer.setTimerType(Qt::PreciseTimer);
+    QCOMPARE(timerType, Qt::PreciseTimer);
+
+    timer.setTimerType(Qt::VeryCoarseTimer);
+    QCOMPARE(timerType, Qt::VeryCoarseTimer);
+
+    // active property
+    QProperty<bool> active;
+    active.setBinding([&](){ return timer.isActive(); });
+    QCOMPARE(active, timer.isActive());
+
+    timer.start(1000);
+    QVERIFY(active);
+
+    timer.stop();
+    QVERIFY(!active);
+
+    auto ignoreMsg = [] {
+        QTest::ignoreMessage(QtWarningMsg,
+                             "QObject::startTimer: Timers cannot have negative intervals");
+    };
+
+    // also test that using negative interval updates the binding correctly
+    timer.start(100);
+    QVERIFY(active);
+    ignoreMsg();
+    timer.setInterval(-100);
+    QVERIFY(!active);
+    timer.start(100);
+    QVERIFY(active);
+    ignoreMsg();
+    timer.start(-100);
+    QVERIFY(!active);
+}
+
+void tst_QTimer::bindTimer()
+{
+    QTimer timer;
+
+    // singleShot property
+    QVERIFY(!timer.isSingleShot());
+
+    QProperty<bool> singleShot;
+    timer.bindableSingleShot().setBinding(Qt::makePropertyBinding(singleShot));
+
+    singleShot = true;
+    QVERIFY(timer.isSingleShot());
+    singleShot = false;
+    QVERIFY(!timer.isSingleShot());
+
+    // interval property
+    QCOMPARE(timer.interval(), 0);
+
+    QProperty<int> interval;
+    timer.bindableInterval().setBinding(Qt::makePropertyBinding(interval));
+
+    interval = 10;
+    QCOMPARE(timer.interval(), 10);
+    interval = 100;
+    QCOMPARE(timer.interval(), 100);
+    timer.setInterval(50);
+    QCOMPARE(timer.interval(), 50);
+    interval = 30;
+    QCOMPARE(timer.interval(), 50);
+
+    // timerType property
+    QCOMPARE(timer.timerType(), Qt::CoarseTimer);
+
+    QProperty<Qt::TimerType> timerType;
+    timer.bindableTimerType().setBinding(Qt::makePropertyBinding(timerType));
+
+    timerType = Qt::PreciseTimer;
+    QCOMPARE(timer.timerType(), Qt::PreciseTimer);
+    timerType = Qt::VeryCoarseTimer;
+    QCOMPARE(timer.timerType(), Qt::VeryCoarseTimer);
+}
+
+void tst_QTimer::automatedBindingTests()
+{
+    QTimer timer;
+
+    QVERIFY(!timer.isSingleShot());
+    QTestPrivate::testReadWritePropertyBasics(timer, true, false, "singleShot");
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QTimer::singleShot");
+        return;
+    }
+
+    QCOMPARE_NE(timer.interval(), 10);
+    QTestPrivate::testReadWritePropertyBasics(timer, 10, 20, "interval");
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QTimer::interval");
+        return;
+    }
+
+    QCOMPARE_NE(timer.timerType(), Qt::PreciseTimer);
+    QTestPrivate::testReadWritePropertyBasics(timer, Qt::PreciseTimer, Qt::CoarseTimer,
+                                              "timerType");
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QTimer::timerType");
+        return;
+    }
+
+    timer.start(1000);
+    QVERIFY(timer.isActive());
+    QTestPrivate::testReadOnlyPropertyBasics(timer, true, false, "active",
+                                             [&timer]() { timer.stop(); });
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QTimer::active");
+        return;
+    }
+}
+
+void tst_QTimer::negativeInterval()
+{
+    auto ignoreMsg = [] {
+        QTest::ignoreMessage(QtWarningMsg,
+                             "QObject::startTimer: Timers cannot have negative intervals");
+    };
+
+    QTimer timer;
+
+    // Starting with a negative interval does not change active state.
+    ignoreMsg();
+    timer.start(-100ms);
+    QVERIFY(!timer.isActive());
+
+    // Updating the interval to a negative value stops the timer and changes
+    // the active state.
+    timer.start(100ms);
+    QVERIFY(timer.isActive());
+    ignoreMsg();
+    timer.setInterval(-100);
+    QVERIFY(!timer.isActive());
+
+    // Starting with a negative interval when already started leads to stop
+    // and inactive state.
+    timer.start(100);
+    QVERIFY(timer.isActive());
+    ignoreMsg();
+    timer.start(-100ms);
+    QVERIFY(!timer.isActive());
 }
 
 class OrderHelper : public QObject
@@ -1055,7 +1446,7 @@ public:
         FunctorNoCtx
     };
     Q_ENUM(CallType)
-    QVector<CallType> calls;
+    QList<CallType> calls;
 
     void triggerCall(CallType callType)
     {
@@ -1087,7 +1478,7 @@ Q_DECLARE_METATYPE(OrderHelper::CallType)
 
 void tst_QTimer::timerOrder()
 {
-    QFETCH(QVector<OrderHelper::CallType>, calls);
+    QFETCH(QList<OrderHelper::CallType>, calls);
 
     OrderHelper helper;
 
@@ -1099,9 +1490,9 @@ void tst_QTimer::timerOrder()
 
 void tst_QTimer::timerOrder_data()
 {
-    QTest::addColumn<QVector<OrderHelper::CallType>>("calls");
+    QTest::addColumn<QList<OrderHelper::CallType>>("calls");
 
-    QVector<OrderHelper::CallType> calls = {
+    QList<OrderHelper::CallType> calls = {
         OrderHelper::String, OrderHelper::PMF,
         OrderHelper::Functor, OrderHelper::FunctorNoCtx
     };
@@ -1116,14 +1507,10 @@ void tst_QTimer::timerOrder_data()
 
 void tst_QTimer::timerOrderBackgroundThread()
 {
-#if !QT_CONFIG(cxx11_future)
-    QSKIP("This test requires QThread::create");
-#else
     auto *thread = QThread::create([this]() { timerOrder(); });
     thread->start();
     QVERIFY(thread->wait());
     delete thread;
-#endif
 }
 
 struct StaticSingleShotUser
@@ -1135,7 +1522,7 @@ struct StaticSingleShotUser
     }
     OrderHelper helper;
 
-    static QVector<OrderHelper::CallType> calls()
+    static QList<OrderHelper::CallType> calls()
     {
         return {OrderHelper::String, OrderHelper::PMF,
                 OrderHelper::Functor, OrderHelper::FunctorNoCtx};

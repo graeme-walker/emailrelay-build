@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="ca">
+<TS version="2.1" language="ca_ES">
 <context>
     <name>QQmlWebSocket</name>
     <message>
@@ -54,12 +54,49 @@
         <translation>Bytes escrits %1 != %2.</translation>
     </message>
     <message>
+        <source>QWebSocketPrivate::processHandshake: Unsupported WWW-Authenticate challenge encountered.</source>
+        <extracomment>&apos;WWW-Authenticate&apos; is the HTTP header.</extracomment>
+        <translation>QWebSocketPrivate::processHandshake: S&apos;ha trobat un repte WWW-Autenticate no admès.</translation>
+    </message>
+    <message>
+        <source>QWebSocketPrivate::processHandshake: Unsupported WWW-Authenticate challenges encountered.</source>
+        <translation>QWebSocketPrivate::processHandshake: S&apos;han trobat reptes WWW-Autenticate no admesos.</translation>
+    </message>
+    <message>
+        <source>Header is too large</source>
+        <translation>La capçalera és massa gran</translation>
+    </message>
+    <message>
+        <source>Read handshake request header failed</source>
+        <translation>Ha fallat la lectura de la capçalera de conformitat de la connexió</translation>
+    </message>
+    <message>
+        <source>Read handshake request status failed</source>
+        <translation>Ha fallat l&apos;estat de la sol·licitud de conformitat de la connexió</translation>
+    </message>
+    <message>
+        <source>Parsing handshake request header failed</source>
+        <translation>Ha fallat l&apos;anàlisi de la capçalera de conformitat de la connexió</translation>
+    </message>
+    <message>
+        <source>WebSocket server has chosen protocol %1 which has not been requested</source>
+        <translation>El servidor WebSocket ha triat el protocol %1 que no s&apos;havia sol·licitat</translation>
+    </message>
+    <message>
+        <source>Invalid parameter encountered during protocol upgrade: %1</source>
+        <translation>S&apos;ha trobat un paràmetre no vàlid durant l&apos;actualització del protocol: %1</translation>
+    </message>
+    <message>
+        <source>Invalid parameter(s) presented during protocol upgrade: %1</source>
+        <translation type="vanished">Paràmetre/s no vàlid/s (s) presentat/s durant l&apos;actualització del protocol: %1</translation>
+    </message>
+    <message>
         <source>Invalid statusline in response: %1.</source>
-        <translation>Línia d&apos;estat no vàlida a la resposta: %1.</translation>
+        <translation type="vanished">Línia d&apos;estat no vàlida a la resposta: %1.</translation>
     </message>
     <message>
         <source>QWebSocketPrivate::processHandshake: Connection closed while reading header.</source>
-        <translation>QWebSocketPrivate::processHandshake: La connexió s&apos;ha tancat mentre es llegia la capçalera.</translation>
+        <translation type="vanished">QWebSocketPrivate::processHandshake: La connexió s&apos;ha tancat mentre es llegia la capçalera.</translation>
     </message>
     <message>
         <source>Accept-Key received from server %1 does not match the client key %2.</source>
@@ -67,7 +104,7 @@
     </message>
     <message>
         <source>QWebSocketPrivate::processHandshake: Invalid statusline in response: %1.</source>
-        <translation>QWebSocketPrivate::processHandshake: Línia d&apos;estat no vàlida a la resposta: %1.</translation>
+        <translation type="vanished">QWebSocketPrivate::processHandshake: Línia d&apos;estat no vàlida a la resposta: %1.</translation>
     </message>
     <message>
         <source>Handshake: Server requests a version that we don&apos;t support: %1.</source>
@@ -75,11 +112,15 @@
     </message>
     <message>
         <source>QWebSocketPrivate::processHandshake: Unknown error condition encountered. Aborting connection.</source>
-        <translation>QWebSocketPrivate::processHandshake: S&apos;ha trobat una condició d&apos;error desconeguda. S&apos;està interrompent la connexió.</translation>
+        <translation>QWebSocketPrivate::processHandshake: S&apos;ha trobat una condició desconeguda d&apos;error. S&apos;està interrompent la connexió.</translation>
+    </message>
+    <message>
+        <source>QWebSocket::processHandshake: Host requires authentication</source>
+        <translation>QWebSocket::processHandshake: El servidor requereix autenticació</translation>
     </message>
     <message>
         <source>QWebSocketPrivate::processHandshake: Unhandled http status code: %1 (%2).</source>
-        <translation>QWebSocketPrivate::processHandshake: Codi d’estat HTTP sense gestionar: %1 (%2).</translation>
+        <translation>QWebSocketPrivate::processHandshake: Codi d&apos;estat HTTP sense gestionar: %1 (%2).</translation>
     </message>
     <message>
         <source>The resource name contains newlines. Possible attack detected.</source>
@@ -99,14 +140,18 @@
     </message>
     <message>
         <source>The protocols attribute contains newlines. Possible attack detected.</source>
-        <translation>L&apos;atribut dels protocols conté salts de línia. S&apos;ha detectat un possible atac.</translation>
+        <translation type="vanished">L&apos;atribut dels protocols conté salts de línia. S&apos;ha detectat un possible atac.</translation>
+    </message>
+    <message>
+        <source>Connection refused</source>
+        <translation>S&apos;ha rebutjat la connexió</translation>
     </message>
 </context>
 <context>
     <name>QWebSocketDataProcessor</name>
     <message>
         <source>Received Continuation frame, while there is nothing to continue.</source>
-        <translation>S&apos;ha rebut un marc de continuació, mentre no hi havia res per continuar.</translation>
+        <translation>S&apos;ha rebut un marc de continuació, encara que no hi havia res a continuar.</translation>
     </message>
     <message>
         <source>All data frames after the initial data frame must have opcode 0 (continuation).</source>
@@ -132,12 +177,24 @@
         <source>Invalid opcode detected: %1</source>
         <translation>S&apos;ha detectat un codi d&apos;operació no vàlid: %1</translation>
     </message>
+    <message>
+        <source>Timeout when reading data from socket.</source>
+        <translation>Temps excedit en llegir dades des del sòcol.</translation>
+    </message>
 </context>
 <context>
     <name>QWebSocketFrame</name>
     <message>
         <source>Timeout when reading data from socket.</source>
-        <translation>Temps d&apos;espera quan es llegeixen dades des del sòcol.</translation>
+        <translation type="vanished">Temps d&apos;espera quan es llegeixen dades des del sòcol.</translation>
+    </message>
+    <message>
+        <source>Waiting for more data from socket.</source>
+        <translation>En espera de més dades des del sòcol.</translation>
+    </message>
+    <message>
+        <source>Error occurred while reading header from the network: %1</source>
+        <translation>S&apos;ha produït un error mentre es llegia la capçalera des de la xarxa: %1</translation>
     </message>
     <message>
         <source>Error occurred while reading from the network: %1</source>
@@ -145,7 +202,7 @@
     </message>
     <message>
         <source>Lengths smaller than 126 must be expressed as one byte.</source>
-        <translation>Les longituds menors que 126 s&apos;han d’expressar com un byte.</translation>
+        <translation>Les longituds menors que 126 s&apos;han d&apos;expressar com un byte.</translation>
     </message>
     <message>
         <source>Something went wrong during reading from the network.</source>
@@ -214,8 +271,16 @@
         <translation>Servidor tancat.</translation>
     </message>
     <message>
+        <source>Header is too large.</source>
+        <translation>La capçalera és massa gran.</translation>
+    </message>
+    <message>
         <source>Too many pending connections.</source>
         <translation>Hi ha massa connexions pendents.</translation>
+    </message>
+    <message>
+        <source>Read handshake request header failed.</source>
+        <translation>Ha fallat la lectura de la capçalera de conformitat de la connexió.</translation>
     </message>
     <message>
         <source>Upgrade to WebSocket failed.</source>

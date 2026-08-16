@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qline.h"
 
@@ -50,6 +14,9 @@ QT_BEGIN_NAMESPACE
     \class QLine
     \inmodule QtCore
     \ingroup painting
+    \compares equality
+    \compareswith equality QLineF
+    \endcompareswith
 
     \brief The QLine class provides a two-dimensional vector using
     integer precision.
@@ -169,18 +136,18 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn bool QLine::operator!=(const QLine &line) const
+    \fn bool QLine::operator!=(const QLine &lhs, const QLine &rhs)
 
-    Returns \c true if the given \a line is not the same as \e this line.
+    Returns \c true if the line \a lhs is not the same as line \a rhs.
 
     A line is different from another line if any of their start or
     end points differ, or the internal order of the points is different.
 */
 
 /*!
-    \fn bool QLine::operator==(const QLine &line) const
+    \fn bool QLine::operator==(const QLine &lhs, const QLine &rhs)
 
-    Returns \c true if the given \a line is the same as \e this line.
+    Returns \c true if the line \a lhs is the same as line \a rhs.
 
     A line is identical to another line if the start and end points
     are identical, and the internal order of the points is the same.
@@ -263,6 +230,15 @@ QT_BEGIN_NAMESPACE
     \sa setP1(), setP2(), p1(), p2()
 */
 
+/*!
+    \fn QLine::toLineF() const
+    \since 6.4
+
+    Returns this line as a line with floating point accuracy.
+
+    \sa QLineF::toLine()
+*/
+
 
 
 #ifndef QT_NO_DEBUG_STREAM
@@ -311,15 +287,13 @@ QDataStream &operator>>(QDataStream &stream, QLine &line)
 
 #endif // QT_NO_DATASTREAM
 
-
-#ifndef M_2PI
-#define M_2PI 6.28318530717958647692528676655900576
-#endif
-
 /*!
     \class QLineF
     \inmodule QtCore
     \ingroup painting
+    \compares equality
+    \compareswith equality QLine
+    \endcompareswith
 
     \brief The QLineF class provides a two-dimensional vector using
     floating point precision.
@@ -327,7 +301,7 @@ QDataStream &operator>>(QDataStream &stream, QLine &line)
     A QLineF describes a finite length line (or line segment) on a
     two-dimensional surface. QLineF defines the start and end points
     of the line using floating point accuracy for coordinates.  Use
-    the toLine() function to retrieve an integer based copy of this
+    the toLine() function to retrieve an integer-based copy of this
     line.
 
     \table
@@ -370,19 +344,12 @@ QDataStream &operator>>(QDataStream &stream, QLine &line)
 */
 
 /*!
-    \enum QLineF::IntersectType
-    \obsolete Use QLineF::IntersectionType instead.
-
-    \value NoIntersection
-           Lines do not intersect.
-    \value UnboundedIntersection
-           Lines intersect, but not within the range defined by their lengths.
-    \value BoundedIntersection
-           Lnes intersect within the range defined by their lengths.
+    \typealias QLineF::IntersectType
+    \deprecated Use QLineF::IntersectionType instead.
 */
 
 /*!
-    \typealias QLineF::IntersectionType
+    \enum QLineF::IntersectionType
 
     Describes the intersection between two lines.
 
@@ -407,7 +374,7 @@ QDataStream &operator>>(QDataStream &stream, QLine &line)
     \value BoundedIntersection The two lines intersect with each other
     within the start and end points of each line.
 
-    \sa intersect()
+    \sa intersects()
 */
 
 /*!
@@ -435,7 +402,7 @@ QDataStream &operator>>(QDataStream &stream, QLine &line)
 
     Construct a QLineF object from the given integer-based \a line.
 
-    \sa toLine()
+    \sa toLine(), QLine::toLineF()
 */
 
 /*!
@@ -470,12 +437,12 @@ QDataStream &operator>>(QDataStream &stream, QLine &line)
 /*!
     \fn QLine QLineF::toLine() const
 
-    Returns an integer based copy of this line.
+    Returns an integer-based copy of this line.
 
     Note that the returned line's start and end points are rounded to
     the nearest integer.
 
-    \sa QLineF()
+    \sa QLineF(), QLine::toLineF()
 */
 /*!
     \fn qreal QLineF::x1() const
@@ -528,13 +495,11 @@ QDataStream &operator>>(QDataStream &stream, QLine &line)
 /*!
     \fn void QLineF::setLength(qreal length)
 
-    Sets the length of the line to the given \a length. QLineF will
-    move the end point - p2() - of the line to give the line its new length.
+    Sets the length of the line to the given finite \a length. QLineF will move
+    the end point - p2() - of the line to give the line its new length, unless
+    length() was previously zero, in which case no scaling is attempted.
 
-    A null line will not be rescaled. For non-null lines with very short lengths
-    (represented by denormal floating-point values), results may be imprecise.
-
-    \sa length(), isNull(), unitVector()
+    \sa length(), unitVector()
 */
 
 /*!
@@ -549,18 +514,18 @@ QDataStream &operator>>(QDataStream &stream, QLine &line)
 */
 
 /*!
-    \fn bool QLineF::operator!=(const QLineF &line) const
+    \fn bool QLineF::operator!=(const QLineF &lhs, const QLineF &rhs)
 
-    Returns \c true if the given \a line is not the same as \e this line.
+    Returns \c true if the line \a lhs is not the same as line \a rhs.
 
     A line is different from another line if their start or end points
     differ, or the internal order of the points is different.
 */
 
 /*!
-    \fn bool QLineF::operator==(const QLineF &line) const
+    \fn bool QLineF::operator==(const QLineF &lhs, const QLineF &rhs)
 
-    Returns \c true if the given \a line is the same as this line.
+    Returns \c true if the line \a lhs is the same as line \a rhs.
 
     A line is identical to another line if the start and end points
     are identical, and the internal order of the points is the same.
@@ -569,9 +534,8 @@ QDataStream &operator>>(QDataStream &stream, QLine &line)
 /*!
   \fn qreal QLineF::pointAt(qreal t) const
 
-  Returns the point at the parameterized position specified by \a
-  t. The function returns the line's start point if t = 0, and its end
-  point if t = 1.
+  Returns the point at the position specified by finite parameter \a t. The
+  function returns the line's start point if t = 0, and its end point if t = 1.
 
   \sa dx(), dy()
 */
@@ -583,8 +547,7 @@ QDataStream &operator>>(QDataStream &stream, QLine &line)
 */
 qreal QLineF::length() const
 {
-    using std::hypot;
-    return hypot(dx(), dy());
+    return qHypot(dx(), dy());
 }
 
 /*!
@@ -603,7 +566,7 @@ qreal QLineF::angle() const
     const qreal dx = pt2.x() - pt1.x();
     const qreal dy = pt2.y() - pt1.y();
 
-    const qreal theta = qAtan2(-dy, dx) * 360.0 / M_2PI;
+    const qreal theta = qRadiansToDegrees(qAtan2(-dy, dx));
 
     const qreal theta_normalized = theta < 0 ? theta + 360 : theta;
 
@@ -627,7 +590,7 @@ qreal QLineF::angle() const
 */
 void QLineF::setAngle(qreal angle)
 {
-    const qreal angleR = angle * M_2PI / 360.0;
+    const qreal angleR = qDegreesToRadians(angle);
     const qreal l = length();
 
     const qreal dx = qCos(angleR) * l;
@@ -649,7 +612,7 @@ void QLineF::setAngle(qreal angle)
 */
 QLineF QLineF::fromPolar(qreal length, qreal angle)
 {
-    const qreal angleR = angle * M_2PI / 360.0;
+    const qreal angleR = qDegreesToRadians(angle);
     return QLineF(0, 0, qCos(angleR) * length, -qSin(angleR) * length);
 }
 
@@ -662,12 +625,11 @@ QLineF QLineF::fromPolar(qreal length, qreal angle)
 */
 QLineF QLineF::unitVector() const
 {
-    qreal x = dx();
-    qreal y = dy();
-    using std::hypot;
-    qreal len = hypot(x, y);
+    const qreal x = dx();
+    const qreal y = dy();
 
-    QLineF f(p1(), QPointF(pt1.x() + x/len, pt1.y() + y/len));
+    const qreal len = qHypot(x, y);
+    QLineF f(p1(), QPointF(pt1.x() + x / len, pt1.y() + y / len));
 
 #ifndef QT_NO_DEBUG
     if (qAbs(f.length() - 1) >= 0.001)
@@ -676,25 +638,6 @@ QLineF QLineF::unitVector() const
 
     return f;
 }
-
-#if QT_DEPRECATED_SINCE(5, 14)
-/*!
-    \fn QLineF::IntersectType QLineF::intersect(const QLineF &line, QPointF *intersectionPoint) const
-    \obsolete Use intersects() instead
-
-    Returns a value indicating whether or not \e this line intersects
-    with the given \a line.
-
-    The actual intersection point is extracted to \a intersectionPoint
-    (if the pointer is valid). If the lines are parallel, the
-    intersection point is undefined.
-*/
-
-QLineF::IntersectType QLineF::intersect(const QLineF &l, QPointF *intersectionPoint) const
-{
-    return intersects(l, intersectionPoint);
-}
-#endif
 
 /*!
     \fn QLineF::IntersectionType QLineF::intersects(const QLineF &line, QPointF *intersectionPoint) const
@@ -817,15 +760,15 @@ QLineF::IntersectionType QLineF::intersects(const QLineF &l, QPointF *intersecti
 
   Returns the angle (in degrees) from this line to the given \a
   line, taking the direction of the lines into account. If the lines
-  do not intersect within their range, it is the intersection point of
-  the extended lines that serves as origin (see
+  do not \l{intersects()}{intersect} within their range, it is the
+  intersection point of the extended lines that serves as origin (see
   QLineF::UnboundedIntersection).
 
   The returned value represents the number of degrees you need to add
   to this line to make it have the same angle as the given \a line,
   going counter-clockwise.
 
-  \sa intersect()
+  \sa intersects()
 */
 qreal QLineF::angleTo(const QLineF &l) const
 {
@@ -844,41 +787,24 @@ qreal QLineF::angleTo(const QLineF &l) const
         return delta_normalized;
 }
 
-#if QT_DEPRECATED_SINCE(5, 14)
 /*!
-  \fn qreal QLineF::angle(const QLineF &line) const
+    \fn bool QLineF::qFuzzyCompare(const QLineF &lhs, const QLineF &rhs)
+    \since 6.8
 
-  \obsolete
+    Returns \c true if line \a lhs is approximately equal to line \a rhs;
+    otherwise returns \c false.
 
-  Returns the angle (in degrees) between this line and the given \a
-  line, taking the direction of the lines into account. If the lines
-  do not intersect within their range, it is the intersection point of
-  the extended lines that serves as origin (see
-  QLineF::UnboundedIntersection).
-
-  \table
-  \row
-  \li \inlineimage qlinef-angle-identicaldirection.png
-  \li \inlineimage qlinef-angle-oppositedirection.png
-  \endtable
-
-  When the lines are parallel, this function returns 0 if they have
-  the same direction; otherwise it returns 180.
-
-  \sa intersect()
+    The lines are considered approximately equal if their start and end
+    points are approximately equal.
 */
-qreal QLineF::angle(const QLineF &l) const
-{
-    if (isNull() || l.isNull())
-        return 0;
-    qreal cos_line = (dx()*l.dx() + dy()*l.dy()) / (length()*l.length());
-    qreal rad = 0;
-    // only accept cos_line in the range [-1,1], if it is outside, use 0 (we return 0 rather than PI for those cases)
-    if (cos_line >= -1.0 && cos_line <= 1.0) rad = qAcos( cos_line );
-    return rad * 360 / M_2PI;
-}
-#endif
 
+/*!
+    \fn bool QLineF::qFuzzyIsNull(const QLineF &line)
+    \since 6.8
+
+    Returns \c true if the start point of line \a line is approximately
+    equal to its end point; otherwise returns \c false.
+*/
 
 #ifndef QT_NO_DEBUG_STREAM
 QDebug operator<<(QDebug dbg, const QLineF &p)

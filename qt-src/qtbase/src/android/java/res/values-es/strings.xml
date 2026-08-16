@@ -1,7 +1,4 @@
 <?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="ministro_not_found_msg">Servicio Ministro inesistente. Imposible ejecutar la aplicación.</string>
-    <string name="ministro_needed_msg">Esta aplicación requiere el servicio Ministro. Instalarlo?</string>
-    <string name="fatal_error_msg">La aplicación ha causado un error grave y no es posible continuar.</string>
-    <string name="unsupported_android_version">Esta versión de Android no es compatible.</string>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="fatal_error_msg" tools:ignore="UnusedResources">La aplicación ha causado un error grave y no es posible continuar.</string>
 </resources>

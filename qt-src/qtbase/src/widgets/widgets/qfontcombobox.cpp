@@ -1,56 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qfontcombobox.h"
 
+#include <qabstractitemdelegate.h>
+#include <qaccessible.h>
 #include <qstringlistmodel.h>
-#include <qitemdelegate.h>
 #include <qlistview.h>
 #include <qpainter.h>
 #include <qevent.h>
 #include <qapplication.h>
 #include <private/qcombobox_p.h>
-#include <QDesktopWidget>
-#include <private/qdesktopwidget_p.h>
 #include <qdebug.h>
 
+#include <array>
+
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 static QFontDatabase::WritingSystem writingSystemFromScript(QLocale::Script script)
 {
@@ -136,8 +103,8 @@ static QFontDatabase::WritingSystem writingSystemFromLocale()
 
 static QFontDatabase::WritingSystem writingSystemForFont(const QFont &font, bool *hasLatin)
 {
-    QList<QFontDatabase::WritingSystem> writingSystems = QFontDatabase().writingSystems(font.family());
-//     qDebug() << font.family() << writingSystems;
+    QList<QFontDatabase::WritingSystem> writingSystems = QFontDatabase::writingSystems(font.families().constFirst());
+//     qDebug() << font.families().first() << writingSystems;
 
     // this just confuses the algorithm below. Vietnamese is Latin with lots of special chars
     writingSystems.removeOne(QFontDatabase::Vietnamese);
@@ -168,23 +135,39 @@ static QFontDatabase::WritingSystem writingSystemForFont(const QFont &font, bool
         return system;
     }
 
-    if (writingSystems.count() == 1 && system > QFontDatabase::Cyrillic)
+    if (writingSystems.size() == 1 && system > QFontDatabase::Cyrillic)
         return system;
 
-    if (writingSystems.count() <= 2 && system > QFontDatabase::Armenian && system < QFontDatabase::Vietnamese)
+    if (writingSystems.size() <= 2 && system > QFontDatabase::Armenian && system < QFontDatabase::Vietnamese)
         return system;
 
-    if (writingSystems.count() <= 5 && system >= QFontDatabase::SimplifiedChinese && system <= QFontDatabase::Korean)
+    if (writingSystems.size() <= 5 && system >= QFontDatabase::SimplifiedChinese && system <= QFontDatabase::Korean)
         return system;
 
     return QFontDatabase::Any;
 }
 
+class QFontComboBoxPrivate : public QComboBoxPrivate
+{
+public:
+    QFontComboBox::FontFilters filters = QFontComboBox::AllFonts;
+    QFont currentFont;
+    QHash<QFontDatabase::WritingSystem, QString> sampleTextForWritingSystem;
+    QHash<QString, QString> sampleTextForFontFamily;
+    QHash<QString, QFont> displayFontForFontFamily;
+    std::array<QMetaObject::Connection, 2> connections;
+
+    void updateModel();
+    void currentChanged(const QString &);
+
+    Q_DECLARE_PUBLIC(QFontComboBox)
+};
+
 class QFontFamilyDelegate : public QAbstractItemDelegate
 {
     Q_OBJECT
 public:
-    explicit QFontFamilyDelegate(QObject *parent);
+    explicit QFontFamilyDelegate(QObject *parent, QFontComboBoxPrivate *comboP);
 
     // painting
     void paint(QPainter *painter,
@@ -197,13 +180,15 @@ public:
     const QIcon truetype;
     const QIcon bitmap;
     QFontDatabase::WritingSystem writingSystem;
+    QFontComboBoxPrivate *comboPrivate;
 };
 
-QFontFamilyDelegate::QFontFamilyDelegate(QObject *parent)
+QFontFamilyDelegate::QFontFamilyDelegate(QObject *parent, QFontComboBoxPrivate *comboP)
     : QAbstractItemDelegate(parent),
       truetype(QStringLiteral(":/qt-project.org/styles/commonstyle/images/fonttruetype-16.png")),
       bitmap(QStringLiteral(":/qt-project.org/styles/commonstyle/images/fontbitmap-16.png")),
-      writingSystem(QFontDatabase::Any)
+      writingSystem(QFontDatabase::Any),
+      comboPrivate(comboP)
 {
 }
 
@@ -215,12 +200,14 @@ void QFontFamilyDelegate::paint(QPainter *painter,
     QFont font(option.font);
     font.setPointSize(QFontInfo(font).pointSize() * 3 / 2);
     QFont font2 = font;
-    font2.setFamily(text);
+    font2.setFamilies(QStringList{text});
 
     bool hasLatin;
     QFontDatabase::WritingSystem system = writingSystemForFont(font2, &hasLatin);
     if (hasLatin)
         font = font2;
+
+    font = comboPrivate->displayFontForFontFamily.value(text, font);
 
     QRect r = option.rect;
 
@@ -233,7 +220,7 @@ void QFontFamilyDelegate::paint(QPainter *painter,
     }
 
     const QIcon *icon = &bitmap;
-    if (QFontDatabase().isSmoothlyScalable(text)) {
+    if (QFontDatabase::isSmoothlyScalable(text)) {
         icon = &truetype;
     }
     const QSize actualSize = icon->actualSize(r.size());
@@ -266,10 +253,11 @@ void QFontFamilyDelegate::paint(QPainter *painter,
     if (writingSystem != QFontDatabase::Any)
         system = writingSystem;
 
-    if (system != QFontDatabase::Any) {
-        int w = painter->fontMetrics().horizontalAdvance(text + QLatin1String("  "));
+    const QString sampleText = comboPrivate->sampleTextForFontFamily.value(text, comboPrivate->sampleTextForWritingSystem.value(system));
+    if (system != QFontDatabase::Any || !sampleText.isEmpty()) {
+        int w = painter->fontMetrics().horizontalAdvance(text + "  "_L1);
         painter->setFont(font2);
-        QString sample = QFontDatabase().writingSystemSample(system);
+        const QString sample = !sampleText.isEmpty() ? sampleText : QFontDatabase::writingSystemSample(system);
         if (option.direction == Qt::RightToLeft)
             r.setRight(r.right() - w);
         else
@@ -288,31 +276,20 @@ QSize QFontFamilyDelegate::sizeHint(const QStyleOptionViewItem &option,
 {
     QString text = index.data(Qt::DisplayRole).toString();
     QFont font(option.font);
-//     font.setFamily(text);
+//     font.setFamilies(QStringList{text});
     font.setPointSize(QFontInfo(font).pointSize() * 3/2);
     QFontMetrics fontMetrics(font);
     return QSize(fontMetrics.horizontalAdvance(text), fontMetrics.height());
 }
 
 
-class QFontComboBoxPrivate : public QComboBoxPrivate
-{
-public:
-    inline QFontComboBoxPrivate() { filters = QFontComboBox::AllFonts; }
-
-    QFontComboBox::FontFilters filters;
-    QFont currentFont;
-
-    void _q_updateModel();
-    void _q_currentChanged(const QString &);
-
-    Q_DECLARE_PUBLIC(QFontComboBox)
-};
-
-
-void QFontComboBoxPrivate::_q_updateModel()
+void QFontComboBoxPrivate::updateModel()
 {
     Q_Q(QFontComboBox);
+
+    if (QCoreApplication::closingDown())
+        return;
+
     const int scalableMask = (QFontComboBox::ScalableFonts | QFontComboBox::NonScalableFonts);
     const int spacingMask = (QFontComboBox::ProportionalFonts | QFontComboBox::MonospacedFonts);
 
@@ -322,30 +299,28 @@ void QFontComboBoxPrivate::_q_updateModel()
     QFontFamilyDelegate *delegate = qobject_cast<QFontFamilyDelegate *>(q->view()->itemDelegate());
     QFontDatabase::WritingSystem system = delegate ? delegate->writingSystem : QFontDatabase::Any;
 
-    QFontDatabase fdb;
-    QStringList list = fdb.families(system);
+    const QStringList list = QFontDatabase::families(system);
     QStringList result;
 
     int offset = 0;
     QFontInfo fi(currentFont);
 
-    for (int i = 0; i < list.size(); ++i) {
-        if (fdb.isPrivateFamily(list.at(i)))
+    for (const auto &family : list) {
+        if (QFontDatabase::isPrivateFamily(family))
             continue;
 
         if ((filters & scalableMask) && (filters & scalableMask) != scalableMask) {
-            if (bool(filters & QFontComboBox::ScalableFonts) != fdb.isSmoothlyScalable(list.at(i)))
+            if (bool(filters & QFontComboBox::ScalableFonts) != QFontDatabase::isSmoothlyScalable(family))
                 continue;
         }
         if ((filters & spacingMask) && (filters & spacingMask) != spacingMask) {
-            if (bool(filters & QFontComboBox::MonospacedFonts) != fdb.isFixedPitch(list.at(i)))
+            if (bool(filters & QFontComboBox::MonospacedFonts) != QFontDatabase::isFixedPitch(family))
                 continue;
         }
-        result += list.at(i);
-        if (list.at(i) == fi.family() || list.at(i).startsWith(fi.family() + QLatin1String(" [")))
-            offset = result.count() - 1;
+        result += family;
+        if (family == fi.family() || family.startsWith(fi.family() + " ["_L1))
+            offset = result.size() - 1;
     }
-    list = result;
 
     //we need to block the signals so that the model doesn't emit reset
     //this prevents the current index from changing
@@ -353,10 +328,17 @@ void QFontComboBoxPrivate::_q_updateModel()
     ///TODO: we should finda way to avoid blocking signals and have a real update of the model
     {
         const QSignalBlocker blocker(m);
-        m->setStringList(list);
+        m->setStringList(result);
+        // Since the modelReset signal is blocked the view will not emit an accessibility event
+    #if QT_CONFIG(accessibility)
+        if (QAccessible::isActive()) {
+            QAccessibleTableModelChangeEvent accessibleEvent(q->view(), QAccessibleTableModelChangeEvent::ModelReset);
+            QAccessible::updateAccessibility(&accessibleEvent);
+        }
+    #endif
     }
 
-    if (list.isEmpty()) {
+    if (result.isEmpty()) {
         if (currentFont != QFont()) {
             currentFont = QFont();
             emit q->currentFontChanged(currentFont);
@@ -367,11 +349,12 @@ void QFontComboBoxPrivate::_q_updateModel()
 }
 
 
-void QFontComboBoxPrivate::_q_currentChanged(const QString &text)
+void QFontComboBoxPrivate::currentChanged(const QString &text)
 {
     Q_Q(QFontComboBox);
-    if (currentFont.family() != text) {
-        currentFont.setFamily(text);
+    const QStringList families = currentFont.families();
+    if (families.isEmpty() || families.first() != text) {
+        currentFont.setFamilies(QStringList{text});
         emit q->currentFontChanged(currentFont);
     }
 }
@@ -406,7 +389,7 @@ void QFontComboBoxPrivate::_q_currentChanged(const QString &text)
 
     \image windowsvista-fontcombobox.png Screenshot of QFontComboBox on Windows Vista
 
-    \sa QComboBox, QFont, QFontInfo, QFontMetrics, QFontDatabase, {Character Map Example}
+    \sa QComboBox, QFont, QFontInfo, QFontMetrics, QFontDatabase
 */
 
 /*!
@@ -421,17 +404,18 @@ QFontComboBox::QFontComboBox(QWidget *parent)
 
     QStringListModel *m = new QStringListModel(this);
     setModel(m);
-    setItemDelegate(new QFontFamilyDelegate(this));
+    setItemDelegate(new QFontFamilyDelegate(this, d));
     QListView *lview = qobject_cast<QListView*>(view());
     if (lview)
         lview->setUniformItemSizes(true);
     setWritingSystem(QFontDatabase::Any);
 
-    connect(this, SIGNAL(currentIndexChanged(QString)),
-            this, SLOT(_q_currentChanged(QString)));
-
-    connect(qApp, SIGNAL(fontDatabaseChanged()),
-            this, SLOT(_q_updateModel()));
+    d->connections = {
+        QObjectPrivate::connect(this, &QFontComboBox::currentTextChanged,
+                                d, &QFontComboBoxPrivate::currentChanged),
+        QObjectPrivate::connect(qApp, &QGuiApplication::fontDatabaseChanged,
+                                d, &QFontComboBoxPrivate::updateModel),
+    };
 }
 
 
@@ -440,6 +424,9 @@ QFontComboBox::QFontComboBox(QWidget *parent)
 */
 QFontComboBox::~QFontComboBox()
 {
+    Q_D(const QFontComboBox);
+    for (const QMetaObject::Connection &connection : d->connections)
+        QObject::disconnect(connection);
 }
 
 /*!
@@ -458,7 +445,7 @@ void QFontComboBox::setWritingSystem(QFontDatabase::WritingSystem script)
     QFontFamilyDelegate *delegate = qobject_cast<QFontFamilyDelegate *>(view()->itemDelegate());
     if (delegate)
         delegate->writingSystem = script;
-    d->_q_updateModel();
+    d->updateModel();
 }
 
 QFontDatabase::WritingSystem QFontComboBox::writingSystem() const
@@ -494,7 +481,7 @@ void QFontComboBox::setFontFilters(FontFilters filters)
 {
     Q_D(QFontComboBox);
     d->filters = filters;
-    d->_q_updateModel();
+    d->updateModel();
 }
 
 QFontComboBox::FontFilters QFontComboBox::fontFilters() const
@@ -520,8 +507,8 @@ void QFontComboBox::setCurrentFont(const QFont &font)
     Q_D(QFontComboBox);
     if (font != d->currentFont) {
         d->currentFont = font;
-        d->_q_updateModel();
-        if (d->currentFont == font) { //else the signal has already be emitted by _q_updateModel
+        d->updateModel();
+        if (d->currentFont == font) { //else the signal has already be emitted by updateModel
             emit currentFontChanged(d->currentFont);
         }
     }
@@ -545,7 +532,7 @@ bool QFontComboBox::event(QEvent *e)
         QListView *lview = qobject_cast<QListView*>(view());
         if (lview) {
             lview->window()->setFixedWidth(qMin(width() * 5 / 3,
-                               QDesktopWidgetPrivate::availableGeometry(lview).width()));
+                                           QWidgetPrivate::availableScreenGeometry(lview).width()));
         }
     }
     return QComboBox::event(e);
@@ -558,8 +545,79 @@ QSize QFontComboBox::sizeHint() const
 {
     QSize sz = QComboBox::sizeHint();
     QFontMetrics fm(font());
-    sz.setWidth(fm.horizontalAdvance(QLatin1Char('m'))*14);
+    sz.setWidth(fm.horizontalAdvance(u'm') * 14);
     return sz;
+}
+
+/*!
+    Sets the \a sampleText to show after the font name (when the combo is open) for a given \a writingSystem.
+
+    The sample text given with setSampleTextForFont() has priority.
+
+    \since 6.3
+*/
+void QFontComboBox::setSampleTextForSystem(QFontDatabase::WritingSystem writingSystem, const QString &sampleText)
+{
+    Q_D(QFontComboBox);
+    d->sampleTextForWritingSystem[writingSystem] = sampleText;
+}
+
+
+/*!
+    Returns the sample text to show after the font name (when the combo is open) for a given \a writingSystem.
+
+    \since 6.3
+*/
+QString QFontComboBox::sampleTextForSystem(QFontDatabase::WritingSystem writingSystem) const
+{
+    Q_D(const QFontComboBox);
+    return d->sampleTextForWritingSystem.value(writingSystem);
+}
+
+/*!
+    Sets the \a sampleText to show after the font name (when the combo is open) for a given \a fontFamily.
+
+    The sample text given with this function has priority over the one set with setSampleTextForSystem().
+
+    \since 6.3
+*/
+void QFontComboBox::setSampleTextForFont(const QString &fontFamily, const QString &sampleText)
+{
+    Q_D(QFontComboBox);
+    d->sampleTextForFontFamily[fontFamily] = sampleText;
+}
+
+/*!
+    Returns the sample text to show after the font name (when the combo is open) for a given \a fontFamily.
+
+    \since 6.3
+*/
+QString QFontComboBox::sampleTextForFont(const QString &fontFamily) const
+{
+    Q_D(const QFontComboBox);
+    return d->sampleTextForFontFamily.value(fontFamily);
+}
+
+/*!
+    Sets the \a font to be used to display a given \a fontFamily (when the combo is open).
+
+    \since 6.3
+*/
+void QFontComboBox::setDisplayFont(const QString &fontFamily, const QFont &font)
+{
+    Q_D(QFontComboBox);
+    d->displayFontForFontFamily[fontFamily] = font;
+}
+
+/*!
+    Returns the font (if set) to be used to display a given \a fontFamily (when the combo is open).
+
+    \since 6.3
+*/
+std::optional<QFont> QFontComboBox::displayFont(const QString &fontFamily) const
+{
+    Q_D(const QFontComboBox);
+    return d->displayFontForFontFamily.value(fontFamily, {});
 }
 
 QT_END_NAMESPACE

@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtGui/QFontDatabase>
 
 #include <qrawfont.h>
@@ -121,8 +96,7 @@ void tst_QRawFont::initTestCase()
     if (testFont.isEmpty() || testFontBoldItalic.isEmpty())
         QFAIL("qrawfont unittest font files not found!");
 
-    QFontDatabase database;
-    if (database.families().count() == 0)
+    if (QFontDatabase::families().size() == 0)
         QSKIP("No fonts available!!!");
 }
 
@@ -156,7 +130,7 @@ void tst_QRawFont::explicitRawFontNotLoadedInDatabase()
     QRawFont font(testFont, 10, hintingPreference);
     QVERIFY(font.isValid());
 
-    QVERIFY(!QFontDatabase().families().contains(font.familyName()));
+    QVERIFY(!QFontDatabase::families().contains(font.familyName()));
 }
 
 void tst_QRawFont::explicitRawFontNotAvailableInSystem_data()
@@ -285,8 +259,8 @@ void tst_QRawFont::glyphIndices()
     QRawFont font(testFont, 10);
     QVERIFY(font.isValid());
 
-    QVector<quint32> glyphIndices = font.glyphIndexesForString(QLatin1String("Foobar"));
-    QVector<quint32> expectedGlyphIndices;
+    QList<quint32> glyphIndices = font.glyphIndexesForString(QLatin1String("Foobar"));
+    QList<quint32> expectedGlyphIndices;
     expectedGlyphIndices << 44 << 83 << 83 << 70 << 69 << 86;
 
     QCOMPARE(glyphIndices, expectedGlyphIndices);
@@ -330,11 +304,11 @@ void tst_QRawFont::advances()
     QRawFontPrivate *font_d = QRawFontPrivate::get(font);
     QVERIFY(font_d->fontEngine != 0);
 
-    QVector<quint32> glyphIndices;
+    QList<quint32> glyphIndices;
     glyphIndices << 44 << 83 << 83 << 70 << 69 << 86; // "Foobar"
 
     bool supportsSubPixelPositions = font_d->fontEngine->supportsSubPixelPositions();
-    QVector<QPointF> advances = font.advancesForGlyphIndexes(glyphIndices);
+    QList<QPointF> advances = font.advancesForGlyphIndexes(glyphIndices);
 
     bool mayDiffer = font_d->fontEngine->type() == QFontEngine::Freetype
                      && (hintingPreference == QFont::PreferFullHinting
@@ -358,7 +332,7 @@ void tst_QRawFont::advances()
         QVERIFY(qFuzzyIsNull(advances.at(i).y()));
     }
 
-    advances = font.advancesForGlyphIndexes(QVector<quint32>());
+    advances = font.advancesForGlyphIndexes(QList<quint32>());
     QVERIFY(advances.isEmpty());
 
     int numGlyphs = glyphIndices.size();
@@ -389,8 +363,7 @@ void tst_QRawFont::advances()
 
 void tst_QRawFont::textLayout()
 {
-    QFontDatabase fontDatabase;
-    int id = fontDatabase.addApplicationFont(testFont);
+    int id = QFontDatabase::addApplicationFont(testFont);
     QVERIFY(id >= 0);
 
     QString familyName = QString::fromLatin1("QtBidiTestFont");
@@ -415,23 +388,23 @@ void tst_QRawFont::textLayout()
     QCOMPARE(rawFont.familyName(), familyName);
     QCOMPARE(rawFont.pixelSize(), 18.0);
 
-    QVector<quint32> expectedGlyphIndices;
+    QList<quint32> expectedGlyphIndices;
     expectedGlyphIndices << 44 << 83 << 83 << 70 << 69 << 86;
 
     QCOMPARE(glyphs.glyphIndexes(), expectedGlyphIndices);
 
-    QVERIFY(fontDatabase.removeApplicationFont(id));
+    QVERIFY(QFontDatabase::removeApplicationFont(id));
 }
 
 void tst_QRawFont::fontTable_data()
 {
-    QTest::addColumn<QByteArray>("tagName");
+    QTest::addColumn<QFont::Tag>("tag");
     QTest::addColumn<QFont::HintingPreference>("hintingPreference");
     QTest::addColumn<int>("offset");
     QTest::addColumn<quint32>("expectedValue");
 
     QTest::newRow("Head table, magic number, default hinting")
-            << QByteArray("head")
+            << QFont::Tag("head")
             << QFont::PreferDefaultHinting
             << 12
             << (QSysInfo::ByteOrder == QSysInfo::BigEndian
@@ -439,7 +412,7 @@ void tst_QRawFont::fontTable_data()
                 : 0xF53C0F5F);
 
     QTest::newRow("Head table, magic number, no hinting")
-            << QByteArray("head")
+            << QFont::Tag("head")
             << QFont::PreferNoHinting
             << 12
             << (QSysInfo::ByteOrder == QSysInfo::BigEndian
@@ -447,7 +420,7 @@ void tst_QRawFont::fontTable_data()
                 : 0xF53C0F5F);
 
     QTest::newRow("Head table, magic number, vertical hinting")
-            << QByteArray("head")
+            << QFont::Tag("head")
             << QFont::PreferVerticalHinting
             << 12
             << (QSysInfo::ByteOrder == QSysInfo::BigEndian
@@ -455,7 +428,7 @@ void tst_QRawFont::fontTable_data()
                 : 0xF53C0F5F);
 
     QTest::newRow("Head table, magic number, full hinting")
-            << QByteArray("head")
+            << QFont::Tag("head")
             << QFont::PreferFullHinting
             << 12
             << (QSysInfo::ByteOrder == QSysInfo::BigEndian
@@ -465,7 +438,7 @@ void tst_QRawFont::fontTable_data()
 
 void tst_QRawFont::fontTable()
 {
-    QFETCH(QByteArray, tagName);
+    QFETCH(QFont::Tag, tag);
     QFETCH(QFont::HintingPreference, hintingPreference);
     QFETCH(int, offset);
     QFETCH(quint32, expectedValue);
@@ -473,11 +446,13 @@ void tst_QRawFont::fontTable()
     QRawFont font(testFont, 10, hintingPreference);
     QVERIFY(font.isValid());
 
-    QByteArray table = font.fontTable(tagName);
+    QByteArray table = font.fontTable(tag);
     QVERIFY(!table.isEmpty());
 
     const quint32 *value = reinterpret_cast<const quint32 *>(table.constData() + offset);
     QCOMPARE(*value, expectedValue);
+
+    QCOMPARE(font.fontTable(tag.toString()), table);
 }
 
 typedef QList<QFontDatabase::WritingSystem> WritingSystemList;
@@ -517,7 +492,7 @@ void tst_QRawFont::supportedWritingSystems_data()
 void tst_QRawFont::supportedWritingSystems()
 {
     QFETCH(QString, fileName);
-    QFETCH(WritingSystemList, writingSystems);
+    QFETCH(const WritingSystemList, writingSystems);
     QFETCH(QFont::HintingPreference, hintingPreference);
 
     QRawFont font(fileName, 10, hintingPreference);
@@ -526,7 +501,7 @@ void tst_QRawFont::supportedWritingSystems()
     WritingSystemList actualWritingSystems = font.supportedWritingSystems();
     QCOMPARE(actualWritingSystems.size(), writingSystems.size());
 
-    foreach (QFontDatabase::WritingSystem writingSystem, writingSystems)
+    for (QFontDatabase::WritingSystem writingSystem : writingSystems)
         QVERIFY(actualWritingSystems.contains(writingSystem));
 }
 
@@ -654,6 +629,7 @@ void tst_QRawFont::fromFont_data()
     QTest::addColumn<QFont::HintingPreference>("hintingPreference");
     QTest::addColumn<QString>("familyName");
     QTest::addColumn<QFontDatabase::WritingSystem>("writingSystem");
+    QTest::addColumn<QFont::StyleStrategy>("styleStrategy");
 
     for (int i=QFont::PreferDefaultHinting; i<=QFont::PreferFullHinting; ++i) {
         QString titleBase = QString::fromLatin1("%2, hintingPreference=%1, writingSystem=%3")
@@ -667,7 +643,8 @@ void tst_QRawFont::fromFont_data()
                     << fileName
                     << QFont::HintingPreference(i)
                     << "QtBidiTestFont"
-                    << writingSystem;
+                    << writingSystem
+                    << QFont::PreferDefault;
         }
 
         {
@@ -679,7 +656,8 @@ void tst_QRawFont::fromFont_data()
                     << fileName
                     << QFont::HintingPreference(i)
                     << "QtBidiTestFont"
-                    << writingSystem;
+                    << writingSystem
+                    << QFont::PreferDefault;
         }
 
         {
@@ -691,9 +669,24 @@ void tst_QRawFont::fromFont_data()
                     << fileName
                     << QFont::HintingPreference(i)
                     << "QtBidiTestFont"
-                    << writingSystem;
+                    << writingSystem
+                    << QFont::PreferDefault;
         }
     }
+
+    {
+        QString fileName = testFont;
+        QFontDatabase::WritingSystem writingSystem = QFontDatabase::Arabic;
+
+        QString title = QStringLiteral("No font merging + unsupported script");
+        QTest::newRow(qPrintable(title))
+                << fileName
+                << QFont::PreferDefaultHinting
+                << "QtBidiTestFont"
+                << writingSystem
+                << QFont::NoFontMerging;
+    }
+
 }
 
 void tst_QRawFont::fromFont()
@@ -702,14 +695,16 @@ void tst_QRawFont::fromFont()
     QFETCH(QFont::HintingPreference, hintingPreference);
     QFETCH(QString, familyName);
     QFETCH(QFontDatabase::WritingSystem, writingSystem);
+    QFETCH(QFont::StyleStrategy, styleStrategy);
 
-    QFontDatabase fontDatabase;
-    int id = fontDatabase.addApplicationFont(fileName);
+    int id = QFontDatabase::addApplicationFont(fileName);
     QVERIFY(id >= 0);
 
     QFont font(familyName);
     font.setHintingPreference(hintingPreference);
     font.setPixelSize(26.0);
+    if (styleStrategy != QFont::PreferDefault)
+        font.setStyleStrategy(styleStrategy);
 
     QRawFont rawFont = QRawFont::fromFont(font, writingSystem);
     QVERIFY(rawFont.isValid());
@@ -717,7 +712,7 @@ void tst_QRawFont::fromFont()
     QCOMPARE(rawFont.familyName(), familyName);
     QCOMPARE(rawFont.pixelSize(), 26.0);
 
-    QVERIFY(fontDatabase.removeApplicationFont(id));
+    QVERIFY(QFontDatabase::removeApplicationFont(id));
 }
 
 void tst_QRawFont::copyConstructor_data()
@@ -878,8 +873,7 @@ void tst_QRawFont::unsupportedWritingSystem()
 {
     QFETCH(QFont::HintingPreference, hintingPreference);
 
-    QFontDatabase fontDatabase;
-    int id = fontDatabase.addApplicationFont(testFont);
+    int id = QFontDatabase::addApplicationFont(testFont);
 
     QFont font("QtBidiTestFont");
     font.setHintingPreference(hintingPreference);
@@ -915,7 +909,7 @@ void tst_QRawFont::unsupportedWritingSystem()
     QCOMPARE(rawFont.familyName(), layoutFont.familyName());
     QCOMPARE(rawFont.pixelSize(), 12.0);
 
-    fontDatabase.removeApplicationFont(id);
+    QFontDatabase::removeApplicationFont(id);
 }
 
 void tst_QRawFont::rawFontSetPixelSize_data()
@@ -996,10 +990,10 @@ void tst_QRawFont::kernedAdvances()
     QRawFont font(testFont, pixelSize);
     QVERIFY(font.isValid());
 
-    QVector<quint32> glyphIndexes = font.glyphIndexesForString(QStringLiteral("__"));
+    QList<quint32> glyphIndexes = font.glyphIndexesForString(QStringLiteral("__"));
     QCOMPARE(glyphIndexes.size(), 2);
 
-    QVector<QPointF> advances = font.advancesForGlyphIndexes(glyphIndexes, QRawFont::KernedAdvances);
+    QList<QPointF> advances = font.advancesForGlyphIndexes(glyphIndexes, QRawFont::KernedAdvances);
     QCOMPARE(advances.size(), 2);
 
     qreal expectedAdvanceWidth = pixelSize * underScoreAW / emSquareSize;
@@ -1017,8 +1011,7 @@ void tst_QRawFont::kernedAdvances()
 
 void tst_QRawFont::fallbackFontsOrder()
 {
-    QFontDatabase fontDatabase;
-    int id = fontDatabase.addApplicationFont(testFont);
+    int id = QFontDatabase::addApplicationFont(testFont);
 
     QFont font("QtBidiTestFont");
     font.setPixelSize(12.0);
@@ -1047,7 +1040,7 @@ void tst_QRawFont::fallbackFontsOrder()
     // is not sorted by writing system support.
     QCOMPARE(glyphRuns.size(), 1);
 
-    fontDatabase.removeApplicationFont(id);
+    QFontDatabase::removeApplicationFont(id);
 }
 
 void tst_QRawFont::qtbug65923_partal_clone_data()
@@ -1061,7 +1054,7 @@ void tst_QRawFont::qtbug65923_partal_clone_data()
 void tst_QRawFont::qtbug65923_partal_clone()
 {
     QFile file(testFont);
-    file.open(QIODevice::ReadOnly);
+    QVERIFY(file.open(QIODevice::ReadOnly));
     QByteArray fontData = file.readAll();
 
     QRawFont outerFont;

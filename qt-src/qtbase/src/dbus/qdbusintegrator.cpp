@@ -1,48 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdbusintegrator_p.h"
 
 #include <qcoreapplication.h>
 #include <qelapsedtimer.h>
-#include <qdebug.h>
+#include <qloggingcategory.h>
 #include <qmetaobject.h>
 #include <qobject.h>
 #include <qsocketnotifier.h>
@@ -50,6 +14,7 @@
 #include <qtimer.h>
 #include <qthread.h>
 #include <private/qlocking_p.h>
+#include <QtCore/qset.h>
 
 #include "qdbusargument.h"
 #include "qdbusconnection_p.h"
@@ -78,11 +43,17 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
+QT_IMPL_METATYPE_EXTERN(QDBusSlotCache)
+
 // used with dbus_server_allocate_data_slot
 static dbus_int32_t server_slot = -1;
 
-static QBasicAtomicInt isDebugging = Q_BASIC_ATOMIC_INITIALIZER(-1);
-#define qDBusDebug              if (::isDebugging == 0); else qDebug
+Q_LOGGING_CATEGORY(dbusIntegration, "qt.dbus.integration", QtWarningMsg)
+
+Q_CONSTINIT static QBasicAtomicInt isDebugging = Q_BASIC_ATOMIC_INITIALIZER(-1);
+#define qDBusDebug              if (::isDebugging.loadRelaxed() == 0); else qDebug
 
 static inline QDebug operator<<(QDebug dbg, const QThread *th)
 {
@@ -130,7 +101,34 @@ void qdbusDefaultThreadDebug(int action, int condition, QDBusConnectionPrivate *
 qdbusThreadDebugFunc qdbusThreadDebug = nullptr;
 #endif
 
-typedef QVarLengthArray<QDBusSpyCallEvent::Hook, 4> QDBusSpyHookList;
+class QDBusSpyHookList
+{
+public:
+    void add(QDBusSpyCallEvent::Hook hook)
+    {
+        const auto locker = qt_scoped_lock(lock);
+        list.append(hook);
+    }
+
+    void invoke(const QDBusMessage &msg)
+    {
+        // Create a copy of the hook list here, so that the hooks can be called
+        // without holding the lock.
+        QList<QDBusSpyCallEvent::Hook> hookListCopy;
+        {
+            const auto locker = qt_scoped_lock(lock);
+            hookListCopy = list;
+        }
+
+        for (auto hook : std::as_const(hookListCopy))
+            hook(msg);
+    }
+
+private:
+    QBasicMutex lock;
+    QList<QDBusSpyCallEvent::Hook> list;
+};
+
 Q_GLOBAL_STATIC(QDBusSpyHookList, qDBusSpyHookList)
 
 extern "C" {
@@ -153,8 +151,8 @@ static dbus_bool_t qDBusAddTimeout(DBusTimeout *timeout, void *data)
 
     Q_ASSERT(d->timeouts.key(timeout, 0) == 0);
 
-    int timerId = d->startTimer(q_dbus_timeout_get_interval(timeout));
-    Q_ASSERT_X(timerId, "QDBusConnection", "Failed to start a timer");
+    using namespace std::chrono_literals;
+    int timerId = d->startTimer(q_dbus_timeout_get_interval(timeout) * 1ms); // no overflow possible
     if (!timerId)
         return false;
 
@@ -280,7 +278,6 @@ static void qDBusToggleWatch(DBusWatch *watch, void *data)
 static void qDBusUpdateDispatchStatus(DBusConnection *connection, DBusDispatchStatus new_status, void *data)
 {
     Q_ASSERT(connection);
-    Q_UNUSED(connection);
     QDBusConnectionPrivate *d = static_cast<QDBusConnectionPrivate *>(data);
     if (new_status == DBUS_DISPATCH_DATA_REMAINS)
         emit d->dispatchStatusChanged();
@@ -289,11 +286,12 @@ static void qDBusUpdateDispatchStatus(DBusConnection *connection, DBusDispatchSt
 static void qDBusNewConnection(DBusServer *server, DBusConnection *connection, void *data)
 {
     // ### We may want to separate the server from the QDBusConnectionPrivate
-    Q_ASSERT(server); Q_UNUSED(server);
+    Q_ASSERT(server);
     Q_ASSERT(connection);
     Q_ASSERT(data);
 
-    if (!QDBusConnectionManager::instance())
+    auto *manager = QDBusConnectionManager::instance();
+    if (!manager)
         return;
 
     // keep the connection alive
@@ -304,35 +302,35 @@ static void qDBusNewConnection(DBusServer *server, DBusConnection *connection, v
     if (serverConnection->anonymousAuthenticationAllowed)
         q_dbus_connection_set_allow_anonymous(connection, true);
 
-    QDBusConnectionPrivate *newConnection = new QDBusConnectionPrivate(serverConnection->parent());
-    const auto locker = qt_scoped_lock(QDBusConnectionManager::instance()->mutex);
-    QDBusConnectionManager::instance()->setConnection(QLatin1String("QDBusServer-") + QString::number(reinterpret_cast<qulonglong>(newConnection), 16), newConnection);
-    serverConnection->serverConnectionNames << newConnection->name;
+    QDBusConnectionPrivate *newConnection = new QDBusConnectionPrivate;
+
+    manager->addConnection(
+            "QDBusServer-"_L1 + QString::number(reinterpret_cast<qulonglong>(newConnection), 16),
+            newConnection);
+    {
+        QWriteLocker locker(&serverConnection->lock);
+        serverConnection->serverConnectionNames << newConnection->name;
+    }
 
     // setPeer does the error handling for us
     QDBusErrorInternal error;
     newConnection->setPeer(connection, error);
     newConnection->setDispatchEnabled(false);
 
+    QReadLocker serverLock(&serverConnection->lock);
+    if (!serverConnection->serverObject)
+        return;
+
     // this is a queued connection and will resume in the QDBusServer's thread
-    emit serverConnection->newServerConnection(newConnection);
+    QMetaObject::invokeMethod(serverConnection->serverObject, &QDBusServer::newConnection,
+                              Qt::QueuedConnection, QDBusConnectionPrivate::q(newConnection));
 
     // we've disabled dispatching of events, so now we post an event to the
     // QDBusServer's thread in order to enable it after the
     // QDBusServer::newConnection() signal has been received by the
     // application's code
-    newConnection->ref.ref();
-    QReadLocker serverLock(&serverConnection->lock);
-    QDBusConnectionDispatchEnabler *o = new QDBusConnectionDispatchEnabler(newConnection);
-    QTimer::singleShot(0, o, SLOT(execute()));
-    if (serverConnection->serverObject)
-        o->moveToThread(serverConnection->serverObject->thread());
-}
 
-void QDBusConnectionPrivate::_q_newConnection(QDBusConnectionPrivate *newConnection)
-{
-    Q_ASSERT(mode == ServerMode);
-    emit serverObject->newConnection(QDBusConnectionPrivate::q(newConnection));
+    newConnection->enableDispatchDelayed(serverConnection->serverObject);
 }
 
 } // extern "C"
@@ -342,27 +340,27 @@ static QByteArray buildMatchRule(const QString &service,
                                  const QString &member, const QDBusConnectionPrivate::ArgMatchRules &argMatch, const QString & /*signature*/)
 {
     QString result;
-    result += QLatin1String("type='signal',");
-    const auto keyValue = QLatin1String("%1='%2',");
+    result += "type='signal',"_L1;
+    const auto keyValue = "%1='%2',"_L1;
 
     if (!service.isEmpty())
-        result += keyValue.arg(QLatin1String("sender"), service);
+        result += keyValue.arg("sender"_L1, service);
     if (!objectPath.isEmpty())
-        result += keyValue.arg(QLatin1String("path"), objectPath);
+        result += keyValue.arg("path"_L1, objectPath);
     if (!interface.isEmpty())
-        result += keyValue.arg(QLatin1String("interface"), interface);
+        result += keyValue.arg("interface"_L1, interface);
     if (!member.isEmpty())
-        result += keyValue.arg(QLatin1String("member"), member);
+        result += keyValue.arg("member"_L1, member);
 
     // add the argument string-matching now
     if (!argMatch.args.isEmpty()) {
-        const QString keyValue = QLatin1String("arg%1='%2',");
-        for (int i = 0; i < argMatch.args.count(); ++i)
+        const QString keyValue = "arg%1='%2',"_L1;
+        for (int i = 0; i < argMatch.args.size(); ++i)
             if (!argMatch.args.at(i).isNull())
                 result += keyValue.arg(i).arg(argMatch.args.at(i));
     }
     if (!argMatch.arg0namespace.isEmpty()) {
-        result += QLatin1String("arg0namespace='%1',").arg(argMatch.arg0namespace);
+        result += "arg0namespace='%1',"_L1.arg(argMatch.arg0namespace);
     }
 
     result.chop(1);             // remove ending comma
@@ -373,32 +371,32 @@ static bool findObject(const QDBusConnectionPrivate::ObjectTreeNode *root,
                        const QString &fullpath, int &usedLength,
                        QDBusConnectionPrivate::ObjectTreeNode &result)
 {
-    if (!fullpath.compare(QLatin1String("/")) && root->obj) {
+    if (!fullpath.compare("/"_L1) && root->obj) {
         usedLength = 1;
         result = *root;
         return root;
     }
     int start = 0;
-    int length = fullpath.length();
-    if (fullpath.at(0) == QLatin1Char('/'))
+    int length = fullpath.size();
+    if (fullpath.at(0) == u'/')
         start = 1;
 
     // walk the object tree
-    QDBusConnectionPrivate::ObjectTreeNode::DataList::ConstIterator node = root;
+    const QDBusConnectionPrivate::ObjectTreeNode *node = root;
     while (start < length && node) {
         if (node->flags & QDBusConnection::ExportChildObjects)
             break;
         if ((node->flags & QDBusConnectionPrivate::VirtualObject) && (node->flags & QDBusConnection::SubPath))
             break;
-        int end = fullpath.indexOf(QLatin1Char('/'), start);
+        int end = fullpath.indexOf(u'/', start);
         end = (end == -1 ? length : end);
-        QStringRef pathComponent(&fullpath, start, end - start);
+        QStringView pathComponent = QStringView{fullpath}.mid(start, end - start);
 
         QDBusConnectionPrivate::ObjectTreeNode::DataList::ConstIterator it =
             std::lower_bound(node->children.constBegin(), node->children.constEnd(), pathComponent);
         if (it != node->children.constEnd() && it->name == pathComponent)
             // match
-            node = it;
+            node = &(*it);
         else
             node = nullptr;
 
@@ -412,7 +410,7 @@ static bool findObject(const QDBusConnectionPrivate::ObjectTreeNode *root,
             result = *node;
         else
             // there really is no object here
-            // we're just looking at an unused space in the QVector
+            // we're just looking at an unused space in the QList
             node = nullptr;
     }
     return node;
@@ -421,7 +419,7 @@ static bool findObject(const QDBusConnectionPrivate::ObjectTreeNode *root,
 static QObject *findChildObject(const QDBusConnectionPrivate::ObjectTreeNode *root,
                                 const QString &fullpath, int start)
 {
-    int length = fullpath.length();
+    int length = fullpath.size();
 
     // any object in the tree can tell us to switch to its own object tree:
     const QDBusConnectionPrivate::ObjectTreeNode *node = root;
@@ -433,21 +431,18 @@ static QObject *findChildObject(const QDBusConnectionPrivate::ObjectTreeNode *ro
                 // we're at the correct level
                 return obj;
 
-            int pos = fullpath.indexOf(QLatin1Char('/'), start);
+            int pos = fullpath.indexOf(u'/', start);
             pos = (pos == -1 ? length : pos);
-            QStringRef pathComponent(&fullpath, start, pos - start);
-
-            const QObjectList children = obj->children();
+            auto pathComponent = QStringView{fullpath}.mid(start, pos - start);
 
             // find a child with the proper name
             QObject *next = nullptr;
-            QObjectList::ConstIterator it = children.constBegin();
-            QObjectList::ConstIterator end = children.constEnd();
-            for ( ; it != end; ++it)
-                if ((*it)->objectName() == pathComponent) {
-                    next = *it;
+            for (QObject *child : std::as_const(obj->children())) {
+                if (child->objectName() == pathComponent) {
+                    next = child;
                     break;
                 }
+            }
 
             if (!next)
                 break;
@@ -464,7 +459,7 @@ static QObject *findChildObject(const QDBusConnectionPrivate::ObjectTreeNode *ro
 static QDBusConnectionPrivate::ArgMatchRules matchArgsForService(const QString &service, QDBusServiceWatcher::WatchMode mode)
 {
     QDBusConnectionPrivate::ArgMatchRules matchArgs;
-    if (service.endsWith(QLatin1Char('*'))) {
+    if (service.endsWith(u'*')) {
         matchArgs.arg0namespace = service.chopped(1);
         matchArgs.args << QString();
     }
@@ -490,7 +485,11 @@ static QDBusConnectionPrivate::ArgMatchRules matchArgsForService(const QString &
 extern Q_DBUS_EXPORT void qDBusAddSpyHook(QDBusSpyCallEvent::Hook);
 void qDBusAddSpyHook(QDBusSpyCallEvent::Hook hook)
 {
-    qDBusSpyHookList()->append(hook);
+    auto *hooks = qDBusSpyHookList();
+    if (!hooks)
+        return;
+
+    hooks->add(hook);
 }
 
 QDBusSpyCallEvent::~QDBusSpyCallEvent()
@@ -505,14 +504,15 @@ QDBusSpyCallEvent::~QDBusSpyCallEvent()
 
 void QDBusSpyCallEvent::placeMetaCall(QObject *)
 {
-    invokeSpyHooks(msg, hooks, hookCount);
+    invokeSpyHooks(msg);
 }
 
-inline void QDBusSpyCallEvent::invokeSpyHooks(const QDBusMessage &msg, const Hook *hooks, int hookCount)
+inline void QDBusSpyCallEvent::invokeSpyHooks(const QDBusMessage &msg)
 {
-    // call the spy hook list
-    for (int i = 0; i < hookCount; ++i)
-        hooks[i](msg);
+    if (!qDBusSpyHookList.exists())
+        return;
+
+    qDBusSpyHookList->invoke(msg);
 }
 
 extern "C" {
@@ -561,15 +561,14 @@ bool QDBusConnectionPrivate::handleMessage(const QDBusMessage &amsg)
         // a) if it's a local message, we're in the caller's thread, so invoke the filter directly
         // b) if it's an external message, post to the main thread
         if (Q_UNLIKELY(qDBusSpyHookList.exists()) && qApp) {
-            const QDBusSpyHookList &list = *qDBusSpyHookList;
             if (isLocal) {
                 Q_ASSERT(QThread::currentThread() != thread());
                 qDBusDebug() << this << "invoking message spies directly";
-                QDBusSpyCallEvent::invokeSpyHooks(amsg, list.constData(), list.size());
+                QDBusSpyCallEvent::invokeSpyHooks(amsg);
             } else {
                 qDBusDebug() << this << "invoking message spies via event";
-                QCoreApplication::postEvent(qApp, new QDBusSpyCallEvent(this, QDBusConnection(this),
-                                                                        amsg, list.constData(), list.size()));
+                QCoreApplication::postEvent(
+                        qApp, new QDBusSpyCallEvent(this, QDBusConnection(this), amsg));
 
                 // we'll be called back, so return
                 return true;
@@ -589,28 +588,26 @@ bool QDBusConnectionPrivate::handleMessage(const QDBusMessage &amsg)
 
 static void huntAndDestroy(QObject *needle, QDBusConnectionPrivate::ObjectTreeNode &haystack)
 {
-    for (auto &node : haystack.children)
+    for (QDBusConnectionPrivate::ObjectTreeNode &node : haystack.children)
         huntAndDestroy(needle, node);
 
-    auto isInactive = [](QDBusConnectionPrivate::ObjectTreeNode &node) { return !node.isActive(); };
-
-    haystack.children.erase(std::remove_if(haystack.children.begin(), haystack.children.end(),
-                                           isInactive),
-                            haystack.children.end());
+    auto isInactive = [](const QDBusConnectionPrivate::ObjectTreeNode &node) { return !node.isActive(); };
+    haystack.children.removeIf(isInactive);
 
     if (needle == haystack.obj) {
         haystack.obj = nullptr;
-        haystack.flags = 0;
+        haystack.flags = {};
     }
 }
 
-static void huntAndUnregister(const QVector<QStringRef> &pathComponents, int i, QDBusConnection::UnregisterMode mode,
+static void huntAndUnregister(const QList<QStringView> &pathComponents, int i,
+                              QDBusConnection::UnregisterMode mode,
                               QDBusConnectionPrivate::ObjectTreeNode *node)
 {
-    if (pathComponents.count() == i) {
+    if (pathComponents.size() == i) {
         // found it
         node->obj = nullptr;
-        node->flags = 0;
+        node->flags = {};
 
         if (mode == QDBusConnection::UnregisterTree) {
             // clear the sub-tree as well
@@ -625,7 +622,7 @@ static void huntAndUnregister(const QVector<QStringRef> &pathComponents, int i, 
         if (it == end || it->name != pathComponents.at(i))
             return;              // node not found
 
-        huntAndUnregister(pathComponents, i + 1, mode, it);
+        huntAndUnregister(pathComponents, i + 1, mode, &(*it));
         if (!it->isActive())
             node->children.erase(it);
     }
@@ -635,11 +632,11 @@ static void huntAndEmit(DBusConnection *connection, DBusMessage *msg,
                         QObject *needle, const QDBusConnectionPrivate::ObjectTreeNode &haystack,
                         bool isScriptable, bool isAdaptor, const QString &path = QString())
 {
-    QDBusConnectionPrivate::ObjectTreeNode::DataList::ConstIterator it = haystack.children.constBegin();
-    QDBusConnectionPrivate::ObjectTreeNode::DataList::ConstIterator end = haystack.children.constEnd();
-    for ( ; it != end; ++it) {
-        if (it->isActive())
-            huntAndEmit(connection, msg, needle, *it, isScriptable, isAdaptor, path + QLatin1Char('/') + it->name);
+    for (const QDBusConnectionPrivate::ObjectTreeNode &node : std::as_const(haystack.children)) {
+        if (node.isActive()) {
+            huntAndEmit(connection, msg, needle, node, isScriptable, isAdaptor,
+                        path + u'/' + node.name);
+        }
     }
 
     if (needle == haystack.obj) {
@@ -666,9 +663,10 @@ static void huntAndEmit(DBusConnection *connection, DBusMessage *msg,
 }
 
 static int findSlot(const QMetaObject *mo, const QByteArray &name, int flags,
-                    const QString &signature_, QVector<int> &metaTypes)
+                    const QString &signature_, QList<QMetaType> &metaTypes)
 {
     QByteArray msgSignature = signature_.toLatin1();
+    QString parametersErrorMsg;
 
     for (int idx = mo->methodCount() - 1 ; idx >= QObject::staticMetaObject.methodCount(); --idx) {
         QMetaMethod mm = mo->method(idx);
@@ -685,18 +683,20 @@ static int findSlot(const QMetaObject *mo, const QByteArray &name, int flags,
         if (mm.name() != name)
             continue;
 
-        int returnType = mm.returnType();
+        QMetaType returnType = mm.returnMetaType();
         bool isAsync = qDBusCheckAsyncTag(mm.tag());
         bool isScriptable = mm.attributes() & QMetaMethod::Scriptable;
 
         // consistency check:
-        if (isAsync && returnType != QMetaType::Void)
+        if (isAsync && returnType.id() != QMetaType::Void)
             continue;
 
         QString errorMsg;
         int inputCount = qDBusParametersForMethod(mm, metaTypes, errorMsg);
-        if (inputCount == -1)
+        if (inputCount == -1) {
+            parametersErrorMsg = errorMsg;
             continue;           // problem parsing
+        }
 
         metaTypes[0] = returnType;
         bool hasMessage = false;
@@ -727,18 +727,18 @@ static int findSlot(const QMetaObject *mo, const QByteArray &name, int flags,
             ++i;
 
         // make sure that the output parameters have signatures too
-        if (returnType != QMetaType::UnknownType && returnType != QMetaType::Void && QDBusMetaType::typeToSignature(returnType) == nullptr)
+        if (returnType.isValid() && returnType.id() != QMetaType::Void && QDBusMetaType::typeToSignature(returnType) == nullptr)
             continue;
 
         bool ok = true;
-        for (int j = i; ok && j < metaTypes.count(); ++j)
+        for (int j = i; ok && j < metaTypes.size(); ++j)
             if (QDBusMetaType::typeToSignature(metaTypes.at(i)) == nullptr)
                 ok = false;
         if (!ok)
             continue;
 
         // consistency check:
-        if (isAsync && metaTypes.count() > i + 1)
+        if (isAsync && metaTypes.size() > i + 1)
             continue;
 
         if (mm.methodType() == QMetaMethod::Slot) {
@@ -758,6 +758,13 @@ static int findSlot(const QMetaObject *mo, const QByteArray &name, int flags,
     }
 
     // no slot matched
+    if (!parametersErrorMsg.isEmpty()) {
+        qCWarning(dbusIntegration, "QDBusConnection: couldn't handle call to %s: %ls",
+                  name.constData(), qUtf16Printable(parametersErrorMsg));
+    } else {
+        qCWarning(dbusIntegration, "QDBusConnection: couldn't handle call to %s, no slot matched",
+                  name.constData());
+    }
     return -1;
 }
 
@@ -777,25 +784,24 @@ void QDBusConnectionPrivate::setDispatchEnabled(bool enable)
 
 static QDBusCallDeliveryEvent * const DIRECT_DELIVERY = (QDBusCallDeliveryEvent *)1;
 
-QDBusCallDeliveryEvent* QDBusConnectionPrivate::prepareReply(QDBusConnectionPrivate *target,
+QDBusCallDeliveryEvent *QDBusConnectionPrivate::prepareReply(QDBusConnectionPrivate *target,
                                                              QObject *object, int idx,
-                                                             const QVector<int> &metaTypes,
+                                                             const QList<QMetaType> &metaTypes,
                                                              const QDBusMessage &msg)
 {
     Q_ASSERT(object);
-    Q_UNUSED(object);
 
-    int n = metaTypes.count() - 1;
+    int n = metaTypes.size() - 1;
     if (metaTypes[n] == QDBusMetaTypeId::message())
         --n;
 
-    if (msg.arguments().count() < n)
+    if (msg.arguments().size() < n)
         return nullptr;               // too few arguments
 
     // check that types match
     for (int i = 0; i < n; ++i)
-        if (metaTypes.at(i + 1) != msg.arguments().at(i).userType() &&
-            msg.arguments().at(i).userType() != qMetaTypeId<QDBusArgument>())
+        if (metaTypes.at(i + 1) != msg.arguments().at(i).metaType() &&
+            msg.arguments().at(i).metaType() != QMetaType::fromType<QDBusArgument>())
             return nullptr;           // no match
 
     // we can deliver
@@ -819,14 +825,15 @@ void QDBusConnectionPrivate::activateSignal(const QDBusConnectionPrivate::Signal
     if (call == DIRECT_DELIVERY) {
         // short-circuit delivery
         Q_ASSERT(this == hook.obj);
-        deliverCall(this, 0, msg, hook.params, hook.midx);
+        deliverCall(this, msg, hook.params, hook.midx);
         return;
     }
     if (call)
         postEventToThread(ActivateSignalAction, hook.obj, call);
 }
 
-bool QDBusConnectionPrivate::activateCall(QObject* object, int flags, const QDBusMessage &msg)
+bool QDBusConnectionPrivate::activateCall(QObject *object, QDBusConnection::RegisterOptions flags,
+                                          const QDBusMessage &msg)
 {
     // This is called by QDBusConnectionPrivate::handleObjectCall to place a call
     // to a slot on the object.
@@ -861,131 +868,131 @@ bool QDBusConnectionPrivate::activateCall(QObject* object, int flags, const QDBu
         qvariant_cast<QDBusSlotCache>(object->property(cachePropertyName));
     QString cacheKey = msg.member(), signature = msg.signature();
     if (!signature.isEmpty()) {
-        cacheKey.reserve(cacheKey.length() + 1 + signature.length());
-        cacheKey += QLatin1Char('.');
+        cacheKey.reserve(cacheKey.size() + 1 + signature.size());
+        cacheKey += u'.';
         cacheKey += signature;
     }
 
-    QDBusSlotCache::Hash::ConstIterator cacheIt = slotCache.hash.constFind(cacheKey);
-    while (cacheIt != slotCache.hash.constEnd() && cacheIt->flags != flags &&
-           cacheIt.key() == cacheKey)
-        ++cacheIt;
-    if (cacheIt == slotCache.hash.constEnd() || cacheIt.key() != cacheKey)
-    {
+    QDBusSlotCache::Key compoundKey{ std::move(cacheKey), flags };
+    QDBusSlotCache::Hash::ConstIterator cacheIt = slotCache.hash.constFind(compoundKey);
+    if (cacheIt == slotCache.hash.constEnd()) {
         // not cached, analyze the meta object
         const QMetaObject *mo = object->metaObject();
         QByteArray memberName = msg.member().toUtf8();
 
         // find a slot that matches according to the rules above
         QDBusSlotCache::Data slotData;
-        slotData.flags = flags;
         slotData.slotIdx = ::findSlot(mo, memberName, flags, msg.signature(), slotData.metaTypes);
         if (slotData.slotIdx == -1) {
             // ### this is where we want to add the connection as an arg too
             // try with no parameters, but with a QDBusMessage
             slotData.slotIdx = ::findSlot(mo, memberName, flags, QString(), slotData.metaTypes);
-            if (slotData.metaTypes.count() != 2 ||
+            if (slotData.metaTypes.size() != 2 ||
                 slotData.metaTypes.at(1) != QDBusMetaTypeId::message()) {
                 // not found
                 // save the negative lookup
                 slotData.slotIdx = -1;
                 slotData.metaTypes.clear();
-                slotCache.hash.insert(cacheKey, slotData);
+                slotCache.hash.insert(compoundKey, slotData);
                 object->setProperty(cachePropertyName, QVariant::fromValue(slotCache));
+
+                qCWarning(dbusIntegration).nospace() << "Could not find slot " << mo->className()
+                                                     << "::" << memberName.constData();
                 return false;
             }
         }
 
         // save to the cache
-        slotCache.hash.insert(cacheKey, slotData);
+        slotCache.hash.insert(compoundKey, slotData);
         object->setProperty(cachePropertyName, QVariant::fromValue(slotCache));
 
         // found the slot to be called
-        deliverCall(object, flags, msg, slotData.metaTypes, slotData.slotIdx);
+        deliverCall(object, msg, slotData.metaTypes, slotData.slotIdx);
         return true;
     } else if (cacheIt->slotIdx == -1) {
         // negative cache
         return false;
     } else {
         // use the cache
-        deliverCall(object, flags, msg, cacheIt->metaTypes, cacheIt->slotIdx);
+        deliverCall(object, msg, cacheIt->metaTypes, cacheIt->slotIdx);
         return true;
     }
     return false;
 }
 
-void QDBusConnectionPrivate::deliverCall(QObject *object, int /*flags*/, const QDBusMessage &msg,
-                                         const QVector<int> &metaTypes, int slotIdx)
+void QDBusConnectionPrivate::deliverCall(QObject *object, const QDBusMessage &msg,
+                                         const QList<QMetaType> &metaTypes, int slotIdx)
 {
     Q_ASSERT_X(!object || QThread::currentThread() == object->thread(),
                "QDBusConnection: internal threading error",
                "function called for an object that is in another thread!!");
 
     QVarLengthArray<void *, 10> params;
-    params.reserve(metaTypes.count());
+    params.reserve(metaTypes.size());
 
-    QVariantList auxParameters;
+    QVarLengthArray<QVariant, 10> auxParameters; // we cannot allow reallocation here, since we
+    auxParameters.reserve(metaTypes.size());    // keep references to the entries
+
     // let's create the parameter list
 
     // first one is the return type -- add it below
-    params.append(0);
+    params.append(nullptr);
 
     // add the input parameters
     int i;
-    int pCount = qMin(msg.arguments().count(), metaTypes.count() - 1);
+    int pCount = qMin(msg.arguments().size(), metaTypes.size() - 1);
     for (i = 1; i <= pCount; ++i) {
-        int id = metaTypes[i];
+        auto id = metaTypes[i];
         if (id == QDBusMetaTypeId::message())
             break;
 
-        const QVariant &arg = msg.arguments().at(i - 1);
-        if (arg.userType() == id)
+        const QList<QVariant> args = msg.arguments();
+        const QVariant &arg = args.at(i - 1);
+        if (arg.metaType() == id)
             // no conversion needed
             params.append(const_cast<void *>(arg.constData()));
-        else if (arg.userType() == qMetaTypeId<QDBusArgument>()) {
+        else if (arg.metaType() == QMetaType::fromType<QDBusArgument>()) {
             // convert to what the function expects
-            void *null = nullptr;
-            auxParameters.append(QVariant(id, null));
+            auxParameters.append(QVariant(QMetaType(id)));
 
             const QDBusArgument &in =
                 *reinterpret_cast<const QDBusArgument *>(arg.constData());
-            QVariant &out = auxParameters[auxParameters.count() - 1];
+            QVariant &out = auxParameters[auxParameters.size() - 1];
 
-            if (Q_UNLIKELY(!QDBusMetaType::demarshall(in, out.userType(), out.data())))
+            if (Q_UNLIKELY(!QDBusMetaType::demarshall(in, out.metaType(), out.data())))
                 qFatal("Internal error: demarshalling function for type '%s' (%d) failed!",
-                       out.typeName(), out.userType());
+                       out.typeName(), out.metaType().id());
 
             params.append(const_cast<void *>(out.constData()));
         } else {
             qFatal("Internal error: got invalid meta type %d (%s) "
                    "when trying to convert to meta type %d (%s)",
-                   arg.userType(), QMetaType::typeName(arg.userType()),
-                   id, QMetaType::typeName(id));
+                   arg.metaType().id(), arg.metaType().name(),
+                   id.id(), id.name());
         }
     }
 
-    if (metaTypes.count() > i && metaTypes[i] == QDBusMetaTypeId::message()) {
+    if (metaTypes.size() > i && metaTypes[i] == QDBusMetaTypeId::message()) {
         params.append(const_cast<void*>(static_cast<const void*>(&msg)));
         ++i;
     }
 
     // output arguments
-    const int numMetaTypes = metaTypes.count();
+    const int numMetaTypes = metaTypes.size();
     QVariantList outputArgs;
-    void *null = nullptr;
-    if (metaTypes[0] != QMetaType::Void && metaTypes[0] != QMetaType::UnknownType) {
+    if (metaTypes[0].id() != QMetaType::Void && metaTypes[0].isValid()) {
         outputArgs.reserve(numMetaTypes - i + 1);
-        QVariant arg(metaTypes[0], null);
+        QVariant arg{QMetaType(metaTypes[0])};
         outputArgs.append( arg );
-        params[0] = const_cast<void*>(outputArgs.at( outputArgs.count() - 1 ).constData());
+        params[0] = const_cast<void*>(outputArgs.at( outputArgs.size() - 1 ).constData());
     } else {
         outputArgs.reserve(numMetaTypes - i);
     }
 
     for ( ; i < numMetaTypes; ++i) {
-        QVariant arg(metaTypes[i], null);
+        QVariant arg{QMetaType(metaTypes[i])};
         outputArgs.append( arg );
-        params.append(const_cast<void*>(outputArgs.at( outputArgs.count() - 1 ).constData()));
+        params.append(const_cast<void*>(outputArgs.at( outputArgs.size() - 1 ).constData()));
     }
 
     // make call:
@@ -1014,35 +1021,31 @@ void QDBusConnectionPrivate::deliverCall(QObject *object, int /*flags*/, const Q
             send(msg.createReply(outputArgs));
         } else {
             // generate internal error
-            qWarning("Internal error: Failed to deliver message");
-            send(msg.createErrorReply(QDBusError::InternalError,
-                                      QLatin1String("Failed to deliver message")));
+            qCWarning(dbusIntegration, "Internal error: Failed to deliver message");
+            send(msg.createErrorReply(QDBusError::InternalError, "Failed to deliver message"_L1));
         }
     }
 
     return;
 }
 
-extern bool qDBusInitThreads();
-
-QDBusConnectionPrivate::QDBusConnectionPrivate(QObject *p)
-    : QObject(p),
-      ref(1),
+QDBusConnectionPrivate::QDBusConnectionPrivate()
+    : ref(1),
       mode(InvalidMode),
       busService(nullptr),
       connection(nullptr),
-      rootNode(QString(QLatin1Char('/'))),
+      rootNode(QStringLiteral("/")),
       anonymousAuthenticationAllowed(false),
       dispatchEnabled(true),
       isAuthenticated(false)
 {
     static const bool threads = q_dbus_threads_init_default();
-    if (::isDebugging == -1)
-       ::isDebugging = qEnvironmentVariableIntValue("QDBUS_DEBUG");
-    Q_UNUSED(threads)
+    Q_UNUSED(threads);
+    if (::isDebugging.loadRelaxed() == -1)
+       ::isDebugging.storeRelaxed(qEnvironmentVariableIntValue("QDBUS_DEBUG"));
 
 #ifdef QDBUS_THREAD_DEBUG
-    if (::isDebugging > 1)
+    if (::isDebugging.loadRelaxed() > 1)
         qdbusThreadDebug = qdbusDefaultThreadDebug;
 #endif
 
@@ -1053,12 +1056,8 @@ QDBusConnectionPrivate::QDBusConnectionPrivate(QObject *p)
             this, &QDBusConnectionPrivate::handleObjectCall, Qt::QueuedConnection);
     connect(this, &QDBusConnectionPrivate::messageNeedsSending,
             this, &QDBusConnectionPrivate::sendInternal);
-    connect(this, &QDBusConnectionPrivate::signalNeedsConnecting,
-            this, &QDBusConnectionPrivate::addSignalHook, Qt::BlockingQueuedConnection);
-    connect(this, &QDBusConnectionPrivate::signalNeedsDisconnecting,
-            this, &QDBusConnectionPrivate::removeSignalHook, Qt::BlockingQueuedConnection);
 
-    rootNode.flags = 0;
+    rootNode.flags = {};
 
     // prepopulate watchedServices:
     // we know that the owner of org.freedesktop.DBus is itself
@@ -1072,9 +1071,10 @@ QDBusConnectionPrivate::QDBusConnectionPrivate(QObject *p)
 QDBusConnectionPrivate::~QDBusConnectionPrivate()
 {
     if (thread() && thread() != QThread::currentThread())
-        qWarning("QDBusConnection(name=\"%s\")'s last reference in not in its creation thread! "
-                 "Timer and socket errors will follow and the program will probably crash",
-                 qPrintable(name));
+        qCWarning(dbusIntegration,
+                  "QDBusConnection(name=\"%s\")'s last reference in not in its creation thread! "
+                  "Timer and socket errors will follow and the program will probably crash",
+                  qPrintable(name));
 
     auto lastMode = mode; // reset on connection close
     closeConnection();
@@ -1102,12 +1102,8 @@ QDBusConnectionPrivate::~QDBusConnectionPrivate()
 void QDBusConnectionPrivate::collectAllObjects(QDBusConnectionPrivate::ObjectTreeNode &haystack,
                                                QSet<QObject *> &set)
 {
-    QDBusConnectionPrivate::ObjectTreeNode::DataList::Iterator it = haystack.children.begin();
-
-    while (it != haystack.children.end()) {
-        collectAllObjects(*it, set);
-        it++;
-    }
+    for (ObjectTreeNode &child : haystack.children)
+        collectAllObjects(child, set);
 
     if (haystack.obj)
         set.insert(haystack.obj);
@@ -1135,7 +1131,11 @@ void QDBusConnectionPrivate::closeConnection()
         }
     }
 
-    qDeleteAll(pendingCalls);
+    for (QDBusPendingCallPrivate *call : pendingCalls) {
+        if (!call->ref.deref())
+            delete call;
+    }
+    pendingCalls.clear();
 
     // Disconnect all signals from signal hooks and from the object tree to
     // avoid QObject::destroyed being sent to dbus daemon thread which has
@@ -1144,18 +1144,12 @@ void QDBusConnectionPrivate::closeConnection()
     // dangling pointer.
     QSet<QObject *> allObjects;
     collectAllObjects(rootNode, allObjects);
-    SignalHookHash::const_iterator sit = signalHooks.constBegin();
-    while (sit != signalHooks.constEnd()) {
-        allObjects.insert(sit.value().obj);
-        ++sit;
-    }
+    for (const SignalHook &signalHook : std::as_const(signalHooks))
+        allObjects.insert(signalHook.obj);
 
     // now disconnect ourselves
-    QSet<QObject *>::const_iterator oit = allObjects.constBegin();
-    while (oit != allObjects.constEnd()) {
-        (*oit)->disconnect(this);
-        ++oit;
-    }
+    for (QObject *obj : std::as_const(allObjects))
+        obj->disconnect(this);
 }
 
 void QDBusConnectionPrivate::handleDBusDisconnection()
@@ -1184,7 +1178,7 @@ bool QDBusConnectionPrivate::handleError(const QDBusErrorInternal &error)
 void QDBusConnectionPrivate::timerEvent(QTimerEvent *e)
 {
     {
-        DBusTimeout *timeout = timeouts.value(e->timerId(), 0);
+        DBusTimeout *timeout = timeouts.value(e->timerId(), nullptr);
         if (timeout)
             q_dbus_timeout_handle(timeout);
     }
@@ -1195,17 +1189,15 @@ void QDBusConnectionPrivate::timerEvent(QTimerEvent *e)
 void QDBusConnectionPrivate::doDispatch()
 {
     if (mode == ClientMode || mode == PeerMode) {
-        while (q_dbus_connection_dispatch(connection) == DBUS_DISPATCH_DATA_REMAINS) ;
         if (dispatchEnabled && !pendingMessages.isEmpty()) {
             // dispatch previously queued messages
-            PendingMessageList::Iterator it = pendingMessages.begin();
-            PendingMessageList::Iterator end = pendingMessages.end();
-            for ( ; it != end; ++it) {
-                qDBusDebug() << this << "dequeueing message" << *it;
-                handleMessage(std::move(*it));
+            for (QDBusMessage &message : pendingMessages) {
+                qDBusDebug() << this << "dequeueing message" << message;
+                handleMessage(std::move(message));
             }
             pendingMessages.clear();
         }
+        while (q_dbus_connection_dispatch(connection) == DBUS_DISPATCH_DATA_REMAINS) ;
     }
 }
 
@@ -1277,16 +1269,16 @@ void QDBusConnectionPrivate::relaySignal(QObject *obj, const QMetaObject *mo, in
 
     checkThread();
     QDBusReadLocker locker(RelaySignalAction, this);
-    QDBusMessage message = QDBusMessage::createSignal(QLatin1String("/"), interface,
-                                                      QLatin1String(memberName));
+    QDBusMessage message = QDBusMessage::createSignal("/"_L1, interface,
+                                                      QLatin1StringView(memberName));
     QDBusMessagePrivate::setParametersValidated(message, true);
     message.setArguments(args);
     QDBusError error;
     DBusMessage *msg =
             QDBusMessagePrivate::toDBusMessage(message, connectionCapabilities(), &error);
     if (!msg) {
-        qWarning("QDBusConnection: Could not emit signal %s.%s: %s", qPrintable(interface), memberName.constData(),
-                 qPrintable(error.message()));
+        qCWarning(dbusIntegration, "QDBusConnection: Could not emit signal %s.%s: %s",
+                  qPrintable(interface), memberName.constData(), qPrintable(error.message()));
         lastError = error;
         return;
     }
@@ -1301,46 +1293,46 @@ void QDBusConnectionPrivate::relaySignal(QObject *obj, const QMetaObject *mo, in
 void QDBusConnectionPrivate::serviceOwnerChangedNoLock(const QString &name,
                                                        const QString &oldOwner, const QString &newOwner)
 {
-    Q_UNUSED(oldOwner);
 //    QDBusWriteLocker locker(UpdateSignalHookOwnerAction, this);
     WatchedServicesHash::Iterator it = watchedServices.find(name);
     if (it == watchedServices.end())
         return;
     if (oldOwner != it->owner)
-        qWarning("QDBusConnection: name '%s' had owner '%s' but we thought it was '%s'",
-                 qPrintable(name), qPrintable(oldOwner), qPrintable(it->owner));
+        qCWarning(dbusIntegration,
+                  "QDBusConnection: name '%s' had owner '%s' but we thought it was '%s'",
+                  qPrintable(name), qPrintable(oldOwner), qPrintable(it->owner));
 
     qDBusDebug() << this << "Updating name" << name << "from" << oldOwner << "to" << newOwner;
     it->owner = newOwner;
 }
 
-int QDBusConnectionPrivate::findSlot(QObject* obj, const QByteArray &normalizedName,
-                                     QVector<int> &params)
+int QDBusConnectionPrivate::findSlot(QObject *obj, const QByteArray &normalizedName,
+                                     QList<QMetaType> &params, QString &errorMsg)
 {
+    errorMsg.clear();
     int midx = obj->metaObject()->indexOfMethod(normalizedName);
     if (midx == -1)
         return -1;
 
-    QString errorMsg;
     int inputCount = qDBusParametersForMethod(obj->metaObject()->method(midx), params, errorMsg);
-    if ( inputCount == -1 || inputCount + 1 != params.count() )
-        return -1;              // failed to parse or invalid arguments or output arguments
+    if (inputCount == -1 || inputCount + 1 != params.size())
+        return -1;
 
     return midx;
 }
 
 bool QDBusConnectionPrivate::prepareHook(QDBusConnectionPrivate::SignalHook &hook, QString &key,
-                                         const QString &service,
-                                         const QString &path, const QString &interface, const QString &name,
-                                         const ArgMatchRules &argMatch,
-                                         QObject *receiver, const char *signal, int minMIdx,
-                                         bool buildSignature)
+                                         const QString &service, const QString &path,
+                                         const QString &interface, const QString &name,
+                                         const ArgMatchRules &argMatch, QObject *receiver,
+                                         const char *signal, int minMIdx, bool buildSignature,
+                                         QString &errorMsg)
 {
     QByteArray normalizedName = signal + 1;
-    hook.midx = findSlot(receiver, signal + 1, hook.params);
+    hook.midx = findSlot(receiver, signal + 1, hook.params, errorMsg);
     if (hook.midx == -1) {
         normalizedName = QMetaObject::normalizedSignature(signal + 1);
-        hook.midx = findSlot(receiver, normalizedName, hook.params);
+        hook.midx = findSlot(receiver, normalizedName, hook.params, errorMsg);
     }
     if (hook.midx < minMIdx) {
         return false;
@@ -1360,15 +1352,15 @@ bool QDBusConnectionPrivate::prepareHook(QDBusConnectionPrivate::SignalHook &hoo
         mname = QString::fromUtf8(normalizedName);
     }
     key = mname;
-    key.reserve(interface.length() + 1 + mname.length());
-    key += QLatin1Char(':');
+    key.reserve(interface.size() + 1 + mname.size());
+    key += u':';
     key += interface;
 
     if (buildSignature) {
         hook.signature.clear();
-        for (int i = 1; i < hook.params.count(); ++i)
+        for (int i = 1; i < hook.params.size(); ++i)
             if (hook.params.at(i) != QDBusMetaTypeId::message())
-                hook.signature += QLatin1String( QDBusMetaType::typeToSignature( hook.params.at(i) ) );
+                hook.signature += QLatin1StringView(QDBusMetaType::typeToSignature(hook.params.at(i)));
     }
 
     hook.matchRule = buildMatchRule(service, path, interface, mname, argMatch, hook.signature);
@@ -1380,21 +1372,20 @@ void QDBusConnectionPrivate::sendError(const QDBusMessage &msg, QDBusError::Erro
     if (code == QDBusError::UnknownMethod) {
         QString interfaceMsg;
         if (msg.interface().isEmpty())
-            interfaceMsg = QLatin1String("any interface");
+            interfaceMsg = "any interface"_L1;
         else
-            interfaceMsg = QLatin1String("interface '%1'").arg(msg.interface());
+            interfaceMsg = "interface '%1'"_L1.arg(msg.interface());
 
-        send(msg.createErrorReply(code,
-                                  QLatin1String("No such method '%1' in %2 at object path '%3' "
-                                                "(signature '%4')")
+        send(msg.createErrorReply(code, "No such method '%1' in %2 at object path '%3' "
+                                        "(signature '%4')"_L1
                                   .arg(msg.member(), interfaceMsg, msg.path(), msg.signature())));
     } else if (code == QDBusError::UnknownInterface) {
         send(msg.createErrorReply(QDBusError::UnknownInterface,
-                                  QLatin1String("No such interface '%1' at object path '%2'")
+                                  "No such interface '%1' at object path '%2'"_L1
                                   .arg(msg.interface(), msg.path())));
     } else if (code == QDBusError::UnknownObject) {
         send(msg.createErrorReply(QDBusError::UnknownObject,
-                                  QLatin1String("No such object path '%1'").arg(msg.path())));
+                                  "No such object path '%1'"_L1.arg(msg.path())));
     }
 }
 
@@ -1405,7 +1396,7 @@ bool QDBusConnectionPrivate::activateInternalFilters(const ObjectTreeNode &node,
     const QString interface = msg.interface();
 
     if (interface.isEmpty() || interface == QDBusUtil::dbusInterfaceIntrospectable()) {
-        if (msg.member() == QLatin1String("Introspect") && msg.signature().isEmpty()) {
+        if (msg.member() == "Introspect"_L1 && msg.signature().isEmpty()) {
             //qDebug() << "QDBusConnectionPrivate::activateInternalFilters introspect" << msg.d_ptr->msg;
             QDBusMessage reply = msg.createReply(qDBusIntrospectObject(node, msg.path()));
             send(reply);
@@ -1421,15 +1412,15 @@ bool QDBusConnectionPrivate::activateInternalFilters(const ObjectTreeNode &node,
     if (node.obj && (interface.isEmpty() ||
                      interface == QDBusUtil::dbusInterfaceProperties())) {
         //qDebug() << "QDBusConnectionPrivate::activateInternalFilters properties" << msg.d_ptr->msg;
-        if (msg.member() == QLatin1String("Get") && msg.signature() == QLatin1String("ss")) {
+        if (msg.member() == "Get"_L1 && msg.signature() == "ss"_L1) {
             QDBusMessage reply = qDBusPropertyGet(node, msg);
             send(reply);
             return true;
-        } else if (msg.member() == QLatin1String("Set") && msg.signature() == QLatin1String("ssv")) {
+        } else if (msg.member() == "Set"_L1 && msg.signature() == "ssv"_L1) {
             QDBusMessage reply = qDBusPropertySet(node, msg);
             send(reply);
             return true;
-        } else if (msg.member() == QLatin1String("GetAll") && msg.signature() == QLatin1String("s")) {
+        } else if (msg.member() == "GetAll"_L1 && msg.signature() == "s"_L1) {
             QDBusMessage reply = qDBusPropertyGetAll(node, msg);
             send(reply);
             return true;
@@ -1463,7 +1454,7 @@ void QDBusConnectionPrivate::activateObject(ObjectTreeNode &node, const QDBusMes
         }
     }
 
-    if (pathStartPos != msg.path().length()) {
+    if (pathStartPos != msg.path().size()) {
         node.flags &= ~QDBusConnection::ExportAllSignals;
         node.obj = findChildObject(&node, msg.path(), pathStartPos);
         if (!node.obj) {
@@ -1475,25 +1466,22 @@ void QDBusConnectionPrivate::activateObject(ObjectTreeNode &node, const QDBusMes
     QDBusAdaptorConnector *connector;
     if (node.flags & QDBusConnection::ExportAdaptors &&
         (connector = qDBusFindAdaptorConnector(node.obj))) {
-        int newflags = node.flags | QDBusConnection::ExportAllSlots;
+        auto newflags = node.flags | QDBusConnection::ExportAllSlots;
 
         if (msg.interface().isEmpty()) {
             // place the call in all interfaces
             // let the first one that handles it to work
-            QDBusAdaptorConnector::AdaptorMap::ConstIterator it =
-                connector->adaptors.constBegin();
-            QDBusAdaptorConnector::AdaptorMap::ConstIterator end =
-                connector->adaptors.constEnd();
-
-            for ( ; it != end; ++it)
-                if (activateCall(it->adaptor, newflags, msg))
+            for (const QDBusAdaptorConnector::AdaptorData &adaptorData :
+                 std::as_const(connector->adaptors)) {
+                if (activateCall(adaptorData.adaptor, newflags, msg))
                     return;
+            }
         } else {
             // check if we have an interface matching the name that was asked:
             QDBusAdaptorConnector::AdaptorMap::ConstIterator it;
             it = std::lower_bound(connector->adaptors.constBegin(), connector->adaptors.constEnd(),
                                   msg.interface());
-            if (it != connector->adaptors.constEnd() && msg.interface() == QLatin1String(it->interface)) {
+            if (it != connector->adaptors.constEnd() && msg.interface() == QLatin1StringView(it->interface)) {
                 if (!activateCall(it->adaptor, newflags, msg))
                     sendError(msg, QDBusError::UnknownMethod);
                 return;
@@ -1564,8 +1552,8 @@ void QDBusConnectionPrivate::handleObjectCall(const QDBusMessage &msg)
         objThread = result.obj->thread();
         if (!objThread) {
             send(msg.createErrorReply(QDBusError::InternalError,
-                                      QLatin1String("Object '%1' (at path '%2')"
-                                                    " has no thread. Cannot deliver message.")
+                                      "Object '%1' (at path '%2')"
+                                      " has no thread. Cannot deliver message."_L1
                                       .arg(result.obj->objectName(), msg.path())));
             return;
         }
@@ -1663,8 +1651,8 @@ void QDBusConnectionPrivate::handleSignal(const QString &key, const QDBusMessage
             if (arguments.size() < 1)
                 continue;
             const QString param = arguments.at(0).toString();
-            if (param != hook.argumentMatch.arg0namespace
-                && !param.startsWith(hook.argumentMatch.arg0namespace + QLatin1Char('.')))
+            const QStringView ns = hook.argumentMatch.arg0namespace;
+            if (!param.startsWith(ns) || (param.size() != ns.size() && param[ns.size()] != u'.'))
                 continue;
         }
         activateSignal(hook, msg);
@@ -1681,17 +1669,17 @@ void QDBusConnectionPrivate::handleSignal(const QDBusMessage& msg)
     // (but not both)
 
     QString key = msg.member();
-    key.reserve(key.length() + 1 + msg.interface().length());
-    key += QLatin1Char(':');
+    key.reserve(key.size() + 1 + msg.interface().size());
+    key += u':';
     key += msg.interface();
 
-    QDBusReadLocker locker(HandleSignalAction, this);
+    QDBusWriteLocker locker(HandleSignalAction, this);
     handleSignal(key, msg);                  // one try
 
-    key.truncate(msg.member().length() + 1); // keep the ':'
+    key.truncate(msg.member().size() + 1); // keep the ':'
     handleSignal(key, msg);                  // second try
 
-    key = QLatin1Char(':');
+    key = u':';
     key += msg.interface();
     handleSignal(key, msg);                  // third try
 }
@@ -1703,10 +1691,10 @@ void QDBusConnectionPrivate::watchForDBusDisconnection()
     hook.service.clear(); // org.freedesktop.DBus.Local.Disconnected uses empty service name
     hook.path = QDBusUtil::dbusPathLocal();
     hook.obj = this;
-    hook.params << QMetaType::Void;
+    hook.params << QMetaType(QMetaType::Void);
     hook.midx = staticMetaObject.indexOfSlot("handleDBusDisconnection()");
     Q_ASSERT(hook.midx != -1);
-    signalHooks.insert(QLatin1String("Disconnected:" DBUS_INTERFACE_LOCAL), hook);
+    signalHooks.insert("Disconnected:" DBUS_INTERFACE_LOCAL ""_L1, hook);
 }
 
 void QDBusConnectionPrivate::setServer(QDBusServer *object, DBusServer *s, const QDBusErrorInternal &error)
@@ -1776,10 +1764,10 @@ void QDBusConnectionPrivate::setPeer(DBusConnection *c, const QDBusErrorInternal
 
     watchForDBusDisconnection();
 
-    QMetaObject::invokeMethod(this, "doDispatch", Qt::QueuedConnection);
+    QMetaObject::invokeMethod(this, &QDBusConnectionPrivate::doDispatch, Qt::QueuedConnection);
 }
 
-static QDBusConnection::ConnectionCapabilities connectionCapabilies(DBusConnection *connection)
+static QDBusConnection::ConnectionCapabilities connectionCapabilities(DBusConnection *connection)
 {
     QDBusConnection::ConnectionCapabilities result;
     typedef dbus_bool_t (*can_send_type_t)(DBusConnection *, int);
@@ -1805,7 +1793,7 @@ static QDBusConnection::ConnectionCapabilities connectionCapabilies(DBusConnecti
 
 void QDBusConnectionPrivate::handleAuthentication()
 {
-    capabilities.storeRelaxed(connectionCapabilies(connection));
+    capabilities.storeRelaxed(::connectionCapabilities(connection));
     isAuthenticated = true;
 }
 
@@ -1840,31 +1828,31 @@ void QDBusConnectionPrivate::setConnection(DBusConnection *dbc, const QDBusError
     hook.service = QDBusUtil::dbusService();
     hook.path.clear(); // no matching
     hook.obj = this;
-    hook.params << QMetaType::Void << QMetaType::QString; // both functions take a QString as parameter and return void
+    hook.params << QMetaType(QMetaType::Void) << QMetaType(QMetaType::QString); // both functions take a QString as parameter and return void
 
     hook.midx = staticMetaObject.indexOfSlot("registerServiceNoLock(QString)");
     Q_ASSERT(hook.midx != -1);
-    signalHooks.insert(QLatin1String("NameAcquired:" DBUS_INTERFACE_DBUS), hook);
+    signalHooks.insert("NameAcquired:" DBUS_INTERFACE_DBUS ""_L1, hook);
 
     hook.midx = staticMetaObject.indexOfSlot("unregisterServiceNoLock(QString)");
     Q_ASSERT(hook.midx != -1);
-    signalHooks.insert(QLatin1String("NameLost:" DBUS_INTERFACE_DBUS), hook);
+    signalHooks.insert("NameLost:" DBUS_INTERFACE_DBUS ""_L1, hook);
 
     // And initialize the hook for the NameOwnerChanged signal;
     // we don't use connectSignal here because the rules are added by connectSignal on a per-need basis
     hook.params.clear();
     hook.params.reserve(4);
-    hook.params << QMetaType::Void << QMetaType::QString << QMetaType::QString << QMetaType::QString;
+    hook.params << QMetaType(QMetaType::Void) << QMetaType(QMetaType::QString) << QMetaType(QMetaType::QString) << QMetaType(QMetaType::QString);
     hook.midx = staticMetaObject.indexOfSlot("serviceOwnerChangedNoLock(QString,QString,QString)");
     Q_ASSERT(hook.midx != -1);
-    signalHooks.insert(QLatin1String("NameOwnerChanged:" DBUS_INTERFACE_DBUS), hook);
+    signalHooks.insert("NameOwnerChanged:" DBUS_INTERFACE_DBUS ""_L1, hook);
 
     watchForDBusDisconnection();
 
     qDBusDebug() << this << ": connected successfully";
 
     // schedule a dispatch:
-    QMetaObject::invokeMethod(this, "doDispatch", Qt::QueuedConnection);
+    QMetaObject::invokeMethod(this, &QDBusConnectionPrivate::doDispatch, Qt::QueuedConnection);
 }
 
 extern "C"{
@@ -1872,7 +1860,6 @@ static void qDBusResultReceived(DBusPendingCall *pending, void *user_data)
 {
     QDBusPendingCallPrivate *call = reinterpret_cast<QDBusPendingCallPrivate *>(user_data);
     Q_ASSERT(call->pending == pending);
-    Q_UNUSED(pending);
     QDBusConnectionPrivate::processFinishedCall(call);
 }
 }
@@ -1950,22 +1937,26 @@ bool QDBusConnectionPrivate::send(const QDBusMessage& message)
             QDBusMessagePrivate::toDBusMessage(message, connectionCapabilities(), &error);
     if (!msg) {
         if (message.type() == QDBusMessage::MethodCallMessage)
-            qWarning("QDBusConnection: error: could not send message to service \"%s\" path \"%s\" interface \"%s\" member \"%s\": %s",
-                     qPrintable(message.service()), qPrintable(message.path()),
-                     qPrintable(message.interface()), qPrintable(message.member()),
-                     qPrintable(error.message()));
+            qCWarning(dbusIntegration,
+                      "QDBusConnection: error: could not send message to service \"%s\" path "
+                      "\"%s\" interface \"%s\" member \"%s\": %s",
+                      qPrintable(message.service()), qPrintable(message.path()),
+                      qPrintable(message.interface()), qPrintable(message.member()),
+                      qPrintable(error.message()));
         else if (message.type() == QDBusMessage::SignalMessage)
-            qWarning("QDBusConnection: error: could not send signal to service \"%s\" path \"%s\" interface \"%s\" member \"%s\": %s",
-                     qPrintable(message.service()),
-                     qPrintable(message.path()), qPrintable(message.interface()),
-                     qPrintable(message.member()),
-                     qPrintable(error.message()));
+            qCWarning(dbusIntegration,
+                      "QDBusConnection: error: could not send signal to service \"%s\" path \"%s\" "
+                      "interface \"%s\" member \"%s\": %s",
+                      qPrintable(message.service()), qPrintable(message.path()),
+                      qPrintable(message.interface()), qPrintable(message.member()),
+                      qPrintable(error.message()));
         else
-            qWarning("QDBusConnection: error: could not send %s message to service \"%s\": %s",
-                     message.type() == QDBusMessage::ReplyMessage ? "reply" :
-                     message.type() == QDBusMessage::ErrorMessage ? "error" :
-                     "invalid", qPrintable(message.service()),
-                     qPrintable(error.message()));
+            qCWarning(dbusIntegration,
+                      "QDBusConnection: error: could not send %s message to service \"%s\": %s",
+                      message.type() == QDBusMessage::ReplyMessage           ? "reply"
+                              : message.type() == QDBusMessage::ErrorMessage ? "error"
+                                                                             : "invalid",
+                      qPrintable(message.service()), qPrintable(error.message()));
         lastError = error;
         return false;
     }
@@ -1985,20 +1976,20 @@ bool QDBusConnectionPrivate::send(const QDBusMessage& message)
 class QDBusBlockingCallWatcher
 {
 public:
-    QDBusBlockingCallWatcher(const QDBusMessage &message)
+    Q_NODISCARD_CTOR QDBusBlockingCallWatcher(const QDBusMessage &message)
         : m_message(message), m_maxCallTimeoutMs(0)
     {
 #if defined(QT_NO_DEBUG)
         // when in a release build, we default these to off.
         // this means that we only affect code that explicitly enables the warning.
-        static int mainThreadWarningAmount = -1;
-        static int otherThreadWarningAmount = -1;
+        Q_CONSTINIT static int mainThreadWarningAmount = -1;
+        Q_CONSTINIT static int otherThreadWarningAmount = -1;
 #else
-        static int mainThreadWarningAmount = 200;
-        static int otherThreadWarningAmount = 500;
+        Q_CONSTINIT static int mainThreadWarningAmount = 200;
+        Q_CONSTINIT static int otherThreadWarningAmount = 500;
 #endif
-        static bool initializedAmounts = false;
-        static QBasicMutex initializeMutex;
+        Q_CONSTINIT static bool initializedAmounts = false;
+        Q_CONSTINIT static QBasicMutex initializeMutex;
         auto locker = qt_unique_lock(initializeMutex);
 
         if (!initializedAmounts) {
@@ -2012,7 +2003,10 @@ public:
                 if (ok)
                     mainThreadWarningAmount = tmp;
                 else
-                    qWarning("QDBusBlockingCallWatcher: Q_DBUS_BLOCKING_CALL_MAIN_THREAD_WARNING_MS must be an integer; value ignored");
+                    qCWarning(
+                            dbusIntegration,
+                            "QDBusBlockingCallWatcher: Q_DBUS_BLOCKING_CALL_MAIN_THREAD_WARNING_MS "
+                            "must be an integer; value ignored");
             }
 
             env = qgetenv("Q_DBUS_BLOCKING_CALL_OTHER_THREAD_WARNING_MS");
@@ -2021,7 +2015,10 @@ public:
                 if (ok)
                     otherThreadWarningAmount = tmp;
                 else
-                    qWarning("QDBusBlockingCallWatcher: Q_DBUS_BLOCKING_CALL_OTHER_THREAD_WARNING_MS must be an integer; value ignored");
+                    qCWarning(dbusIntegration,
+                              "QDBusBlockingCallWatcher: "
+                              "Q_DBUS_BLOCKING_CALL_OTHER_THREAD_WARNING_MS must be an integer; "
+                              "value ignored");
             }
 
             initializedAmounts = true;
@@ -2032,7 +2029,7 @@ public:
         // if this call is running on the main thread, we have a much lower
         // tolerance for delay because any long-term delay will wreck user
         // interactivity.
-        if (qApp && qApp->thread() == QThread::currentThread())
+        if (QThread::isMainThread())
             m_maxCallTimeoutMs = mainThreadWarningAmount;
         else
             m_maxCallTimeoutMs = otherThreadWarningAmount;
@@ -2046,10 +2043,13 @@ public:
             return; // disabled
 
         if (m_callTimer.elapsed() >= m_maxCallTimeoutMs) {
-            qWarning("QDBusConnection: warning: blocking call took a long time (%d ms, max for this thread is %d ms) to service \"%s\" path \"%s\" interface \"%s\" member \"%s\"",
-                     int(m_callTimer.elapsed()), m_maxCallTimeoutMs,
-                     qPrintable(m_message.service()), qPrintable(m_message.path()),
-                     qPrintable(m_message.interface()), qPrintable(m_message.member()));
+            qCWarning(
+                    dbusIntegration,
+                    "QDBusConnection: warning: blocking call took a long time (%d ms, max for this "
+                    "thread is %d ms) to service \"%s\" path \"%s\" interface \"%s\" member \"%s\"",
+                    int(m_callTimer.elapsed()), m_maxCallTimeoutMs, qPrintable(m_message.service()),
+                    qPrintable(m_message.path()), qPrintable(m_message.interface()),
+                    qPrintable(m_message.member()));
         }
     }
 
@@ -2059,29 +2059,18 @@ private:
     QElapsedTimer m_callTimer;
 };
 
-
 QDBusMessage QDBusConnectionPrivate::sendWithReply(const QDBusMessage &message,
-                                                   int sendMode, int timeout)
+                                                   QDBus::CallMode mode, int timeout)
 {
     QDBusBlockingCallWatcher watcher(message);
 
     QDBusPendingCallPrivate *pcall = sendWithReplyAsync(message, nullptr, nullptr, nullptr, timeout);
     Q_ASSERT(pcall);
 
-    if (pcall->replyMessage.type() == QDBusMessage::InvalidMessage) {
-        // need to wait for the reply
-        if (sendMode == QDBus::BlockWithGui) {
-            pcall->watcherHelper = new QDBusPendingCallWatcherHelper;
-            QEventLoop loop;
-            loop.connect(pcall->watcherHelper, &QDBusPendingCallWatcherHelper::reply, &loop, &QEventLoop::quit);
-            loop.connect(pcall->watcherHelper, &QDBusPendingCallWatcherHelper::error, &loop, &QEventLoop::quit);
-
-            // enter the event loop and wait for a reply
-            loop.exec(QEventLoop::ExcludeUserInputEvents | QEventLoop::WaitForMoreEvents);
-        } else {
-            pcall->waitForFinished();
-        }
-    }
+    if (mode == QDBus::BlockWithGui)
+        pcall->waitForFinishedWithGui();
+    else
+        pcall->waitForFinished();
 
     QDBusMessage reply = pcall->replyMessage;
     lastError = QDBusError(reply);      // set or clear error
@@ -2101,9 +2090,9 @@ QDBusMessage QDBusConnectionPrivate::sendWithReplyLocal(const QDBusMessage &mess
     if (!handled) {
         QString interface = message.interface();
         if (interface.isEmpty())
-            interface = QLatin1String("<no-interface>");
+            interface = "<no-interface>"_L1;
         return QDBusMessage::createError(QDBusError::InternalError,
-                                         QLatin1String("Internal error trying to call %1.%2 at %3 (signature '%4'")
+                                         "Internal error trying to call %1.%2 at %3 (signature '%4'"_L1
                                          .arg(interface, message.member(),
                                               message.path(), message.signature()));
     }
@@ -2111,12 +2100,15 @@ QDBusMessage QDBusConnectionPrivate::sendWithReplyLocal(const QDBusMessage &mess
     // if the message was handled, there might be a reply
     QDBusMessage localReplyMsg = QDBusMessagePrivate::makeLocalReply(*this, localCallMsg);
     if (localReplyMsg.type() == QDBusMessage::InvalidMessage) {
-        qWarning("QDBusConnection: cannot call local method '%s' at object %s (with signature '%s') "
-                 "on blocking mode", qPrintable(message.member()), qPrintable(message.path()),
-                 qPrintable(message.signature()));
+        qCWarning(
+                dbusIntegration,
+                "QDBusConnection: cannot call local method '%s' at object %s (with signature '%s') "
+                "on blocking mode",
+                qPrintable(message.member()), qPrintable(message.path()),
+                qPrintable(message.signature()));
         return QDBusMessage::createError(
             QDBusError(QDBusError::InternalError,
-                       QLatin1String("local-loop message cannot have delayed replies")));
+                       "local-loop message cannot have delayed replies"_L1));
     }
 
     // there is a reply
@@ -2139,6 +2131,7 @@ QDBusPendingCallPrivate *QDBusConnectionPrivate::sendWithReplyAsync(const QDBusM
         pcall->setReplyCallback(receiver, returnMethod);
 
     if (errorMethod) {
+        Q_ASSERT(!pcall->watcherHelper);
         pcall->watcherHelper = new QDBusPendingCallWatcherHelper;
         connect(pcall->watcherHelper, SIGNAL(error(QDBusError,QDBusMessage)), receiver, errorMethod,
                 Qt::QueuedConnection);
@@ -2164,10 +2157,12 @@ QDBusPendingCallPrivate *QDBusConnectionPrivate::sendWithReplyAsync(const QDBusM
     DBusMessage *msg =
             QDBusMessagePrivate::toDBusMessage(message, connectionCapabilities(), &error);
     if (!msg) {
-        qWarning("QDBusConnection: error: could not send message to service \"%s\" path \"%s\" interface \"%s\" member \"%s\": %s",
-                 qPrintable(message.service()), qPrintable(message.path()),
-                 qPrintable(message.interface()), qPrintable(message.member()),
-                 qPrintable(error.message()));
+        qCWarning(dbusIntegration,
+                  "QDBusConnection: error: could not send message to service \"%s\" path \"%s\" "
+                  "interface \"%s\" member \"%s\": %s",
+                  qPrintable(message.service()), qPrintable(message.path()),
+                  qPrintable(message.interface()), qPrintable(message.member()),
+                  qPrintable(error.message()));
         pcall->replyMessage = QDBusMessage::createError(error);
         lastError = error;
         processFinishedCall(pcall);
@@ -2238,14 +2233,29 @@ bool QDBusConnectionPrivate::connectSignal(const QString &service,
     QString key;
 
     hook.signature = signature;
-    if (!prepareHook(hook, key, service, path, interface, name, argumentMatch, receiver, slot, 0, false))
+    QString errorMsg;
+    if (!prepareHook(hook, key, service, path, interface, name, argumentMatch, receiver, slot, 0,
+                     false, errorMsg)) {
+        qCWarning(dbusIntegration)
+                << "Could not connect" << interface << "to" << slot + 1 << ":" << qPrintable(errorMsg);
         return false;           // don't connect
+    }
 
     Q_ASSERT(thread() != QThread::currentThread());
-    return emit signalNeedsConnecting(key, hook);
+    return addSignalHook(key, hook);
 }
 
 bool QDBusConnectionPrivate::addSignalHook(const QString &key, const SignalHook &hook)
+{
+    bool result = false;
+
+    QMetaObject::invokeMethod(this, &QDBusConnectionPrivate::addSignalHookImpl,
+                              Qt::BlockingQueuedConnection, qReturnArg(result), key, hook);
+
+    return result;
+}
+
+bool QDBusConnectionPrivate::addSignalHookImpl(const QString &key, const SignalHook &hook)
 {
     QDBusWriteLocker locker(ConnectAction, this);
 
@@ -2328,14 +2338,29 @@ bool QDBusConnectionPrivate::disconnectSignal(const QString &service,
         name2.detach();
 
     hook.signature = signature;
-    if (!prepareHook(hook, key, service, path, interface, name, argumentMatch, receiver, slot, 0, false))
+    QString errorMsg;
+    if (!prepareHook(hook, key, service, path, interface, name, argumentMatch, receiver, slot, 0,
+                     false, errorMsg)) {
+        qCWarning(dbusIntegration)
+                << "Could not disconnect" << interface << "to" << slot + 1 << ":" << qPrintable(errorMsg);
         return false;           // don't disconnect
+    }
 
     Q_ASSERT(thread() != QThread::currentThread());
-    return emit signalNeedsDisconnecting(key, hook);
+    return removeSignalHook(key, hook);
 }
 
 bool QDBusConnectionPrivate::removeSignalHook(const QString &key, const SignalHook &hook)
+{
+    bool result = false;
+
+    QMetaObject::invokeMethod(this, &QDBusConnectionPrivate::removeSignalHookImpl,
+                              Qt::BlockingQueuedConnection, qReturnArg(result), key, hook);
+
+    return result;
+}
+
+bool QDBusConnectionPrivate::removeSignalHookImpl(const QString &key, const SignalHook &hook)
 {
     // remove it from our list:
     QDBusWriteLocker locker(ConnectAction, this);
@@ -2367,7 +2392,9 @@ QDBusConnectionPrivate::removeSignalHookNoLock(SignalHookHash::Iterator it)
     bool erase = false;
     MatchRefCountHash::iterator i = matchRefCounts.find(hook.matchRule);
     if (i == matchRefCounts.end()) {
-        qWarning("QDBusConnectionPrivate::disconnectSignal: MatchRule not found in matchRefCounts!!");
+        qCWarning(dbusIntegration,
+                  "QDBusConnectionPrivate::disconnectSignal: MatchRule not found in "
+                  "matchRefCounts!!");
     } else {
         if (i.value() == 1) {
             erase = true;
@@ -2421,8 +2448,8 @@ void QDBusConnectionPrivate::registerObject(const ObjectTreeNode *node)
             connector->connectAllSignals(node->obj);
         }
 
-        connect(connector, SIGNAL(relaySignal(QObject*,const QMetaObject*,int,QVariantList)),
-                this, SLOT(relaySignal(QObject*,const QMetaObject*,int,QVariantList)),
+        connect(connector, &QDBusAdaptorConnector::relaySignal, this,
+                &QDBusConnectionPrivate::relaySignal,
                 Qt::ConnectionType(Qt::QueuedConnection | Qt::UniqueConnection));
     }
 }
@@ -2430,12 +2457,12 @@ void QDBusConnectionPrivate::registerObject(const ObjectTreeNode *node)
 void QDBusConnectionPrivate::unregisterObject(const QString &path, QDBusConnection::UnregisterMode mode)
 {
     QDBusConnectionPrivate::ObjectTreeNode *node = &rootNode;
-    QVector<QStringRef> pathComponents;
+    QList<QStringView> pathComponents;
     int i;
-    if (path == QLatin1String("/")) {
+    if (path == "/"_L1) {
         i = 0;
     } else {
-        pathComponents = path.splitRef(QLatin1Char('/'));
+        pathComponents = QStringView{path}.split(u'/');
         i = 1;
     }
 
@@ -2455,12 +2482,16 @@ void QDBusConnectionPrivate::connectRelay(const QString &service,
     QByteArray sig;
     sig.append(QSIGNAL_CODE + '0');
     sig.append(signal.methodSignature());
+    QString errorMsg;
     if (!prepareHook(hook, key, service, path, interface, QString(), ArgMatchRules(), receiver, sig,
-                     QDBusAbstractInterface::staticMetaObject.methodCount(), true))
+                     QDBusAbstractInterface::staticMetaObject.methodCount(), true, errorMsg)) {
+        qCWarning(dbusIntegration)
+                << "Could not connect" << interface << "to" << signal.name() << ":" << qPrintable(errorMsg);
         return;                 // don't connect
+    }
 
     Q_ASSERT(thread() != QThread::currentThread());
-    emit signalNeedsConnecting(key, hook);
+    addSignalHook(key, hook);
 }
 
 void QDBusConnectionPrivate::disconnectRelay(const QString &service,
@@ -2476,12 +2507,16 @@ void QDBusConnectionPrivate::disconnectRelay(const QString &service,
     QByteArray sig;
     sig.append(QSIGNAL_CODE + '0');
     sig.append(signal.methodSignature());
+    QString errorMsg;
     if (!prepareHook(hook, key, service, path, interface, QString(), ArgMatchRules(), receiver, sig,
-                     QDBusAbstractInterface::staticMetaObject.methodCount(), true))
+                     QDBusAbstractInterface::staticMetaObject.methodCount(), true, errorMsg)) {
+        qCWarning(dbusIntegration) << "Could not disconnect" << interface << "to"
+                                   << signal.methodSignature() << ":" << qPrintable(errorMsg);
         return;                 // don't disconnect
+    }
 
     Q_ASSERT(thread() != QThread::currentThread());
-    emit signalNeedsDisconnecting(key, hook);
+    removeSignalHook(key, hook);
 }
 
 bool QDBusConnectionPrivate::shouldWatchService(const QString &service)
@@ -2580,9 +2615,14 @@ QDBusConnectionPrivate::findMetaObject(const QString &service, const QString &pa
     // service must be a unique connection name
     if (!interface.isEmpty()) {
         QDBusReadLocker locker(FindMetaObject1Action, this);
-        QDBusMetaObject *mo = cachedMetaObjects.value(interface, 0);
+        QDBusMetaObject *mo = cachedMetaObjects.value(interface, nullptr);
         if (mo)
             return mo;
+    }
+    if (path.isEmpty()) {
+        error = QDBusError(QDBusError::InvalidObjectPath, "Object path cannot be empty"_L1);
+        lastError = error;
+        return nullptr;
     }
 
     // introspect the target object
@@ -2597,14 +2637,14 @@ QDBusConnectionPrivate::findMetaObject(const QString &service, const QString &pa
     QDBusWriteLocker locker(FindMetaObject2Action, this);
     QDBusMetaObject *mo = nullptr;
     if (!interface.isEmpty())
-        mo = cachedMetaObjects.value(interface, 0);
+        mo = cachedMetaObjects.value(interface, nullptr);
     if (mo)
         // maybe it got created when we switched from read to write lock
         return mo;
 
     QString xml;
     if (reply.type() == QDBusMessage::ReplyMessage) {
-        if (reply.signature() == QLatin1String("s"))
+        if (reply.signature() == "s"_L1)
             // fetch the XML description
             xml = reply.arguments().at(0).toString();
     } else {
@@ -2659,6 +2699,28 @@ void QDBusConnectionPrivate::postEventToThread(int action, QObject *object, QEve
     QDBusLockerBase::reportThreadAction(action, QDBusLockerBase::BeforePost, this);
     QCoreApplication::postEvent(object, ev);
     QDBusLockerBase::reportThreadAction(action, QDBusLockerBase::AfterPost, this);
+}
+
+/*
+ * Enable dispatch of D-Bus events for this connection, but only after
+ * context's thread's event loop has started and processed any already
+ * pending events. The event dispatch is then enabled in the DBus aux thread.
+ */
+void QDBusConnectionPrivate::enableDispatchDelayed(QObject *context)
+{
+    ref.ref();
+    QMetaObject::invokeMethod(
+            context,
+            [this]() {
+                // This call cannot race with something disabling dispatch only
+                // because dispatch is never re-disabled from Qt code on an
+                // in-use connection once it has been enabled.
+                QMetaObject::invokeMethod(this, &QDBusConnectionPrivate::setDispatchEnabled,
+                                          Qt::QueuedConnection, true);
+                if (!ref.deref())
+                    deleteLater();
+            },
+            Qt::QueuedConnection);
 }
 
 QT_END_NAMESPACE

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplatformdefs.h"
 
@@ -46,10 +10,27 @@
 
 QT_BEGIN_NAMESPACE
 
-#if !defined(QT_VSNPRINTF) || defined(Q_CLANG_QDOC)
+/*!
+    \macro QT_NO_QSNPRINTF
+    \since 6.8
+    \relates QByteArray
+
+    Defining this macro removes the availability of the qsnprintf() and
+    qvsnprintf() functions. See the functions' documentation for why you may
+    want to disable them.
+
+    \sa qsnprintf(), qvsnprintf().
+*/
+
+#if !defined(QT_VSNPRINTF) || defined(Q_QDOC)
 
 /*!
+    \fn int qvsnprintf(char *str, size_t n, const char *fmt, va_list ap)
     \relates QByteArray
+
+    \obsolete
+
+    Use C++11's \c{std::vsnprintf()} from \c{<cstdio>} instead.
 
     A portable \c vsnprintf() function. Will call \c ::vsnprintf(), \c
     ::_vsnprintf(), or \c ::vsnprintf_s depending on the system, or
@@ -62,7 +43,9 @@ QT_BEGIN_NAMESPACE
 
     \warning Since vsnprintf() shows different behavior on certain
     platforms, you should not rely on the return value or on the fact
-    that you will always get a 0 terminated string back.
+    that you will always get a 0 terminated string back. There are also
+    differences in how \c{%a} (hex floats) and \c{%ls} (wide strings) are
+    handled on WebAssembly and Android.
 
     Ideally, you should never call this function but use QString::asprintf()
     instead.
@@ -70,6 +53,7 @@ QT_BEGIN_NAMESPACE
     \sa qsnprintf(), QString::asprintf()
 */
 
+Q_CORE_EXPORT // QT_NO_QSNPRINTF is in effect
 int qvsnprintf(char *str, size_t n, const char *fmt, va_list ap)
 {
     if (!str || !fmt)
@@ -92,6 +76,7 @@ QT_BEGIN_INCLUDE_NAMESPACE
 #include <stdio.h>
 QT_END_INCLUDE_NAMESPACE
 
+Q_CORE_EXPORT // QT_NO_QSNPRINTF is in effect
 int qvsnprintf(char *str, size_t n, const char *fmt, va_list ap)
 {
     return QT_VSNPRINTF(str, n, fmt, ap);
@@ -100,8 +85,13 @@ int qvsnprintf(char *str, size_t n, const char *fmt, va_list ap)
 #endif
 
 /*!
+    \fn int qsnprintf(char *str, size_t n, const char *fmt, ...)
     \target bytearray-qsnprintf
     \relates QByteArray
+
+    \obsolete
+
+    Use C++11's \c{std::snprintf()} from \c{<cstdio>} instead.
 
     A portable snprintf() function, calls qvsnprintf.
 
@@ -115,6 +105,7 @@ int qvsnprintf(char *str, size_t n, const char *fmt, va_list ap)
     \sa qvsnprintf(), QString::asprintf()
 */
 
+Q_CORE_EXPORT // QT_NO_QSNPRINTF is in effect
 int qsnprintf(char *str, size_t n, const char *fmt, ...)
 {
     va_list ap;

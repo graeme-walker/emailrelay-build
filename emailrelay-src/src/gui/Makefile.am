@@ -119,7 +119,7 @@ AM_CPPFLAGS=\
 	-D "G_EXAMPLESDIR=$(e_examplesdir)" \
 	$(GCONFIG_QT_CFLAGS)
 
-if GCONFIG_GUI
+if GCONFIG_ENABLE_GUI
 
 moc_guidialog.cpp: $(srcdir)/guidialog.h
 	$(GCONFIG_QT_MOC) $< -o $@
@@ -176,7 +176,7 @@ uninstall-hook:
 	-rm -f "$(DESTDIR)$(sbindir)/emailrelay-gui"
 
 clean-local:
-	-rm -f payload
+	-rm -rf payload
 
 else
 
@@ -187,7 +187,7 @@ uninstall-hook:
 endif
 
 payload: $(top_srcdir)/libexec/make-setup.sh
-	-mkdir payload 2>/dev/null
+	-mkdir payload || true 2>/dev/null
 	-@chmod +x $(top_srcdir)/libexec/make-setup.sh
 	$(top_srcdir)/libexec/make-setup.sh $(MAKE_SETUP_DEBUG) $@
 

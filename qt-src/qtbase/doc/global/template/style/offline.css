@@ -1,6 +1,6 @@
 body {
     font: normal 400 14px/1.2 Arial;
-    margin-top: 85px;
+    margin-top: 50px;
     font-family: Arial, Helvetica;
     text-align: left;
     margin-left: 5px;
@@ -89,13 +89,15 @@ offline viewing: HTML links display an icon
 -----------
 */
 
-a[href*="http://"], a[href*="ftp://"], a[href*="https://"] {
-    text-decoration: none;
-    background-image: url(../images/ico_out.png);
-    background-repeat: no-repeat;
-    background-position: left;
-    padding-left: 20px;
-    text-align: left;
+a[href*="http://"]::before,
+a[href*="ftp://"]::before,
+a[href*="https://"]::before {
+    content: url(../images/ico_out.png);
+    padding-right: 5px;
+}
+
+.video a {
+    background: none;
 }
 
 .flags {
@@ -112,39 +114,18 @@ a[href*="http://"], a[href*="ftp://"], a[href*="https://"] {
 NOTE styles
 -------------------------------
 */
-
-.notetitle, .tiptitle, .fastpathtitle {
-    font-weight: bold
+.admonition {
+    padding: 5px 0 5px 40px;
+    border: #ccc 1px solid;
 }
 
-.attentiontitle, .cautiontitle, .dangertitle, .importanttitle, .remembertitle, .restrictiontitle {
-    font-weight: bold
+.admonition.note, .admonition.important {
+    background: #f2f2f2 3px 6px no-repeat;
 }
 
-.note, .tip, .fastpath {
-    background: #F2F2F2 url(../images/ico_note.png);
-    background-repeat: no-repeat;
-    background-position: top left;
-    padding: 5px;
-    padding-left: 40px;
-    padding-bottom: 10px;
-    border: #999 1px dotted;
-    color: #666666;
-    margin: 5px;
+.admonition.warning {
+    background: #f2f2f2 3px 6px no-repeat;
 }
-
-.attention, .caution, .danger, .important, .remember, .restriction {
-    background: #F2F2F2 url(../images/ico_note_attention.png);
-    background-repeat: no-repeat;
-    background-position: top left;
-    padding: 5px;
-    padding-left: 40px;
-    padding-bottom: 10px;
-    border: #999 1px dotted;
-    color: #666666;
-    margin: 5px;
-}
-
 /*
 -------------------------------
 Top navigation
@@ -166,7 +147,7 @@ Top navigation
     display: block;
     position: relative;
     text-align: right;
-    top: -47px;
+    top: -30px;
     float: right;
     height: 20px;
     z-index: 1;
@@ -232,7 +213,6 @@ footer and license
 .navigationbar {
     display: block;
     position: relative;
-    top: -20px;
     border-top: 1px solid #cecece;
     border-bottom: 1px solid #cecece;
     background-color: #F2F2F2;
@@ -320,18 +300,17 @@ headers
 @media screen {
     .title {
         color: #313131;
-        font-size: 24px;
+        font-size: 20px;
         font-weight: normal;
         left: 0;
-        padding-bottom: 20px;
+        padding-bottom: 15px;
         padding-left: 10px;
-        padding-top: 20px;
+        padding-top: 15px;
         position: absolute;
         right: 0;
         top: 0;
         background-color: #E6E6E6;
         border-bottom: 1px #CCC solid;
-        border-top: 2px #CCC solid;
         font-weight: bold;
         margin-left: 0px;
         margin-right: 0px;
@@ -351,7 +330,7 @@ h2, p.h2 {
     font-weight: 100;
     background-color: #F2F3F4;
     padding: 4px;
-    margin-bottom: 30px;
+    margin-bottom: 15px;
     margin-top: 30px;
     border-top: #E0E0DE 1px solid;
     border-bottom: #E0E0DE 1px solid;
@@ -366,7 +345,7 @@ h3 {
     font: 500 14px/1.2 Arial;
     font-weight: 100;
     text-decoration: underline;
-    margin-bottom: 30px;
+    margin-bottom: 15px;
     margin-top: 30px;
 }
 
@@ -385,14 +364,23 @@ h3.fn, span.fn {
     max-width: 75%;
     font-size: 14px;
     margin: 0px;
-    margin-top: 45px;
+    margin-top: 30px;
 }
 .fngroup h3.fngroupitem {
     margin-bottom: 5px;
 }
-h3.fn code {
+
+h3.fn code,
+h3.flags code,
+td.tblQmlFuncNode > p > code,
+td.tblQmlPropNode > p > code {
     float: right;
 }
+
+code.extra.summary {
+    font-size: 12px;
+}
+
 h3.fn:target {
     background-color: #F6F6D6;
 }
@@ -547,11 +535,27 @@ ol.a > li{
     list-style-type: lower-alpha;
 }
 
- ol > li {
+ol > li {
      margin-left: 30px;
      padding-left: 8px;
-     list-style: decimal;
- }
+     list-style-type: decimal;
+}
+
+ol.A > li {
+    list-style-type: upper-alpha;
+}
+
+ol.a > li {
+    list-style-type: lower-alpha;
+}
+
+ol.i > li {
+    list-style-type: lower-roman;
+}
+
+ol.I > li {
+    list-style-type: upper-roman;
+}
 
 .centerAlign {
     text-align: left
@@ -579,6 +583,20 @@ ol.a > li{
     padding: 3px 15px 3px 0
 }
 
+span.status.technical-preview {
+    display: inline-block;
+    position: relative;
+    background: center/contain no-repeat url(tech_preview.svg);
+    width: 26px;
+    height: 23px;
+}
+
+td.memItemRight span.status {
+    margin-top: -10px;
+    right: -10px;
+    top: 6px;
+}
+
 .qml {
     display: block;
     margin: 10px;
@@ -586,13 +604,7 @@ ol.a > li{
     padding: 20px 20px 20px 20px;
 }
 
-.qmldefault {
-    padding-left: 5px;
-    float: right;
-    color: red;
-}
-
-.qmlreadonly {
+.qmlextra {
     padding-left: 5px;
     float: right;
     color: #254117;
@@ -630,14 +642,7 @@ Content table
 
 @media print {
     .toc {
-        float: right;
-        clear: right;
-        padding-bottom: 10px;
-        padding-top: 50px;
-        width: 100%;
-        background-image: url(../images/bgrContent.png);
-        background-position: top;
-        background-repeat: no-repeat;
+        display: none;
     }
 }
 
@@ -659,6 +664,7 @@ Content table
         width: 200px;
         text-align: left;
         margin-left: 20px;
+        margin-top: 5px;
     }
 }
 
@@ -718,6 +724,9 @@ Landing page
     vertical-align: top;
 }
 
+.landing {
+    display: flex;
+}
 
 .landing h2 {
     background-color: transparent;
@@ -732,19 +741,14 @@ Landing page
 }
 
 .col-1 {
-    display: inline-block;
     white-space: normal;
     width: 70%;
-    height: 100%;
-    float: left;
 }
 
 .col-2 {
-    display: inline-block;
     white-space: normal;
     width: 20%;
     margin-left: 5%;
-    position: relative;
     top: -20px;
 }
 
@@ -795,10 +799,6 @@ div.multi-column div {
   display:table
 }
 
-.mainContent .video > .vspan {
-  padding-top:60%;
-  display:block
-}
 .mainContent .video iframe {
   width:100%;
   height:100%;

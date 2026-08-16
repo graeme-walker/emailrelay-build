@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*!
     \class QGraphicsItemAnimation
@@ -86,8 +50,6 @@
 #include <QtCore/qtimeline.h>
 #include <QtCore/qpoint.h>
 #include <QtCore/qpointer.h>
-#include <QtCore/qpair.h>
-#include <QtGui/qmatrix.h>
 
 #include <algorithm>
 
@@ -127,22 +89,23 @@ public:
         qreal step;
         qreal value;
     };
-    QVector<Pair> xPosition;
-    QVector<Pair> yPosition;
-    QVector<Pair> rotation;
-    QVector<Pair> verticalScale;
-    QVector<Pair> horizontalScale;
-    QVector<Pair> verticalShear;
-    QVector<Pair> horizontalShear;
-    QVector<Pair> xTranslation;
-    QVector<Pair> yTranslation;
+    QList<Pair> xPosition;
+    QList<Pair> yPosition;
+    QList<Pair> rotation;
+    QList<Pair> verticalScale;
+    QList<Pair> horizontalScale;
+    QList<Pair> verticalShear;
+    QList<Pair> horizontalShear;
+    QList<Pair> xTranslation;
+    QList<Pair> yTranslation;
 
-    qreal linearValueForStep(qreal step, const QVector<Pair> &source, qreal defaultValue = 0);
-    void insertUniquePair(qreal step, qreal value, QVector<Pair> *binList, const char* method);
+    qreal linearValueForStep(qreal step, const QList<Pair> &source, qreal defaultValue = 0);
+    void insertUniquePair(qreal step, qreal value, QList<Pair> *binList, const char *method);
 };
 Q_DECLARE_TYPEINFO(QGraphicsItemAnimationPrivate::Pair, Q_PRIMITIVE_TYPE);
 
-qreal QGraphicsItemAnimationPrivate::linearValueForStep(qreal step, const QVector<Pair> &source, qreal defaultValue)
+qreal QGraphicsItemAnimationPrivate::linearValueForStep(qreal step, const QList<Pair> &source,
+                                                        qreal defaultValue)
 {
     if (source.isEmpty())
         return defaultValue;
@@ -172,14 +135,15 @@ qreal QGraphicsItemAnimationPrivate::linearValueForStep(qreal step, const QVecto
     return valueBefore + (valueAfter - valueBefore) * ((step - stepBefore) / (stepAfter - stepBefore));
 }
 
-void QGraphicsItemAnimationPrivate::insertUniquePair(qreal step, qreal value, QVector<Pair> *binList, const char* method)
+void QGraphicsItemAnimationPrivate::insertUniquePair(qreal step, qreal value, QList<Pair> *binList,
+                                                     const char *method)
 {
     if (!check_step_valid(step, method))
         return;
 
     const Pair pair = { step, value };
 
-    const QVector<Pair>::iterator result = std::lower_bound(binList->begin(), binList->end(), pair);
+    const QList<Pair>::iterator result = std::lower_bound(binList->begin(), binList->end(), pair);
     if (result == binList->end() || pair < *result)
         binList->insert(result, pair);
     else
@@ -283,29 +247,17 @@ void QGraphicsItemAnimation::setPosAt(qreal step, const QPointF &pos)
 
   \sa posAt(), setPosAt()
 */
-QList<QPair<qreal, QPointF> > QGraphicsItemAnimation::posList() const
+QList<std::pair<qreal, QPointF> > QGraphicsItemAnimation::posList() const
 {
-    QList<QPair<qreal, QPointF> > list;
+    QList<std::pair<qreal, QPointF>> list;
     const int xPosCount = d->xPosition.size();
     list.reserve(xPosCount);
     for (int i = 0; i < xPosCount; ++i)
-        list << QPair<qreal, QPointF>(d->xPosition.at(i).step, QPointF(d->xPosition.at(i).value, d->yPosition.at(i).value));
+        list.emplace_back(d->xPosition.at(i).step,
+                          QPointF(d->xPosition.at(i).value, d->yPosition.at(i).value));
 
     return list;
 }
-
-#if QT_DEPRECATED_SINCE(5, 14)
-/*!
-  Returns the matrix used to transform the item at the specified \a step value.
-
-  \obsolete Use transformAt() instead
-*/
-QMatrix QGraphicsItemAnimation::matrixAt(qreal step) const
-{
-    check_step_valid(step, "matrixAt");
-    return transformAt(step).toAffine();
-}
-#endif
 
 /*!
   Returns the transform used for the item at the specified \a step value.
@@ -354,13 +306,13 @@ void QGraphicsItemAnimation::setRotationAt(qreal step, qreal angle)
 
   \sa rotationAt(), setRotationAt()
 */
-QList<QPair<qreal, qreal> > QGraphicsItemAnimation::rotationList() const
+QList<std::pair<qreal, qreal> > QGraphicsItemAnimation::rotationList() const
 {
-    QList<QPair<qreal, qreal> > list;
+    QList<std::pair<qreal, qreal>> list;
     const int numRotations = d->rotation.size();
     list.reserve(numRotations);
     for (int i = 0; i < numRotations; ++i)
-        list << QPair<qreal, qreal>(d->rotation.at(i).step, d->rotation.at(i).value);
+        list.emplace_back(d->rotation.at(i).step, d->rotation.at(i).value);
 
     return list;
 }
@@ -404,13 +356,14 @@ void QGraphicsItemAnimation::setTranslationAt(qreal step, qreal dx, qreal dy)
 
   \sa xTranslationAt(), yTranslationAt(), setTranslationAt()
 */
-QList<QPair<qreal, QPointF> > QGraphicsItemAnimation::translationList() const
+QList<std::pair<qreal, QPointF> > QGraphicsItemAnimation::translationList() const
 {
-    QList<QPair<qreal, QPointF> > list;
+    QList<std::pair<qreal, QPointF>> list;
     const int numTranslations = d->xTranslation.size();
     list.reserve(numTranslations);
     for (int i = 0; i < numTranslations; ++i)
-        list << QPair<qreal, QPointF>(d->xTranslation.at(i).step, QPointF(d->xTranslation.at(i).value, d->yTranslation.at(i).value));
+        list.emplace_back(d->xTranslation.at(i).step,
+                          QPointF(d->xTranslation.at(i).value, d->yTranslation.at(i).value));
 
     return list;
 }
@@ -455,13 +408,15 @@ void QGraphicsItemAnimation::setScaleAt(qreal step, qreal sx, qreal sy)
 
   \sa verticalScaleAt(), horizontalScaleAt(), setScaleAt()
 */
-QList<QPair<qreal, QPointF> > QGraphicsItemAnimation::scaleList() const
+QList<std::pair<qreal, QPointF> > QGraphicsItemAnimation::scaleList() const
 {
-    QList<QPair<qreal, QPointF> > list;
+    QList<std::pair<qreal, QPointF>> list;
     const int numScales = d->horizontalScale.size();
     list.reserve(numScales);
     for (int i = 0; i < numScales; ++i)
-        list << QPair<qreal, QPointF>(d->horizontalScale.at(i).step, QPointF(d->horizontalScale.at(i).value, d->verticalScale.at(i).value));
+        list.emplace_back(d->horizontalScale.at(i).step,
+                          QPointF(d->horizontalScale.at(i).value,
+                                  d->verticalScale.at(i).value));
 
     return list;
 }
@@ -505,13 +460,15 @@ void QGraphicsItemAnimation::setShearAt(qreal step, qreal sh, qreal sv)
 
   \sa verticalShearAt(), horizontalShearAt(), setShearAt()
 */
-QList<QPair<qreal, QPointF> > QGraphicsItemAnimation::shearList() const
+QList<std::pair<qreal, QPointF> > QGraphicsItemAnimation::shearList() const
 {
-    QList<QPair<qreal, QPointF> > list;
+    QList<std::pair<qreal, QPointF>> list;
     const int numShears = d->horizontalShear.size();
     list.reserve(numShears);
     for (int i = 0; i < numShears; ++i)
-        list << QPair<qreal, QPointF>(d->horizontalShear.at(i).step, QPointF(d->horizontalShear.at(i).value, d->verticalShear.at(i).value));
+        list.emplace_back(d->horizontalShear.at(i).step,
+                          QPointF(d->horizontalShear.at(i).value,
+                                  d->verticalShear.at(i).value));
 
     return list;
 }
@@ -563,23 +520,6 @@ void QGraphicsItemAnimation::setStep(qreal step)
 
     afterAnimationStep(step);
 }
-
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    Resets the item to its starting position and transformation.
-
-    \obsolete
-
-    You can call setStep(0) instead.
-*/
-void QGraphicsItemAnimation::reset()
-{
-    if (!d->item)
-        return;
-    d->startPos = d->item->pos();
-    d->startTransform = d->item->transform();
-}
-#endif
 
 /*!
   \fn void QGraphicsItemAnimation::beforeAnimationStep(qreal step)

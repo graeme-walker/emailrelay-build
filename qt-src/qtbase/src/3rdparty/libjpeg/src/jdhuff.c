@@ -3,8 +3,11 @@
  *
  * This file was part of the Independent JPEG Group's software:
  * Copyright (C) 1991-1997, Thomas G. Lane.
+ * Lossless JPEG Modifications:
+ * Copyright (C) 1999, Ken Murchison.
  * libjpeg-turbo Modifications:
- * Copyright (C) 2009-2011, 2016, 2018-2019, D. R. Commander.
+ * Copyright (C) 2009-2011, 2016, 2018-2019, 2022, D. R. Commander.
+ * Copyright (C) 2018, Matthias Räncker.
  * For conditions of distribution and use, see the accompanying README.ijg
  * file.
  *
@@ -23,8 +26,8 @@
 #define JPEG_INTERNALS
 #include "jinclude.h"
 #include "jpeglib.h"
-#include "jdhuff.h"             /* Declarations shared with jdphuff.c */
-#include "jpegcomp.h"
+#include "jdhuff.h"             /* Declarations shared with jd*huff.c */
+#include "jpegapicomp.h"
 #include "jstdhuff.c"
 
 
@@ -38,24 +41,6 @@
 typedef struct {
   int last_dc_val[MAX_COMPS_IN_SCAN]; /* last DC coef for each component */
 } savable_state;
-
-/* This macro is to work around compilers with missing or broken
- * structure assignment.  You'll need to fix this code if you have
- * such a compiler and you change MAX_COMPS_IN_SCAN.
- */
-
-#ifndef NO_STRUCT_ASSIGN
-#define ASSIGN_STATE(dest, src)  ((dest) = (src))
-#else
-#if MAX_COMPS_IN_SCAN == 4
-#define ASSIGN_STATE(dest, src) \
-  ((dest).last_dc_val[0] = (src).last_dc_val[0], \
-   (dest).last_dc_val[1] = (src).last_dc_val[1], \
-   (dest).last_dc_val[2] = (src).last_dc_val[2], \
-   (dest).last_dc_val[3] = (src).last_dc_val[3])
-#endif
-#endif
-
 
 typedef struct {
   struct jpeg_entropy_decoder pub; /* public fields */
@@ -151,7 +136,7 @@ start_pass_huff_decoder(j_decompress_ptr cinfo)
  * Compute the derived values for a Huffman table.
  * This routine also performs some validation checks on the table.
  *
- * Note this is also used by jdphuff.c.
+ * Note this is also used by jdphuff.c and jdlhuff.c.
  */
 
 GLOBAL(void)
@@ -262,14 +247,14 @@ jpeg_make_d_derived_tbl(j_decompress_ptr cinfo, boolean isDC, int tblno,
 
   /* Validate symbols as being reasonable.
    * For AC tables, we make no check, but accept all byte values 0..255.
-   * For DC tables, we require the symbols to be in range 0..15.
-   * (Tighter bounds could be applied depending on the data depth and mode,
-   * but this is sufficient to ensure safe decoding.)
+   * For DC tables, we require the symbols to be in range 0..15 in lossy mode
+   * and 0..16 in lossless mode.  (Tighter bounds could be applied depending on
+   * the data depth and mode, but this is sufficient to ensure safe decoding.)
    */
   if (isDC) {
     for (i = 0; i < numsymbols; i++) {
       int sym = htbl->huffval[i];
-      if (sym < 0 || sym > 15)
+      if (sym < 0 || sym > (cinfo->master->lossless ? 16 : 15))
         ERREXIT(cinfo, JERR_BAD_HUFF_TABLE);
     }
   }
@@ -277,7 +262,7 @@ jpeg_make_d_derived_tbl(j_decompress_ptr cinfo, boolean isDC, int tblno,
 
 
 /*
- * Out-of-line code for bit fetching (shared with jdphuff.c).
+ * Out-of-line code for bit fetching (shared with jdphuff.c and jdlhuff.c).
  * See jdhuff.h for info about usage.
  * Note: current values of get_buffer and bits_left are passed as parameters,
  * but are returned in the corresponding fields of the state struct.
@@ -325,7 +310,7 @@ jpeg_fill_bit_buffer(bitread_working_state *state,
         bytes_in_buffer = cinfo->src->bytes_in_buffer;
       }
       bytes_in_buffer--;
-      c = GETJOCTET(*next_input_byte++);
+      c = *next_input_byte++;
 
       /* If it's 0xFF, check and discard stuffed zero byte */
       if (c == 0xFF) {
@@ -342,7 +327,7 @@ jpeg_fill_bit_buffer(bitread_working_state *state,
             bytes_in_buffer = cinfo->src->bytes_in_buffer;
           }
           bytes_in_buffer--;
-          c = GETJOCTET(*next_input_byte++);
+          c = *next_input_byte++;
         } while (c == 0xFF);
 
         if (c == 0) {
@@ -405,8 +390,8 @@ no_more_bytes:
 
 #define GET_BYTE { \
   register int c0, c1; \
-  c0 = GETJOCTET(*buffer++); \
-  c1 = GETJOCTET(*buffer); \
+  c0 = *buffer++; \
+  c1 = *buffer; \
   /* Pre-execute most common case */ \
   get_buffer = (get_buffer << 8) | c0; \
   bits_left += 8; \
@@ -423,7 +408,7 @@ no_more_bytes:
   } \
 }
 
-#if SIZEOF_SIZE_T == 8 || defined(_WIN64)
+#if SIZEOF_SIZE_T == 8 || defined(_WIN64) || (defined(__x86_64__) && defined(__ILP32__))
 
 /* Pre-fetch 48 bytes, because the holding register is 64-bit */
 #define FILL_BIT_BUFFER_FAST \
@@ -557,6 +542,12 @@ process_restart(j_decompress_ptr cinfo)
 }
 
 
+#if defined(__has_feature)
+#if __has_feature(undefined_behavior_sanitizer)
+__attribute__((no_sanitize("signed-integer-overflow"),
+               no_sanitize("unsigned-integer-overflow")))
+#endif
+#endif
 LOCAL(boolean)
 decode_mcu_slow(j_decompress_ptr cinfo, JBLOCKROW *MCU_data)
 {
@@ -568,7 +559,7 @@ decode_mcu_slow(j_decompress_ptr cinfo, JBLOCKROW *MCU_data)
 
   /* Load up working state */
   BITREAD_LOAD_STATE(cinfo, entropy->bitstate);
-  ASSIGN_STATE(state, entropy->saved);
+  state = entropy->saved;
 
   for (blkn = 0; blkn < cinfo->blocks_in_MCU; blkn++) {
     JBLOCKROW block = MCU_data ? MCU_data[blkn] : NULL;
@@ -589,11 +580,15 @@ decode_mcu_slow(j_decompress_ptr cinfo, JBLOCKROW *MCU_data)
     if (entropy->dc_needed[blkn]) {
       /* Convert DC difference to actual value, update last_dc_val */
       int ci = cinfo->MCU_membership[blkn];
-      /* This is really just
-       *   s += state.last_dc_val[ci];
-       * It is written this way in order to shut up UBSan.
+      /* Certain malformed JPEG images produce repeated DC coefficient
+       * differences of 2047 or -2047, which causes state.last_dc_val[ci] to
+       * grow until it overflows or underflows a 32-bit signed integer.  This
+       * behavior is, to the best of our understanding, innocuous, and it is
+       * unclear how to work around it without potentially affecting
+       * performance.  Thus, we (hopefully temporarily) suppress UBSan integer
+       * overflow errors for this function and decode_mcu_fast().
        */
-      s = (int)((unsigned int)s + (unsigned int)state.last_dc_val[ci]);
+      s += state.last_dc_val[ci];
       state.last_dc_val[ci] = s;
       if (block) {
         /* Output the DC coefficient (assumes jpeg_natural_order[0] = 0) */
@@ -653,11 +648,17 @@ decode_mcu_slow(j_decompress_ptr cinfo, JBLOCKROW *MCU_data)
 
   /* Completed MCU, so update state */
   BITREAD_SAVE_STATE(cinfo, entropy->bitstate);
-  ASSIGN_STATE(entropy->saved, state);
+  entropy->saved = state;
   return TRUE;
 }
 
 
+#if defined(__has_feature)
+#if __has_feature(undefined_behavior_sanitizer)
+__attribute__((no_sanitize("signed-integer-overflow"),
+               no_sanitize("unsigned-integer-overflow")))
+#endif
+#endif
 LOCAL(boolean)
 decode_mcu_fast(j_decompress_ptr cinfo, JBLOCKROW *MCU_data)
 {
@@ -671,7 +672,7 @@ decode_mcu_fast(j_decompress_ptr cinfo, JBLOCKROW *MCU_data)
   /* Load up working state */
   BITREAD_LOAD_STATE(cinfo, entropy->bitstate);
   buffer = (JOCTET *)br_state.next_input_byte;
-  ASSIGN_STATE(state, entropy->saved);
+  state = entropy->saved;
 
   for (blkn = 0; blkn < cinfo->blocks_in_MCU; blkn++) {
     JBLOCKROW block = MCU_data ? MCU_data[blkn] : NULL;
@@ -688,7 +689,10 @@ decode_mcu_fast(j_decompress_ptr cinfo, JBLOCKROW *MCU_data)
 
     if (entropy->dc_needed[blkn]) {
       int ci = cinfo->MCU_membership[blkn];
-      s = (int)((unsigned int)s + (unsigned int)state.last_dc_val[ci]);
+      /* Refer to the comment in decode_mcu_slow() regarding the supression of
+       * a UBSan integer overflow error in this line of code.
+       */
+      s += state.last_dc_val[ci];
       state.last_dc_val[ci] = s;
       if (block)
         (*block)[0] = (JCOEF)s;
@@ -740,7 +744,7 @@ decode_mcu_fast(j_decompress_ptr cinfo, JBLOCKROW *MCU_data)
   br_state.bytes_in_buffer -= (buffer - br_state.next_input_byte);
   br_state.next_input_byte = buffer;
   BITREAD_SAVE_STATE(cinfo, entropy->bitstate);
-  ASSIGN_STATE(entropy->saved, state);
+  entropy->saved = state;
   return TRUE;
 }
 
@@ -795,7 +799,8 @@ use_slow:
   }
 
   /* Account for restart interval (no-op if not using restarts) */
-  entropy->restarts_to_go--;
+  if (cinfo->restart_interval)
+    entropy->restarts_to_go--;
 
   return TRUE;
 }

@@ -1,66 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the demonstration applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "connectionwidget.h"
 
-#include <QtWidgets>
-#include <QtSql>
+#include <QAction>
+#include <QHeaderView>
+#include <QSqlDatabase>
+#include <QTreeWidget>
+#include <QVBoxLayout>
 
 ConnectionWidget::ConnectionWidget(QWidget *parent)
     : QWidget(parent)
+    , tree(new QTreeWidget(this))
 {
     QVBoxLayout *layout = new QVBoxLayout(this);
-    tree = new QTreeWidget(this);
-    tree->setObjectName(QLatin1String("tree"));
-    tree->setHeaderLabels(QStringList(tr("database")));
-    tree->header()->setSectionResizeMode(QHeaderView::Stretch);
+    layout->setContentsMargins({});
+    tree->setHeaderLabels(QStringList(tr("Database")));
+    tree->header()->setStretchLastSection(true);
     QAction *refreshAction = new QAction(tr("Refresh"), tree);
     metaDataAction = new QAction(tr("Show Schema"), tree);
     connect(refreshAction, &QAction::triggered, this, &ConnectionWidget::refresh);
@@ -71,34 +27,35 @@ ConnectionWidget::ConnectionWidget(QWidget *parent)
 
     layout->addWidget(tree);
 
-    QMetaObject::connectSlotsByName(this);
+    connect(tree, &QTreeWidget::itemActivated,
+            this, &ConnectionWidget::onItemActivated);
+    connect(tree, &QTreeWidget::currentItemChanged,
+            this, &ConnectionWidget::onCurrentItemChanged);
 }
 
 ConnectionWidget::~ConnectionWidget()
-{
-}
-
-static QString qDBCaption(const QSqlDatabase &db)
-{
-    QString nm = db.driverName();
-    nm.append(QLatin1Char(':'));
-    if (!db.userName().isEmpty())
-        nm.append(db.userName()).append(QLatin1Char('@'));
-    nm.append(db.databaseName());
-    return nm;
-}
+    = default;
 
 void ConnectionWidget::refresh()
 {
+    const auto qDBCaption = [](const QSqlDatabase &db)
+    {
+        QString nm = db.driverName() + QLatin1Char(':');
+        if (!db.userName().isEmpty())
+            nm += db.userName() + QLatin1Char('@');
+        nm += db.databaseName();
+        return nm;
+    };
+
     tree->clear();
-    QStringList connectionNames = QSqlDatabase::connectionNames();
+    const QStringList connectionNames = QSqlDatabase::connectionNames();
 
     bool gotActiveDb = false;
-    for (int i = 0; i < connectionNames.count(); ++i) {
+    for (const auto &connectionName : connectionNames) {
         QTreeWidgetItem *root = new QTreeWidgetItem(tree);
-        QSqlDatabase db = QSqlDatabase::database(connectionNames.at(i), false);
+        QSqlDatabase db = QSqlDatabase::database(connectionName, false);
         root->setText(0, qDBCaption(db));
-        if (connectionNames.at(i) == activeDb) {
+        if (connectionName == activeDb) {
             gotActiveDb = true;
             setActive(root);
         }
@@ -123,15 +80,15 @@ QSqlDatabase ConnectionWidget::currentDatabase() const
     return QSqlDatabase::database(activeDb);
 }
 
-static void qSetBold(QTreeWidgetItem *item, bool bold)
-{
-    QFont font = item->font(0);
-    font.setBold(bold);
-    item->setFont(0, font);
-}
-
 void ConnectionWidget::setActive(QTreeWidgetItem *item)
 {
+    const auto qSetBold = [](QTreeWidgetItem *item, bool bold)
+    {
+        QFont font = item->font(0);
+        font.setBold(bold);
+        item->setFont(0, font);
+    };
+
     for (int i = 0; i < tree->topLevelItemCount(); ++i) {
         if (tree->topLevelItem(i)->font(0).bold())
             qSetBold(tree->topLevelItem(i), false);
@@ -144,7 +101,7 @@ void ConnectionWidget::setActive(QTreeWidgetItem *item)
     activeDb = QSqlDatabase::connectionNames().value(tree->indexOfTopLevelItem(item));
 }
 
-void ConnectionWidget::on_tree_itemActivated(QTreeWidgetItem *item, int /* column */)
+void ConnectionWidget::onItemActivated(QTreeWidgetItem *item)
 {
     if (!item)
         return;
@@ -166,7 +123,7 @@ void ConnectionWidget::showMetaData()
     emit metaDataRequested(cItem->text(0));
 }
 
-void ConnectionWidget::on_tree_currentItemChanged(QTreeWidgetItem *current, QTreeWidgetItem *)
+void ConnectionWidget::onCurrentItemChanged(QTreeWidgetItem *current)
 {
     metaDataAction->setEnabled(current && current->parent());
 }

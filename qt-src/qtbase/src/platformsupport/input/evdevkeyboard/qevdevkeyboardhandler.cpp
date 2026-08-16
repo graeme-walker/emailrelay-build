@@ -1,43 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qevdevkeyboardhandler_p.h"
+#include "qoutputmapping_p.h"
 
 #include <qplatformdefs.h>
 
@@ -54,6 +19,8 @@
 
 #ifdef Q_OS_FREEBSD
 #include <dev/evdev/input.h>
+#elif defined(Q_OS_VXWORKS)
+#include <evdevLib.h>
 #else
 #include <linux/input.h>
 #endif
@@ -67,6 +34,8 @@
 #endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 Q_LOGGING_CATEGORY(qLcEvdevKey, "qt.qpa.input")
 Q_LOGGING_CATEGORY(qLcEvdevKeyMap, "qt.qpa.input.keymap")
@@ -89,7 +58,7 @@ QEvdevKeyboardHandler::QEvdevKeyboardHandler(const QString &device, QFdContainer
 {
     qCDebug(qLcEvdevKey) << "Create keyboard handler with for device" << device;
 
-    setObjectName(QLatin1String("LinuxInput Keyboard Handler"));
+    setObjectName("LinuxInput Keyboard Handler"_L1);
 
     memset(m_locks, 0, sizeof(m_locks));
 
@@ -120,31 +89,46 @@ std::unique_ptr<QEvdevKeyboardHandler> QEvdevKeyboardHandler::create(const QStri
     bool enableCompose = false;
     int grab = 0;
 
-    const auto args = specification.splitRef(QLatin1Char(':'));
-    for (const QStringRef &arg : args) {
-        if (arg.startsWith(QLatin1String("keymap=")))
+    const auto args = QStringView{specification}.split(u':');
+    for (const auto &arg : args) {
+        if (arg.startsWith("keymap="_L1))
             keymapFile = arg.mid(7).toString();
-        else if (arg == QLatin1String("disable-zap"))
+        else if (arg == "disable-zap"_L1)
             disableZap = true;
-        else if (arg == QLatin1String("enable-compose"))
+        else if (arg == "enable-compose"_L1)
             enableCompose = true;
-        else if (arg.startsWith(QLatin1String("repeat-delay=")))
+        else if (arg.startsWith("repeat-delay="_L1))
             repeatDelay = arg.mid(13).toInt();
-        else if (arg.startsWith(QLatin1String("repeat-rate=")))
+        else if (arg.startsWith("repeat-rate="_L1))
             repeatRate = arg.mid(12).toInt();
-        else if (arg.startsWith(QLatin1String("grab=")))
+        else if (arg.startsWith("grab="_L1))
             grab = arg.mid(5).toInt();
     }
 
     qCDebug(qLcEvdevKey, "Opening keyboard at %ls", qUtf16Printable(device));
 
-    QFdContainer fd(qt_safe_open(device.toLocal8Bit().constData(), O_RDONLY | O_NDELAY, 0));
+    QFdContainer fd(qt_safe_open(device.toLocal8Bit().constData(), O_RDWR | O_NDELAY, 0));
+    if (fd.get() < 0) {
+        qCDebug(qLcEvdevKey, "Keyboard device could not be opened as read-write, trying read-only");
+        fd.reset(qt_safe_open(device.toLocal8Bit().constData(), O_RDONLY | O_NDELAY, 0));
+    }
     if (fd.get() >= 0) {
+#if !defined(Q_OS_VXWORKS)
         ::ioctl(fd.get(), EVIOCGRAB, grab);
         if (repeatDelay > 0 && repeatRate > 0) {
             int kbdrep[2] = { repeatDelay, repeatRate };
             ::ioctl(fd.get(), EVIOCSREP, kbdrep);
         }
+#else
+        Q_UNUSED(repeatDelay)
+        Q_UNUSED(repeatRate)
+        Q_UNUSED(grab)
+        UINT32 kbdMode = EV_DEV_KBD_KEYCODE_MODE;
+        if (ERROR == ioctl (fd.get(), EV_DEV_IO_SET_KBD_MODE, (char *)&kbdMode)) {
+            qWarning("Cannot set keyboard mapping mode to KEYCODE mode '%s': %s", qPrintable(device), strerror(errno));
+            return 0;
+        }
+#endif
 
         return std::unique_ptr<QEvdevKeyboardHandler>(new QEvdevKeyboardHandler(device, fd, disableZap, enableCompose, keymapFile));
     } else {
@@ -153,6 +137,7 @@ std::unique_ptr<QEvdevKeyboardHandler> QEvdevKeyboardHandler::create(const QStri
     }
 }
 
+#if !defined(Q_OS_VXWORKS)
 void QEvdevKeyboardHandler::switchLed(int led, bool state)
 {
     qCDebug(qLcEvdevKey, "switchLed %d %d", led, int(state));
@@ -168,9 +153,45 @@ void QEvdevKeyboardHandler::switchLed(int led, bool state)
 
     qt_safe_write(m_fd.get(), &led_ie, sizeof(led_ie));
 }
+#endif
 
 void QEvdevKeyboardHandler::readKeycode()
 {
+#if defined(Q_OS_VXWORKS)
+    EV_DEV_EVENT ev;
+    int n = ERROR;
+
+    while (n == ERROR) {
+        n = read(m_fd.get(), (char *)(&ev), sizeof(EV_DEV_EVENT));
+
+        if (n == 0) {
+            qWarning("evdevkeyboard: Got EOF from the input device");
+            return;
+        }
+
+        if (n == ERROR) {
+            if (errno == EINTR || errno == EAGAIN)
+                continue;
+
+            qErrnoWarning("evdevkeyboard: Could not read from input device");
+            if (errno == ENXIO) {
+                close(m_fd.get());
+                delete m_notify;
+                m_notify = nullptr;
+                m_fd.reset();
+            }
+            return;
+        }
+    }
+
+    if (n < sizeof(EV_DEV_EVENT)) return;
+    if (ev.type != EV_DEV_KEY) return;
+
+    quint16 code = ev.code;
+    qint32 value = ev.value;
+
+    processKeycode(code, value != 0, value == 2);
+#else
     struct ::input_event buffer[32];
     int n = 0;
 
@@ -232,6 +253,7 @@ void QEvdevKeyboardHandler::readKeycode()
             break;
         }
     }
+#endif
 }
 
 void QEvdevKeyboardHandler::processKeyEvent(int nativecode, int unicode, int qtcode,
@@ -240,7 +262,11 @@ void QEvdevKeyboardHandler::processKeyEvent(int nativecode, int unicode, int qtc
     if (!autoRepeat)
         QGuiApplicationPrivate::inputDeviceManager()->setKeyboardModifiers(QEvdevKeyboardHandler::toQtModifiers(m_modifiers));
 
-    QWindowSystemInterface::handleExtendedKeyEvent(0, (isPress ? QEvent::KeyPress : QEvent::KeyRelease),
+    QWindow *window = nullptr;
+#ifdef Q_OS_WEBOS
+    window = QOutputMapping::get()->windowForDeviceNode(m_device);
+#endif
+    QWindowSystemInterface::handleExtendedKeyEvent(window, (isPress ? QEvent::KeyPress : QEvent::KeyRelease),
                                                    qtcode, modifiers, nativecode + 8, 0, int(modifiers),
                                                    (unicode != 0xffff ) ? QString(QChar(unicode)) : QString(), autoRepeat);
 }
@@ -250,8 +276,8 @@ QEvdevKeyboardHandler::KeycodeAction QEvdevKeyboardHandler::processKeycode(quint
     KeycodeAction result = None;
     bool first_press = pressed && !autorepeat;
 
-    const QEvdevKeyboardMap::Mapping *map_plain = 0;
-    const QEvdevKeyboardMap::Mapping *map_withmod = 0;
+    const QEvdevKeyboardMap::Mapping *map_plain = nullptr;
+    const QEvdevKeyboardMap::Mapping *map_withmod = nullptr;
 
     quint8 modifiers = m_modifiers;
 
@@ -503,6 +529,7 @@ void QEvdevKeyboardHandler::unloadKeymap()
     m_composing = 0;
     m_dead_unicode = 0xffff;
 
+#if !defined(Q_OS_VXWORKS)
     //Set locks according to keyboard leds
     quint16 ledbits[1];
     memset(ledbits, 0, sizeof(ledbits));
@@ -525,6 +552,7 @@ void QEvdevKeyboardHandler::unloadKeymap()
     }
 
     m_langLock = 0;
+#endif
 }
 
 bool QEvdevKeyboardHandler::loadKeymap(const QString &file)

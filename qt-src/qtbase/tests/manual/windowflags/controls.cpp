@@ -1,30 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
 
 #include "controls.h"
 
@@ -54,6 +31,7 @@ HintControl::HintControl(QWidget *parent)
     , windowStaysOnBottomCheckBox(new QCheckBox(tr("Window stays on bottom")))
     , customizeWindowHintCheckBox(new QCheckBox(tr("Customize window")))
     , transparentForInputCheckBox(new QCheckBox(tr("Transparent for input")))
+    , noDropShadowCheckBox(new QCheckBox(tr("No drop shadow")))
 {
     connect(msWindowsFixedSizeDialogCheckBox, SIGNAL(clicked()), this, SLOT(slotCheckBoxChanged()));
     connect(x11BypassWindowManagerCheckBox, SIGNAL(clicked()), this, SLOT(slotCheckBoxChanged()));
@@ -70,9 +48,11 @@ HintControl::HintControl(QWidget *parent)
     connect(windowStaysOnBottomCheckBox, SIGNAL(clicked()), this, SLOT(slotCheckBoxChanged()));
     connect(customizeWindowHintCheckBox, SIGNAL(clicked()), this, SLOT(slotCheckBoxChanged()));
     connect(transparentForInputCheckBox, SIGNAL(clicked()), this, SLOT(slotCheckBoxChanged()));
+    connect(noDropShadowCheckBox, SIGNAL(clicked()), this, SLOT(slotCheckBoxChanged()));
     QGridLayout *layout = new QGridLayout(this);
     layout->setSpacing(0);
-    layout->setMargin(ControlLayoutMargin);
+    layout->setContentsMargins(ControlLayoutMargin, ControlLayoutMargin,
+                               ControlLayoutMargin, ControlLayoutMargin);
     layout->addWidget(msWindowsFixedSizeDialogCheckBox, 0, 0);
     layout->addWidget(x11BypassWindowManagerCheckBox, 1, 0);
     layout->addWidget(framelessWindowCheckBox, 2, 0);
@@ -88,9 +68,7 @@ HintControl::HintControl(QWidget *parent)
     layout->addWidget(windowStaysOnBottomCheckBox, 7, 1);
     layout->addWidget(customizeWindowHintCheckBox, 5, 0);
     layout->addWidget(transparentForInputCheckBox, 6, 0);
-#if QT_VERSION < 0x050000
-    transparentForInputCheckBox->setEnabled(false);
-#endif
+    layout->addWidget(noDropShadowCheckBox, 7, 0);
 }
 
 Qt::WindowFlags HintControl::hints() const
@@ -110,10 +88,8 @@ Qt::WindowFlags HintControl::hints() const
         flags |= Qt::WindowMinimizeButtonHint;
     if (windowMaximizeButtonCheckBox->isChecked())
         flags |= Qt::WindowMaximizeButtonHint;
-#if QT_VERSION >= 0x050000
     if (windowFullscreenButtonCheckBox->isChecked())
         flags |= Qt::WindowFullscreenButtonHint;
-#endif
     if (windowCloseButtonCheckBox->isChecked())
         flags |= Qt::WindowCloseButtonHint;
     if (windowContextHelpButtonCheckBox->isChecked())
@@ -126,10 +102,10 @@ Qt::WindowFlags HintControl::hints() const
         flags |= Qt::WindowStaysOnBottomHint;
     if (customizeWindowHintCheckBox->isChecked())
         flags |= Qt::CustomizeWindowHint;
-#if QT_VERSION >= 0x050000
     if (transparentForInputCheckBox->isChecked())
         flags |= Qt::WindowTransparentForInput;
-#endif
+    if (noDropShadowCheckBox->isChecked())
+        flags |= Qt::NoDropShadowWindowHint;
     return flags;
 }
 
@@ -142,18 +118,15 @@ void HintControl::setHints(Qt::WindowFlags flags)
     windowSystemMenuCheckBox->setChecked(flags & Qt::WindowSystemMenuHint);
     windowMinimizeButtonCheckBox->setChecked(flags & Qt::WindowMinimizeButtonHint);
     windowMaximizeButtonCheckBox->setChecked(flags & Qt::WindowMaximizeButtonHint);
-#if QT_VERSION >= 0x050000
     windowFullscreenButtonCheckBox->setChecked(flags & Qt::WindowFullscreenButtonHint);
-#endif
     windowCloseButtonCheckBox->setChecked(flags & Qt::WindowCloseButtonHint);
     windowContextHelpButtonCheckBox->setChecked(flags & Qt::WindowContextHelpButtonHint);
     windowShadeButtonCheckBox->setChecked(flags & Qt::WindowShadeButtonHint);
     windowStaysOnTopCheckBox->setChecked(flags & Qt::WindowStaysOnTopHint);
     windowStaysOnBottomCheckBox->setChecked(flags & Qt::WindowStaysOnBottomHint);
     customizeWindowHintCheckBox->setChecked(flags & Qt::CustomizeWindowHint);
-#if QT_VERSION >= 0x050000
     transparentForInputCheckBox->setChecked(flags & Qt::WindowTransparentForInput);
-#endif
+    noDropShadowCheckBox->setChecked(flags & Qt::NoDropShadowWindowHint);
 }
 
 void HintControl::slotCheckBoxChanged()
@@ -171,7 +144,8 @@ WindowStateControl::WindowStateControl(QWidget *parent)
 {
     QHBoxLayout *layout = new QHBoxLayout(this);
     group->setExclusive(false);
-    layout->setMargin(ControlLayoutMargin);
+    layout->setContentsMargins(ControlLayoutMargin, ControlLayoutMargin,
+                               ControlLayoutMargin, ControlLayoutMargin);
     group->addButton(restoreButton, Qt::WindowNoState);
     restoreButton->setEnabled(false);
     layout->addWidget(restoreButton);
@@ -181,7 +155,7 @@ WindowStateControl::WindowStateControl(QWidget *parent)
     layout->addWidget(maximizeButton);
     group->addButton(fullscreenButton, Qt::WindowFullScreen);
     layout->addWidget(fullscreenButton);
-    connect(group, SIGNAL(buttonReleased(int)), this, SIGNAL(stateChanged(int)));
+    connect(group, &QButtonGroup::idReleased, this, &WindowStateControl::stateChanged);
 }
 
 Qt::WindowStates WindowStateControl::state() const
@@ -214,7 +188,8 @@ WindowStatesControl::WindowStatesControl(QWidget *parent)
 {
     QHBoxLayout *layout = new QHBoxLayout(this);
     layout->setSpacing(0);
-    layout->setMargin(ControlLayoutMargin);
+    layout->setContentsMargins(ControlLayoutMargin, ControlLayoutMargin,
+                               ControlLayoutMargin, ControlLayoutMargin);
     connect(visibleCheckBox, SIGNAL(toggled(bool)), this, SIGNAL(changed()));
     layout->addWidget(visibleCheckBox);
     connect(activeCheckBox, SIGNAL(toggled(bool)), this, SIGNAL(changed()));
@@ -280,7 +255,8 @@ TypeControl::TypeControl(QWidget *parent)
     group->setExclusive(true);
     QGridLayout *layout = new QGridLayout(this);
     layout->setSpacing(0);
-    layout->setMargin(ControlLayoutMargin);
+    layout->setContentsMargins(ControlLayoutMargin, ControlLayoutMargin,
+                               ControlLayoutMargin, ControlLayoutMargin);
     group->addButton(windowRadioButton, Qt::Window);
     layout->addWidget(windowRadioButton, 0, 0);
     group->addButton(dialogRadioButton, Qt::Dialog);
@@ -297,7 +273,7 @@ TypeControl::TypeControl(QWidget *parent)
     layout->addWidget(toolTipRadioButton, 2, 1);
     group->addButton(splashScreenRadioButton, Qt::SplashScreen);
     layout->addWidget(splashScreenRadioButton, 3, 1);
-    connect(group, SIGNAL(buttonReleased(int)), this, SLOT(slotChanged()));
+    connect(group, &QButtonGroup::idReleased, this, &TypeControl::slotChanged);
 }
 
 Qt::WindowFlags TypeControl::type() const

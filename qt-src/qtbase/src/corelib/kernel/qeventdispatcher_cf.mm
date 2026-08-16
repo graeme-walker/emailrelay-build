@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qeventdispatcher_cf_p.h"
 
@@ -89,7 +53,7 @@ QT_USE_NAMESPACE
 
 QT_NAMESPACE_ALIAS_OBJC_CLASS(RunLoopModeTracker);
 
-@implementation RunLoopModeTracker {
+@implementation QT_MANGLE_NAMESPACE(RunLoopModeTracker) {
     QStack<CFStringRef> m_runLoopModes;
 }
 
@@ -205,7 +169,7 @@ static const CFTimeInterval kCFTimeIntervalDistantFuture = std::numeric_limits<C
 #pragma mark - Class definition
 
 QEventDispatcherCoreFoundation::QEventDispatcherCoreFoundation(QObject *parent)
-    : QAbstractEventDispatcher(parent)
+    : QAbstractEventDispatcherV2(parent)
     , m_processEvents(QEventLoop::EventLoopExec)
     , m_postedEventsRunLoopSource(this, &QEventDispatcherCoreFoundation::processPostedEvents)
     , m_runLoopActivityObserver(this, &QEventDispatcherCoreFoundation::handleRunLoopActivity, kCFRunLoopAllActivities)
@@ -231,7 +195,7 @@ void QEventDispatcherCoreFoundation::startingUp()
 QEventDispatcherCoreFoundation::~QEventDispatcherCoreFoundation()
 {
     invalidateTimer();
-    qDeleteAll(m_timerInfoList);
+    m_timerInfoList.clearTimers();
 
     m_cfSocketNotifier.removeSocketNotifiers();
 }
@@ -259,8 +223,7 @@ QEventLoop *QEventDispatcherCoreFoundation::currentEventLoop() const
         function should wait only if there were no events ready,
         and _then_ process all newly queued/available events.
 
-    These notes apply to other function in this class as well, such as
-    hasPendingEvents().
+    These notes apply to other function in this class as well.
 */
 bool QEventDispatcherCoreFoundation::processEvents(QEventLoop::ProcessEventsFlags flags)
 {
@@ -282,7 +245,7 @@ bool QEventDispatcherCoreFoundation::processEvents(QEventLoop::ProcessEventsFlag
     }
 
     if (m_processEvents.deferredWakeUp) {
-        // We may be processing events recursivly as a result of processing a posted event,
+        // We may be processing events recursively as a result of processing a posted event,
         // in which case we need to signal the run-loop source so that this iteration of
         // processEvents will take care of the newly posted events.
         m_postedEventsRunLoopSource.signal();
@@ -367,7 +330,7 @@ bool QEventDispatcherCoreFoundation::processEvents(QEventLoop::ProcessEventsFlag
                 // to do another pass.
 
                 // But we should only wait for more events the first time
-                m_processEvents.flags &= ~QEventLoop::WaitForMoreEvents;
+                m_processEvents.flags &= ~int(QEventLoop::WaitForMoreEvents);
                 continue;
 
             } else if (m_overdueTimerScheduled && !m_processEvents.processedTimers) {
@@ -499,21 +462,6 @@ void QEventDispatcherCoreFoundation::handleRunLoopActivity(CFRunLoopActivity act
     }
 }
 
-bool QEventDispatcherCoreFoundation::hasPendingEvents()
-{
-    // There doesn't seem to be any API on iOS to peek into the other sources
-    // to figure out if there are pending non-Qt events. As a workaround, we
-    // assume that if the run-loop is currently blocking and waiting for a
-    // source to signal then there are no system-events pending. If this
-    // function is called from the main thread then the second clause
-    // of the condition will always be true, as the run loop is
-    // never waiting in that case. The function would be more aptly named
-    // 'maybeHasPendingEvents' in our case.
-
-    extern uint qGlobalPostedEventsCount();
-    return qGlobalPostedEventsCount() || !CFRunLoopIsWaiting(m_runLoop);
-}
-
 void QEventDispatcherCoreFoundation::wakeUp()
 {
     if (m_processEvents.processedPostedEvents && !(m_processEvents.flags & QEventLoop::EventLoopExec)) {
@@ -544,11 +492,6 @@ void QEventDispatcherCoreFoundation::interrupt()
     CFRunLoopStop(m_runLoop);
 }
 
-void QEventDispatcherCoreFoundation::flush()
-{
-    // X11 only.
-}
-
 #pragma mark - Socket notifiers
 
 void QEventDispatcherCoreFoundation::registerSocketNotifier(QSocketNotifier *notifier)
@@ -563,26 +506,28 @@ void QEventDispatcherCoreFoundation::unregisterSocketNotifier(QSocketNotifier *n
 
 #pragma mark - Timers
 
-void QEventDispatcherCoreFoundation::registerTimer(int timerId, int interval, Qt::TimerType timerType, QObject *object)
+void QEventDispatcherCoreFoundation::registerTimer(Qt::TimerId timerId, Duration interval,
+                                                   Qt::TimerType timerType, QObject *object)
 {
-    qCDebug(lcEventDispatcherTimers) << "Registering timer with id =" << timerId << "interval =" << interval
+    qCDebug(lcEventDispatcherTimers) << "Registering timer with id =" << int(timerId) << "interval =" << interval
         << "type =" << timerType << "object =" << object;
 
-    Q_ASSERT(timerId > 0 && interval >= 0 && object);
+    Q_ASSERT(qToUnderlying(timerId) > 0 && interval.count() >= 0 && object);
     Q_ASSERT(object->thread() == thread() && thread() == QThread::currentThread());
 
     m_timerInfoList.registerTimer(timerId, interval, timerType, object);
     updateTimers();
 }
 
-bool QEventDispatcherCoreFoundation::unregisterTimer(int timerId)
+bool QEventDispatcherCoreFoundation::unregisterTimer(Qt::TimerId timerId)
 {
-    Q_ASSERT(timerId > 0);
+    Q_ASSERT(qToUnderlying(timerId) > 0);
     Q_ASSERT(thread() == QThread::currentThread());
 
     bool returnValue = m_timerInfoList.unregisterTimer(timerId);
 
-    qCDebug(lcEventDispatcherTimers) << "Unegistered timer with id =" << timerId << "Timers left:" << m_timerInfoList.size();
+    qCDebug(lcEventDispatcherTimers) << "Unegistered timer with id =" << qToUnderlying(timerId)
+                                     << "Timers left:" << m_timerInfoList.size();
 
     updateTimers();
     return returnValue;
@@ -600,22 +545,18 @@ bool QEventDispatcherCoreFoundation::unregisterTimers(QObject *object)
     return returnValue;
 }
 
-QList<QAbstractEventDispatcher::TimerInfo> QEventDispatcherCoreFoundation::registeredTimers(QObject *object) const
+QList<QAbstractEventDispatcher::TimerInfoV2>
+QEventDispatcherCoreFoundation::timersForObject(QObject *object) const
 {
     Q_ASSERT(object);
     return m_timerInfoList.registeredTimers(object);
 }
 
-int QEventDispatcherCoreFoundation::remainingTime(int timerId)
+QEventDispatcherCoreFoundation::Duration
+QEventDispatcherCoreFoundation::remainingTime(Qt::TimerId timerId) const
 {
-    Q_ASSERT(timerId > 0);
-    return m_timerInfoList.timerRemainingTime(timerId);
-}
-
-static double timespecToSeconds(const timespec &spec)
-{
-    static double nanosecondsPerSecond = 1.0 * 1000 * 1000 * 1000;
-    return spec.tv_sec + (spec.tv_nsec / nanosecondsPerSecond);
+    Q_ASSERT(qToUnderlying(timerId) > 0);
+    return m_timerInfoList.remainingDuration(timerId);
 }
 
 void QEventDispatcherCoreFoundation::updateTimers()
@@ -623,12 +564,20 @@ void QEventDispatcherCoreFoundation::updateTimers()
     if (m_timerInfoList.size() > 0) {
         // We have Qt timers registered, so create or reschedule CF timer to match
 
-        timespec tv = { -1, -1 };
-        CFAbsoluteTime timeToFire = m_timerInfoList.timerWait(tv) ?
+        using namespace std::chrono_literals;
+        using DoubleSeconds = std::chrono::duration<double, std::ratio<1>>;
+
+        CFAbsoluteTime timeToFire;
+        auto opt = m_timerInfoList.timerWait();
+        DoubleSeconds secs{};
+        if (opt) {
             // We have a timer ready to fire right now, or some time in the future
-            CFAbsoluteTimeGetCurrent() + timespecToSeconds(tv)
+            secs = DoubleSeconds{*opt};
+            timeToFire = CFAbsoluteTimeGetCurrent() + secs.count();
+        } else {
             // We have timers, but they are all currently blocked by callbacks
-            : kCFTimeIntervalDistantFuture;
+            timeToFire = kCFTimeIntervalDistantFuture;
+        }
 
         if (!m_runLoopTimer) {
             m_runLoopTimer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault,
@@ -644,9 +593,9 @@ void QEventDispatcherCoreFoundation::updateTimers()
             qCDebug(lcEventDispatcherTimers) << "Re-scheduled CFRunLoopTimer" << m_runLoopTimer;
         }
 
-        m_overdueTimerScheduled = !timespecToSeconds(tv);
+        m_overdueTimerScheduled = secs > 0s;
 
-        qCDebug(lcEventDispatcherTimers) << "Next timeout in" << tv << "seconds";
+        qCDebug(lcEventDispatcherTimers) << "Next timeout in" << secs;
 
     } else {
         // No Qt timers are registered, so make sure we're not running any CF timers
@@ -668,7 +617,7 @@ void QEventDispatcherCoreFoundation::invalidateTimer()
     m_runLoopTimer = 0;
 }
 
+QT_END_NAMESPACE
+
 #include "qeventdispatcher_cf.moc"
 #include "moc_qeventdispatcher_cf_p.cpp"
-
-QT_END_NAMESPACE

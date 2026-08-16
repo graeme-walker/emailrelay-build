@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 //#define QNETWORKDISKCACHE_DEBUG
 
@@ -48,19 +12,22 @@
 #include <qdir.h>
 #include <qdatastream.h>
 #include <qdatetime.h>
-#include <qdiriterator.h>
+#include <qdirlisting.h>
 #include <qurl.h>
 #include <qcryptographichash.h>
 #include <qdebug.h>
 
-#define CACHE_POSTFIX QLatin1String(".d")
-#define PREPARED_SLASH QLatin1String("prepared/")
+#include <memory>
+
+#define CACHE_POSTFIX ".d"_L1
 #define CACHE_VERSION 8
-#define DATA_DIR QLatin1String("data")
+#define DATA_DIR "data"_L1
 
 #define MAX_COMPRESSION_SIZE (1024 * 1024 * 3)
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*!
     \class QNetworkDiskCache
@@ -132,7 +99,7 @@ QString QNetworkDiskCache::cacheDirectory() const
     Prepared cache items will be stored in the new cache directory when
     they are inserted.
 
-    \sa QDesktopServices::CacheLocation
+    \sa QStandardPaths::CacheLocation
 */
 void QNetworkDiskCache::setCacheDirectory(const QString &cacheDir)
 {
@@ -145,10 +112,10 @@ void QNetworkDiskCache::setCacheDirectory(const QString &cacheDir)
     d->cacheDirectory = cacheDir;
     QDir dir(d->cacheDirectory);
     d->cacheDirectory = dir.absolutePath();
-    if (!d->cacheDirectory.endsWith(QLatin1Char('/')))
-        d->cacheDirectory += QLatin1Char('/');
+    if (!d->cacheDirectory.endsWith(u'/'))
+        d->cacheDirectory += u'/';
 
-    d->dataDirectory = d->cacheDirectory + DATA_DIR + QString::number(CACHE_VERSION) + QLatin1Char('/');
+    d->dataDirectory = d->cacheDirectory + DATA_DIR + QString::number(CACHE_VERSION) + u'/';
     d->prepareLayout();
 }
 
@@ -187,16 +154,12 @@ QIODevice *QNetworkDiskCache::prepare(const QNetworkCacheMetaData &metaData)
         return nullptr;
     }
 
-    const auto headers = metaData.rawHeaders();
-    for (const auto &header : headers) {
-        if (header.first.compare("content-length", Qt::CaseInsensitive) == 0) {
-            const qint64 size = header.second.toLongLong();
-            if (size > (maximumCacheSize() * 3)/4)
-                return nullptr;
-            break;
-        }
-    }
-    QScopedPointer<QCacheItem> cacheItem(new QCacheItem);
+    const auto sizeValue = metaData.headers().value(QHttpHeaders::WellKnownHeader::ContentLength);
+    const qint64 size = sizeValue.toLongLong();
+    if (size > (maximumCacheSize() * 3)/4)
+        return nullptr;
+
+    std::unique_ptr<QCacheItem> cacheItem = std::make_unique<QCacheItem>();
     cacheItem->metaData = metaData;
 
     QIODevice *device = nullptr;
@@ -204,13 +167,9 @@ QIODevice *QNetworkDiskCache::prepare(const QNetworkCacheMetaData &metaData)
         cacheItem->data.open(QBuffer::ReadWrite);
         device = &(cacheItem->data);
     } else {
-        QString templateName = d->tmpCacheFileName();
-        QT_TRY {
-            cacheItem->file = new QTemporaryFile(templateName, &cacheItem->data);
-        } QT_CATCH(...) {
-            cacheItem->file = nullptr;
-        }
-        if (!cacheItem->file || !cacheItem->file->open()) {
+        QString fileName = d->cacheFileName(cacheItem->metaData.url());
+        cacheItem->file = new(std::nothrow) QSaveFile(fileName, &cacheItem->data);
+        if (!cacheItem->file || !cacheItem->file->open(QFileDevice::WriteOnly)) {
             qWarning("QNetworkDiskCache::prepare() unable to open temporary file");
             cacheItem.reset();
             return nullptr;
@@ -218,7 +177,7 @@ QIODevice *QNetworkDiskCache::prepare(const QNetworkCacheMetaData &metaData)
         cacheItem->writeHeader(cacheItem->file);
         device = cacheItem->file;
     }
-    d->inserting[device] = cacheItem.take();
+    d->inserting[device] = cacheItem.release();
     return device;
 }
 
@@ -250,7 +209,6 @@ void QNetworkDiskCache::insert(QIODevice *device)
 void QNetworkDiskCachePrivate::prepareLayout()
 {
     QDir helper;
-    helper.mkpath(cacheDirectory + PREPARED_SLASH);
 
     //Create directory and subdirectories 0-F
     helper.mkpath(dataDirectory);
@@ -271,19 +229,16 @@ void QNetworkDiskCachePrivate::storeItem(QCacheItem *cacheItem)
     Q_ASSERT(!fileName.isEmpty());
 
     if (QFile::exists(fileName)) {
-        if (!QFile::remove(fileName)) {
+        if (!removeFile(fileName)) {
             qWarning() << "QNetworkDiskCache: couldn't remove the cache file " << fileName;
             return;
         }
     }
 
-    if (currentCacheSize > 0)
-        currentCacheSize += 1024 + cacheItem->size();
     currentCacheSize = q->expire();
     if (!cacheItem->file) {
-        QString templateName = tmpCacheFileName();
-        cacheItem->file = new QTemporaryFile(templateName, &cacheItem->data);
-        if (cacheItem->file->open()) {
+        cacheItem->file = new QSaveFile(fileName, &cacheItem->data);
+        if (cacheItem->file->open(QFileDevice::WriteOnly)) {
             cacheItem->writeHeader(cacheItem->file);
             cacheItem->writeCompressedData(cacheItem->file);
         }
@@ -291,13 +246,15 @@ void QNetworkDiskCachePrivate::storeItem(QCacheItem *cacheItem)
 
     if (cacheItem->file
         && cacheItem->file->isOpen()
-        && cacheItem->file->error() == QFile::NoError) {
-        cacheItem->file->setAutoRemove(false);
-        // ### use atomic rename rather then remove & rename
-        if (cacheItem->file->rename(fileName))
-            currentCacheSize += cacheItem->file->size();
-        else
-            cacheItem->file->setAutoRemove(true);
+        && cacheItem->file->error() == QFileDevice::NoError) {
+        // We have to call size() here instead of inside the if-body because
+        // commit() invalidates the file-engine, and size() will create a new
+        // one, pointing at an empty filename.
+        qint64 size = cacheItem->file->size();
+        if (cacheItem->file->commit())
+            currentCacheSize += size;
+        // Delete and unset the QSaveFile, it's invalid now.
+        delete std::exchange(cacheItem->file, nullptr);
     }
     if (cacheItem->metaData.url() == lastItem.metaData.url())
         lastItem.reset();
@@ -395,7 +352,7 @@ QIODevice *QNetworkDiskCache::data(const QUrl &url)
     qDebug() << "QNetworkDiskCache::data()" << url;
 #endif
     Q_D(QNetworkDiskCache);
-    QScopedPointer<QBuffer> buffer;
+    std::unique_ptr<QBuffer> buffer;
     if (!url.isValid())
         return nullptr;
     if (d->lastItem.metaData.url() == url && d->lastItem.data.isOpen()) {
@@ -417,22 +374,11 @@ QIODevice *QNetworkDiskCache::data(const QUrl &url)
             buffer->setData(d->lastItem.data.data());
         } else {
             buffer.reset(new QBuffer);
-            // ### verify that QFile uses the fd size and not the file name
-            qint64 size = file->size() - file->pos();
-            const uchar *p = nullptr;
-#if !defined(Q_OS_INTEGRITY)
-            p = file->map(file->pos(), size);
-#endif
-            if (p) {
-                buffer->setData((const char *)p, size);
-                file.take()->setParent(buffer.data());
-            } else {
-                buffer->setData(file->readAll());
-            }
+            buffer->setData(file->readAll());
         }
     }
     buffer->open(QBuffer::ReadOnly);
-    return buffer.take();
+    return buffer.release();
 }
 
 /*!
@@ -527,47 +473,43 @@ qint64 QNetworkDiskCache::expire()
     // close file handle to prevent "in use" error when QFile::remove() is called
     d->lastItem.reset();
 
-    QDir::Filters filters = QDir::AllDirs | QDir:: Files | QDir::NoDotAndDotDot;
-    QDirIterator it(cacheDirectory(), filters, QDirIterator::Subdirectories);
-
-    QMultiMap<QDateTime, QString> cacheItems;
+    struct CacheItem
+    {
+        std::chrono::milliseconds msecs;
+        QString path;
+        qint64 size = 0;
+    };
+    std::vector<CacheItem> cacheItems;
     qint64 totalSize = 0;
-    while (it.hasNext()) {
-        QString path = it.next();
-        QFileInfo info = it.fileInfo();
-        QString fileName = info.fileName();
-        if (fileName.endsWith(CACHE_POSTFIX)) {
-            const QDateTime birthTime = info.fileTime(QFile::FileBirthTime);
-            cacheItems.insert(birthTime.isValid() ? birthTime
-                              : info.fileTime(QFile::FileMetadataChangeTime), path);
-            totalSize += info.size();
-        }
+    using F = QDirListing::IteratorFlag;
+    for (const auto &dirEntry : QDirListing(cacheDirectory(), F::FilesOnly | F::Recursive)) {
+        if (!dirEntry.fileName().endsWith(CACHE_POSTFIX))
+            continue;
+
+        const QFileInfo &info = dirEntry.fileInfo();
+        QDateTime fileTime = info.birthTime(QTimeZone::UTC);
+        if (!fileTime.isValid())
+            fileTime = info.metadataChangeTime(QTimeZone::UTC);
+        const std::chrono::milliseconds msecs{fileTime.toMSecsSinceEpoch()};
+        const qint64 size = info.size();
+        cacheItems.push_back(CacheItem{msecs, info.filePath(), size});
+        totalSize += size;
     }
 
-    int removedFiles = 0;
-    qint64 goal = (maximumCacheSize() * 9) / 10;
-    QMultiMap<QDateTime, QString>::const_iterator i = cacheItems.constBegin();
-    while (i != cacheItems.constEnd()) {
+    const qint64 goal = (maximumCacheSize() * 9) / 10;
+    if (totalSize < goal)
+        return totalSize; // Nothing to do
+
+    auto byFileTime = [&](const auto &a, const auto &b) { return a.msecs < b.msecs; };
+    std::sort(cacheItems.begin(), cacheItems.end(), byFileTime);
+
+    [[maybe_unused]] int removedFiles = 0; // used under QNETWORKDISKCACHE_DEBUG
+    for (const CacheItem &cached : cacheItems) {
+        QFile::remove(cached.path);
+        ++removedFiles;
+        totalSize -= cached.size;
         if (totalSize < goal)
             break;
-        QString name = i.value();
-        QFile file(name);
-
-        if (name.contains(PREPARED_SLASH)) {
-            for (QCacheItem *item : qAsConst(d->inserting)) {
-                if (item && item->file && item->file->fileName() == name) {
-                    delete item->file;
-                    item->file = nullptr;
-                    break;
-                }
-            }
-        }
-
-        qint64 size = file.size();
-        file.remove();
-        totalSize -= size;
-        ++removedFiles;
-        ++i;
     }
 #if defined(QNETWORKDISKCACHE_DEBUG)
     if (removedFiles > 0) {
@@ -603,22 +545,14 @@ QString QNetworkDiskCachePrivate::uniqueFileName(const QUrl &url)
     cleanUrl.setPassword(QString());
     cleanUrl.setFragment(QString());
 
-    QCryptographicHash hash(QCryptographicHash::Sha1);
-    hash.addData(cleanUrl.toEncoded());
+    const QByteArray hash = QCryptographicHash::hash(cleanUrl.toEncoded(), QCryptographicHash::Sha1);
     // convert sha1 to base36 form and return first 8 bytes for use as string
-    const QByteArray id = QByteArray::number(*(qlonglong*)hash.result().constData(), 36).left(8);
-    // generates <one-char subdir>/<8-char filname.d>
-    uint code = (uint)id.at(id.length()-1) % 16;
-    QString pathFragment = QString::number(code, 16) + QLatin1Char('/')
-                             + QLatin1String(id) + CACHE_POSTFIX;
+    const QByteArray id = QByteArray::number(*(qlonglong*)hash.data(), 36).left(8);
+    // generates <one-char subdir>/<8-char filename.d>
+    uint code = (uint)id.at(id.size()-1) % 16;
+    QString pathFragment = QString::number(code, 16) + u'/' + QLatin1StringView(id) + CACHE_POSTFIX;
 
     return pathFragment;
-}
-
-QString QNetworkDiskCachePrivate::tmpCacheFileName() const
-{
-    //The subdirectory is presumed to be already read for use.
-    return cacheDirectory + PREPARED_SLASH + QLatin1String("XXXXXX") + CACHE_POSTFIX;
 }
 
 /*!
@@ -638,31 +572,27 @@ QString QNetworkDiskCachePrivate::cacheFileName(const QUrl &url) const
  */
 bool QCacheItem::canCompress() const
 {
-    bool sizeOk = false;
-    bool typeOk = false;
-    const auto headers = metaData.rawHeaders();
-    for (const auto &header : headers) {
-        if (header.first.compare("content-length", Qt::CaseInsensitive) == 0) {
-            qint64 size = header.second.toLongLong();
-            if (size > MAX_COMPRESSION_SIZE)
-                return false;
-            else
-                sizeOk = true;
-        }
+    const auto h = metaData.headers();
 
-        if (header.first.compare("content-type", Qt::CaseInsensitive) == 0) {
-            QByteArray type = header.second;
-            if (type.startsWith("text/")
-                    || (type.startsWith("application/")
-                        && (type.endsWith("javascript") || type.endsWith("ecmascript"))))
-                typeOk = true;
-            else
-                return false;
-        }
-        if (sizeOk && typeOk)
-            return true;
+    const auto sizeValue = h.value(QHttpHeaders::WellKnownHeader::ContentLength);
+    if (sizeValue.empty())
+        return false;
+
+    qint64 size = sizeValue.toLongLong();
+    if (size > MAX_COMPRESSION_SIZE)
+        return false;
+
+    const auto type = h.value(QHttpHeaders::WellKnownHeader::ContentType);
+    if (!type.empty())
+        return false;
+
+    if (!type.startsWith("text/")
+        && !(type.startsWith("application/")
+            && (type.endsWith("javascript") || type.endsWith("ecmascript")))) {
+        return false;
     }
-    return false;
+
+    return true;
 }
 
 enum
@@ -671,7 +601,7 @@ enum
     CurrentCacheVersion = CACHE_VERSION
 };
 
-void QCacheItem::writeHeader(QFile *device) const
+void QCacheItem::writeHeader(QFileDevice *device) const
 {
     QDataStream out(device);
 
@@ -683,7 +613,7 @@ void QCacheItem::writeHeader(QFile *device) const
     out << compressed;
 }
 
-void QCacheItem::writeCompressedData(QFile *device) const
+void QCacheItem::writeCompressedData(QFileDevice *device) const
 {
     QDataStream out(device);
 
@@ -694,7 +624,7 @@ void QCacheItem::writeCompressedData(QFile *device) const
     Returns \c false if the file is a cache file,
     but is an older version and should be removed otherwise true.
  */
-bool QCacheItem::read(QFile *device, bool readData)
+bool QCacheItem::read(QFileDevice *device, bool readData)
 {
     reset();
 
@@ -733,7 +663,9 @@ bool QCacheItem::read(QFile *device, bool readData)
     if (!device->fileName().endsWith(expectedFilename))
         return false;
 
-    return metaData.isValid();
+    return metaData.isValid() && !metaData.headers().isEmpty();
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qnetworkdiskcache.cpp"

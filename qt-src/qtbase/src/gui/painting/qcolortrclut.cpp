@@ -1,86 +1,135 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcolortrclut_p.h"
 #include "qcolortransferfunction_p.h"
+#include "qcolortransfergeneric_p.h"
 #include "qcolortransfertable_p.h"
+#include "qcolortrc_p.h"
 #include <qmath.h>
 
 QT_BEGIN_NAMESPACE
-
-QColorTrcLut *QColorTrcLut::fromGamma(qreal gamma)
+std::shared_ptr<QColorTrcLut> QColorTrcLut::create()
 {
-    QColorTrcLut *cp = new QColorTrcLut;
+    struct Access : QColorTrcLut {};
+    return std::make_shared<Access>();
+}
 
-    for (int i = 0; i <= (255 * 16); ++i) {
-        cp->m_toLinear[i] = ushort(qRound(qPow(i / qreal(255 * 16), gamma) * (255 * 256)));
-        cp->m_fromLinear[i] = ushort(qRound(qPow(i / qreal(255 * 16), qreal(1) / gamma) * (255 * 256)));
-    }
-
+std::shared_ptr<QColorTrcLut> QColorTrcLut::fromGamma(float gamma, Direction dir)
+{
+    auto cp = create();
+    cp->setFromGamma(gamma, dir);
     return cp;
 }
 
-QColorTrcLut *QColorTrcLut::fromTransferFunction(const QColorTransferFunction &fun)
+std::shared_ptr<QColorTrcLut> QColorTrcLut::fromTrc(const QColorTrc &trc, Direction dir)
 {
-    QColorTrcLut *cp = new QColorTrcLut;
-    QColorTransferFunction inv = fun.inverted();
-
-    for (int i = 0; i <= (255 * 16); ++i) {
-        cp->m_toLinear[i] = ushort(qRound(fun.apply(i / qreal(255 * 16)) * (255 * 256)));
-        cp->m_fromLinear[i] = ushort(qRound(inv.apply(i / qreal(255 * 16)) * (255 * 256)));
-    }
-
+    if (!trc.isValid())
+        return nullptr;
+    auto cp = create();
+    cp->setFromTrc(trc, dir);
     return cp;
 }
 
-QColorTrcLut *QColorTrcLut::fromTransferTable(const QColorTransferTable &table)
+void QColorTrcLut::setFromGamma(float gamma, Direction dir)
 {
-    QColorTrcLut *cp = new QColorTrcLut;
-
-    float minInverse = 0.0f;
-    for (int i = 0; i <= (255 * 16); ++i) {
-        cp->m_toLinear[i] = ushort(qBound(0, qRound(table.apply(i / qreal(255 * 16)) * (255 * 256)), 65280));
-        minInverse = table.applyInverse(i / qreal(255 * 16), minInverse);
-        cp->m_fromLinear[i] = ushort(qBound(0, qRound(minInverse * (255 * 256)), 65280));
+    constexpr float iRes = 1.f / float(Resolution);
+    if (dir & ToLinear) {
+        if (!m_toLinear)
+            m_toLinear.reset(new ushort[Resolution + 1]);
+        for (int i = 0; i <= Resolution; ++i) {
+            const int val = qRound(qPow(i * iRes, gamma) * (255 * 256));
+            m_toLinear[i] = qBound(0, val, 65280);
+        }
     }
 
-    return cp;
+    if (dir & FromLinear) {
+        const float iGamma = 1.f / gamma;
+        if (!m_fromLinear)
+            m_fromLinear.reset(new ushort[Resolution + 1]);
+        for (int i = 0; i <= Resolution; ++i)
+            m_fromLinear[i] = ushort(qRound(qBound(0.f, qPow(i * iRes, iGamma), 1.f) * (255 * 256)));
+    }
+}
+
+void QColorTrcLut::setFromTransferFunction(const QColorTransferFunction &fun, Direction dir)
+{
+    constexpr float iRes = 1.f / float(Resolution);
+    if (dir & ToLinear) {
+        if (!m_toLinear)
+            m_toLinear.reset(new ushort[Resolution + 1]);
+        for (int i = 0; i <= Resolution; ++i) {
+            const int val = qRound(fun.apply(i * iRes)* (255 * 256));
+            if (val > 65280 && i < m_unclampedToLinear)
+                m_unclampedToLinear = i;
+            m_toLinear[i] = qBound(0, val, 65280);
+        }
+    }
+
+    if (dir & FromLinear) {
+        if (!m_fromLinear)
+            m_fromLinear.reset(new ushort[Resolution + 1]);
+        QColorTransferFunction inv = fun.inverted();
+        for (int i = 0; i <= Resolution; ++i)
+            m_fromLinear[i] = ushort(qRound(qBound(0.f, inv.apply(i * iRes), 1.f) * (255 * 256)));
+    }
+}
+
+void QColorTrcLut::setFromTransferGenericFunction(const QColorTransferGenericFunction &fun, Direction dir)
+{
+    constexpr float iRes = 1.f / float(Resolution);
+    if (dir & ToLinear) {
+        if (!m_toLinear)
+            m_toLinear.reset(new ushort[Resolution + 1]);
+        for (int i = 0; i <= Resolution; ++i) {
+            const int val = qRound(fun.apply(i * iRes) * (255 * 256));
+            if (val > 65280 && i < m_unclampedToLinear)
+                m_unclampedToLinear = i;
+            m_toLinear[i] = qBound(0, val, 65280);
+        }
+    }
+
+    if (dir & FromLinear) {
+        if (!m_fromLinear)
+            m_fromLinear.reset(new ushort[Resolution + 1]);
+        for (int i = 0; i <= Resolution; ++i)
+            m_fromLinear[i] = ushort(qRound(qBound(0.f, fun.applyInverse(i * iRes), 1.f) * (255 * 256)));
+    }
+}
+
+void QColorTrcLut::setFromTransferTable(const QColorTransferTable &table, Direction dir)
+{
+    constexpr float iRes = 1.f / float(Resolution);
+    if (dir & ToLinear) {
+        if (!m_toLinear)
+            m_toLinear.reset(new ushort[Resolution + 1]);
+        for (int i = 0; i <= Resolution; ++i)
+            m_toLinear[i] = ushort(qRound(table.apply(i * iRes) * (255 * 256)));
+    }
+
+    if (dir & FromLinear) {
+        if (!m_fromLinear)
+            m_fromLinear.reset(new ushort[Resolution + 1]);
+        float minInverse = 0.0f;
+        for (int i = 0; i <= Resolution; ++i) {
+            minInverse = table.applyInverse(i * iRes, minInverse);
+            m_fromLinear[i] = ushort(qRound(minInverse * (255 * 256)));
+        }
+    }
+}
+
+void QColorTrcLut::setFromTrc(const QColorTrc &trc, Direction dir)
+{
+    switch (trc.m_type) {
+    case QColorTrc::Type::ParameterizedFunction:
+        return setFromTransferFunction(trc.fun(), dir);
+    case QColorTrc::Type::Table:
+        return setFromTransferTable(trc.table(), dir);
+    case QColorTrc::Type::GenericFunction:
+        return setFromTransferGenericFunction(trc.hdr(), dir);
+    case QColorTrc::Type::Uninitialized:
+        break;
+    }
 }
 
 QT_END_NAMESPACE

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the qmake application of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef MSVC_OBJECTMODEL_H
 #define MSVC_OBJECTMODEL_H
@@ -53,7 +28,8 @@ enum DotNET {
     NET2013 = 0xc0,
     NET2015 = 0xd0,
     NET2017 = 0xe0,
-    NET2019
+    NET2019,
+    NET2022
 };
 
 DotNET vsVersionFromString(const ProString &versionString);
@@ -282,7 +258,9 @@ enum inlineExpansionOption {
 };
 enum linkerDebugOption {
     linkerDebugOptionNone,
-    linkerDebugOptionFastLink
+    linkerDebugOptionEnabled,     // represents /DEBUG without further options
+    linkerDebugOptionFastLink,
+    linkerDebugOptionFull
 };
 enum linkIncrementalType {
     linkIncrementalDefault,
@@ -355,6 +333,7 @@ enum optWin98Type {
 enum optLinkTimeCodeGenType {
     optLTCGDefault,
     optLTCGEnabled,
+    optLTCGIncremental,
     optLTCGInstrument,
     optLTCGOptimize,
     optLTCGUpdate
@@ -527,6 +506,7 @@ public:
     inlineExpansionOption   InlineFunctionExpansion;
     triState                KeepComments;
     QString                 LanguageStandard;
+    QString                 LanguageStandard_C;
     triState                MinimalRebuild;
     QString                 ObjectFile;
     triState                OmitDefaultLibName;
@@ -872,7 +852,6 @@ public:
 
     bool                    suppressUnknownOptionWarnings;
     DotNET                  CompilerVersion;
-    bool                    WinRT;
 
     // Variables
     triState                ATLMinimizesCRunTimeLibraryUsage;
@@ -959,7 +938,7 @@ public:
     VCCLCompilerTool        CompilerTool;
 };
 
-typedef QVector<VCFilter> VCFilterList;
+typedef QList<VCFilter> VCFilterList;
 class VCProjectSingleConfig
 {
 public:
@@ -1003,7 +982,7 @@ public:
     const VCFilter &filterByName(const QString &name) const;
     const VCFilter &filterForExtraCompiler(const QString &compilerName) const;
 };
-Q_DECLARE_TYPEINFO(VCProjectSingleConfig, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(VCProjectSingleConfig, Q_RELOCATABLE_TYPE);
 
 // Tree & Flat view of files --------------------------------------------------
 class VCFilter;

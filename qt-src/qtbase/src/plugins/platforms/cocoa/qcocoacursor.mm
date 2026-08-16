@@ -1,41 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
+#include <AppKit/AppKit.h>
 
 #include "qcocoacursor.h"
 #include "qcocoawindow.h"
@@ -45,7 +11,18 @@
 
 #include <QtGui/QBitmap>
 
+#if !defined(QT_APPLE_NO_PRIVATE_APIS)
+@interface NSCursor()
++ (id)_windowResizeNorthWestSouthEastCursor;
++ (id)_windowResizeNorthEastSouthWestCursor;
++ (id)_windowResizeNorthSouthCursor;
++ (id)_windowResizeEastWestCursor;
+@end
+#endif // QT_APPLE_NO_PRIVATE_APIS
+
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 QCocoaCursor::QCocoaCursor()
 {
@@ -116,7 +93,7 @@ NSCursor *QCocoaCursor::convertCursor(QCursor *cursor)
         return nil;
 
     const Qt::CursorShape newShape = cursor->shape();
-    NSCursor *cocoaCursor;
+    NSCursor *cocoaCursor = nil;
 
     // Check for a suitable built-in NSCursor first:
     switch (newShape) {
@@ -157,7 +134,47 @@ NSCursor *QCocoaCursor::convertCursor(QCursor *cursor)
     case Qt::DragLinkCursor:
         cocoaCursor = [NSCursor dragLinkCursor];
         break;
-    default : {
+    case Qt::SizeVerCursor:
+    case Qt::SizeHorCursor:
+    case Qt::SizeBDiagCursor:
+    case Qt::SizeFDiagCursor: {
+#if QT_MACOS_PLATFORM_SDK_EQUAL_OR_ABOVE(150000)
+        if (@available(macOS 15, *)) {
+            auto position = [newShape]{
+                switch (newShape) {
+                case Qt::SizeVerCursor: return NSCursorFrameResizePositionTop;
+                case Qt::SizeHorCursor: return NSCursorFrameResizePositionLeft;
+                case Qt::SizeBDiagCursor: return NSCursorFrameResizePositionTopRight;
+                case Qt::SizeFDiagCursor: return NSCursorFrameResizePositionTopLeft;
+                default: Q_UNREACHABLE();
+                }
+            }();
+            cocoaCursor = [NSCursor frameResizeCursorFromPosition:position
+                                    inDirections:NSCursorFrameResizeDirectionsAll];
+            break;
+        }
+#endif // macOS 15 SDK
+#if !defined(QT_APPLE_NO_PRIVATE_APIS)
+        auto selector = [newShape]{
+            switch (newShape) {
+            case Qt::SizeVerCursor: return @selector(_windowResizeNorthSouthCursor);
+            case Qt::SizeHorCursor: return @selector(_windowResizeEastWestCursor);
+            case Qt::SizeBDiagCursor: return @selector(_windowResizeNorthEastSouthWestCursor);
+            case Qt::SizeFDiagCursor: return @selector(_windowResizeNorthWestSouthEastCursor);
+            default: Q_UNREACHABLE();
+            }
+        }();
+
+        if ([NSCursor respondsToSelector:selector])
+            cocoaCursor = [NSCursor performSelector:selector];
+#endif // QT_APPLE_NO_PRIVATE_APIS
+        break;
+    }
+    default:
+        break;
+    }
+
+    if (!cocoaCursor) {
         // No suitable OS cursor exist, use cursors provided
         // by Qt for the rest. Check for a cached cursor:
         cocoaCursor = m_cursors.value(newShape);
@@ -172,8 +189,6 @@ NSCursor *QCocoaCursor::convertCursor(QCursor *cursor)
 
             m_cursors.insert(newShape, cocoaCursor);
         }
-
-        break; }
     }
     return cocoaCursor;
 }
@@ -243,7 +258,7 @@ NSCursor *QCocoaCursor::createCursorData(QCursor *cursor)
     switch (cursor->shape()) {
     case Qt::BitmapCursor: {
         if (cursor->pixmap().isNull())
-            return createCursorFromBitmap(cursor->bitmap(Qt::ReturnByValue), cursor->mask(Qt::ReturnByValue), hotspot);
+            return createCursorFromBitmap(cursor->bitmap(), cursor->mask(), hotspot);
         else
             return createCursorFromPixmap(cursor->pixmap(), hotspot);
         break; }
@@ -253,15 +268,15 @@ NSCursor *QCocoaCursor::createCursorData(QCursor *cursor)
         return createCursorFromPixmap(pixmap);
         break; }
     case Qt::WaitCursor: {
-        QPixmap pixmap = QPixmap(QLatin1String(":/qt-project.org/mac/cursors/images/spincursor.png"));
+        QPixmap pixmap = QPixmap(":/qt-project.org/mac/cursors/images/spincursor.png"_L1);
         return createCursorFromPixmap(pixmap, hotspot);
         break; }
     case Qt::SizeAllCursor: {
-        QPixmap pixmap = QPixmap(QLatin1String(":/qt-project.org/mac/cursors/images/sizeallcursor.png"));
+        QPixmap pixmap = QPixmap(":/qt-project.org/mac/cursors/images/sizeallcursor.png"_L1);
         return createCursorFromPixmap(pixmap, QPoint(8, 8));
         break; }
     case Qt::BusyCursor: {
-        QPixmap pixmap = QPixmap(QLatin1String(":/qt-project.org/mac/cursors/images/waitcursor.png"));
+        QPixmap pixmap = QPixmap(":/qt-project.org/mac/cursors/images/waitcursor.png"_L1);
         return createCursorFromPixmap(pixmap, hotspot);
         break; }
 #define QT_USE_APPROXIMATE_CURSORS

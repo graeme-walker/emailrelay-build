@@ -1,37 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-/* -*- C++ -*-
- */
-#include <qcoreapplication.h>
-#include <qmetatype.h>
-#include <QtTest/QtTest>
-#include <QtDBus/QtDBus>
-#include <QtXml/QDomDocument>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
+#include <QCoreApplication>
+#include <QDomDocument>
+#include <QMetaType>
+#include <QTest>
 
 #define USE_PRIVATE_CODE
 #include "../qdbusmarshall/common.h"
@@ -59,10 +32,18 @@ private slots:
     void properties();
 };
 
+static void addAnnotation(QDBusIntrospection::Annotations &annotations, const QString &name,
+                          const QString &value)
+{
+    annotations.insert(
+            name,
+            QDBusIntrospection::Annotation{ QDBusIntrospection::SourceLocation{}, name, value });
+}
+
 void tst_QDBusXmlParser::initTestCase()
 {
-    // Always initialize the hash seed to 0 to get reliable test results
-    qSetGlobalQHashSeed(0);
+    // Always initialize the hash seed with a known value to get reliable test results
+    QHashSeed::setDeterministicGlobalSeed();
 }
 
 void tst_QDBusXmlParser::parsing_data()
@@ -127,21 +108,21 @@ void tst_QDBusXmlParser::parsing_data()
 
 void tst_QDBusXmlParser::parsing_common(const QString &xmlData)
 {
-    QDBusIntrospection::Object obj =
+    const QDBusIntrospection::Object obj =
         QDBusIntrospection::parseObject(xmlData, "local.testing", "/");
     QFETCH(int, interfaceCount);
     QFETCH(int, objectCount);
     QFETCH(int, annotationCount);
     QFETCH(QStringList, introspection);
-    QCOMPARE(obj.interfaces.count(), interfaceCount);
-    QCOMPARE(obj.childObjects.count(), objectCount);
-    QCOMPARE(QDBusIntrospection::parseInterface(xmlData).annotations.count(), annotationCount);
+    QCOMPARE(obj.interfaces.size(), interfaceCount);
+    QCOMPARE(obj.childObjects.size(), objectCount);
+    QCOMPARE(QDBusIntrospection::parseInterface(xmlData).annotations.size(), annotationCount);
 
     QDBusIntrospection::Interfaces ifaces = QDBusIntrospection::parseInterfaces(xmlData);
 
     // also verify the naming
     int i = 0;
-    foreach (QString name, obj.interfaces) {
+    for (const QString &name : obj.interfaces) {
         const QString expectedName = QString("iface.iface%1").arg(i+1);
         QCOMPARE(name, expectedName);
 
@@ -151,7 +132,7 @@ void tst_QDBusXmlParser::parsing_common(const QString &xmlData)
     }
 
     i = 0;
-    foreach (QString name, obj.childObjects)
+    for (const QString &name : obj.childObjects)
         QCOMPARE(name, QString("obj%1").arg(++i));
 }
 
@@ -218,7 +199,7 @@ void tst_QDBusXmlParser::methods_data()
 
     // add a third, with annotations
     method.name = "Baz";
-    method.annotations.insert("foo.testing", "nothing to see here");
+    addAnnotation(method.annotations, "foo.testing", "nothing to see here");
     map << method;
     QTest::newRow("method-with-annotation") <<
         "<method name=\"Foo\"/>"
@@ -317,7 +298,7 @@ void tst_QDBusXmlParser::methods_data()
     method = QDBusIntrospection::Method();
     method.inputArgs << arg("a{sv}", "variantMap") << arg("u", "index");
     method.outputArgs << arg("s", "key") << arg("v", "value");
-    method.annotations.insert("foo.equivalent", "QVariantMap");
+    addAnnotation(method.annotations, "foo.equivalent", "QVariantMap");
     method.name = "Method2";
     map << method;
 
@@ -354,7 +335,7 @@ void tst_QDBusXmlParser::methods()
     QFETCH(MethodMap, methodMap);
     MethodMap parsedMap = iface.methods;
 
-    QCOMPARE(parsedMap.count(), methodMap.count());
+    QCOMPARE(parsedMap.size(), methodMap.size());
     QCOMPARE(parsedMap, methodMap);
 }
 
@@ -386,7 +367,7 @@ void tst_QDBusXmlParser::signals__data()
 
     // add a third, with annotations
     signal.name = "Baz";
-    signal.annotations.insert("foo.testing", "nothing to see here");
+    addAnnotation(signal.annotations, "foo.testing", "nothing to see here");
     map << signal;
     QTest::newRow("signal-with-annotation") <<
         "<signal name=\"Foo\"/>"
@@ -435,7 +416,7 @@ void tst_QDBusXmlParser::signals__data()
     // with annotation "foo.equivalent":"QVariantMap"
     signal = QDBusIntrospection::Signal();
     signal.outputArgs << arg("s", "key") << arg("v", "value");
-    signal.annotations.insert("foo.equivalent", "QVariantMap");
+    addAnnotation(signal.annotations, "foo.equivalent", "QVariantMap");
     signal.name = "Signal2";
     map << signal;
 
@@ -468,7 +449,7 @@ void tst_QDBusXmlParser::signals_()
     QFETCH(SignalMap, signalMap);
     SignalMap parsedMap = iface.signals_;
 
-    QCOMPARE(signalMap.count(), parsedMap.count());
+    QCOMPARE(signalMap.size(), parsedMap.size());
     QCOMPARE(signalMap, parsedMap);
 }
 
@@ -486,19 +467,19 @@ void tst_QDBusXmlParser::properties_data()
     prop.type = "s";
     prop.access = QDBusIntrospection::Property::Read;
     map << prop;
-    QTest::newRow("one-readable") << "<property name=\"foo\" type=\"s\" access=\"read\"/>" << map;
+    QTest::newRow("one-readable") << "<property access=\"read\" type=\"s\" name=\"foo\" />" << map;
 
     // one writable signal
     prop.access = QDBusIntrospection::Property::Write;
     map.clear();
     map << prop;
-    QTest::newRow("one-writable") << "<property name=\"foo\" type=\"s\" access=\"write\"/>" << map;
+    QTest::newRow("one-writable") << "<property access=\"write\" type=\"s\" name=\"foo\"/>" << map;
 
     // one read- & writable signal
     prop.access = QDBusIntrospection::Property::ReadWrite;
     map.clear();
     map << prop;
-    QTest::newRow("one-read-writable") << "<property name=\"foo\" type=\"s\" access=\"readwrite\"/>"
+    QTest::newRow("one-read-writable") << "<property access=\"readwrite\" type=\"s\" name=\"foo\"/>"
                                        << map;
 
     // two, mixed properties
@@ -507,37 +488,37 @@ void tst_QDBusXmlParser::properties_data()
     prop.access = QDBusIntrospection::Property::Read;
     map << prop;
     QTest::newRow("two-1") <<
-        "<property name=\"foo\" type=\"s\" access=\"readwrite\"/>"
-        "<property name=\"bar\" type=\"i\" access=\"read\"/>" << map;
+        "<property access=\"readwrite\" type=\"s\" name=\"foo\"/>"
+        "<property access=\"read\" type=\"i\" name=\"bar\"/>" << map;
 
     // invert the order of the declaration
     QTest::newRow("two-2") <<
-        "<property name=\"bar\" type=\"i\" access=\"read\"/>"
-        "<property name=\"foo\" type=\"s\" access=\"readwrite\"/>" << map;
+        "<property access=\"read\" type=\"i\" name=\"bar\"/>"
+        "<property access=\"readwrite\" type=\"s\" name=\"foo\"/>" << map;
 
     // add a third with annotations
     prop.name = "baz";
     prop.type = "as";
     prop.access = QDBusIntrospection::Property::Write;
-    prop.annotations.insert("foo.annotation", "Hello, World");
-    prop.annotations.insert("foo.annotation2", "Goodbye, World");
+    addAnnotation(prop.annotations, "foo.annotation", "Hello, World");
+    addAnnotation(prop.annotations, "foo.annotation2", "Goodbye, World");
     map << prop;
     QTest::newRow("complex") <<
-        "<property name=\"bar\" type=\"i\" access=\"read\"/>"
-        "<property name=\"baz\" type=\"as\" access=\"write\">"
+        "<property access=\"read\" type=\"i\" name=\"bar\"/>"
+        "<property access=\"write\" type=\"as\" name=\"baz\">"
         "<annotation name=\"foo.annotation\" value=\"Hello, World\" />"
         "<annotation name=\"foo.annotation2\" value=\"Goodbye, World\" />"
         "</property>"
-        "<property name=\"foo\" type=\"s\" access=\"readwrite\"/>" << map;
+        "<property access=\"readwrite\" type=\"s\" name=\"foo\"/>" << map;
 
     // and now change the order
     QTest::newRow("complex2") <<
-        "<property name=\"baz\" type=\"as\" access=\"write\">"
+        "<property access=\"write\" type=\"as\" name=\"baz\">"
         "<annotation name=\"foo.annotation2\" value=\"Goodbye, World\" />"
         "<annotation name=\"foo.annotation\" value=\"Hello, World\" />"
         "</property>"
-        "<property name=\"bar\" type=\"i\" access=\"read\"/>"
-        "<property name=\"foo\" type=\"s\" access=\"readwrite\"/>" << map;
+        "<property access=\"read\" type=\"i\" name=\"bar\"/>"
+        "<property access=\"readwrite\" type=\"s\" name=\"foo\"/>" << map;
 }
 
 void tst_QDBusXmlParser::properties()
@@ -558,7 +539,7 @@ void tst_QDBusXmlParser::properties()
     QFETCH(PropertyMap, propertyMap);
     PropertyMap parsedMap = iface.properties;
 
-    QCOMPARE(propertyMap.count(), parsedMap.count());
+    QCOMPARE(propertyMap.size(), parsedMap.size());
     QCOMPARE(propertyMap, parsedMap);
 }
 

@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdbusabstractinterface.h"
 #include "qdbusabstractinterface_p.h"
@@ -57,6 +21,8 @@
 #ifndef QT_NO_DBUS
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace {
 // ### Qt6: change to a regular QEvent (customEvent)
@@ -113,6 +79,7 @@ QDBusAbstractInterfacePrivate::QDBusAbstractInterfacePrivate(const QString &serv
       lastError(checkIfValid(serv, p, iface, isDynamic, (connectionPrivate() &&
                                                          connectionPrivate()->mode == QDBusConnectionPrivate::PeerMode))),
       timeout(-1),
+      interactiveAuthorizationAllowed(false),
       isValid(!lastError.isValid())
 {
     if (!isValid)
@@ -154,18 +121,17 @@ bool QDBusAbstractInterfacePrivate::property(const QMetaProperty &mp, void *retu
     if (!isValid || !canMakeCalls())   // can't make calls
         return false;
 
-    const int type = mp.userType();
+    QMetaType type = mp.metaType();
     // is this metatype registered?
     const char *expectedSignature = "";
-    if (int(mp.userType()) != QMetaType::QVariant) {
+    if (type.id() != QMetaType::QVariant) {
         expectedSignature = QDBusMetaType::typeToSignature(type);
         if (expectedSignature == nullptr) {
             qWarning("QDBusAbstractInterface: type %s must be registered with Qt D-Bus before it can be "
                      "used to read property %s.%s",
                      mp.typeName(), qPrintable(interface), mp.name());
-            lastError = QDBusError(QDBusError::Failed,
-                                   QLatin1String("Unregistered type %1 cannot be handled")
-                                   .arg(QLatin1String(mp.typeName())));
+            lastError = QDBusError(QDBusError::Failed, "Unregistered type %1 cannot be handled"_L1
+                                   .arg(QLatin1StringView(mp.typeName())));
             return false;
         }
     }
@@ -182,9 +148,9 @@ bool QDBusAbstractInterfacePrivate::property(const QMetaProperty &mp, void *retu
         lastError = QDBusError(reply);
         return false;
     }
-    if (reply.signature() != QLatin1String("v")) {
-        QString errmsg = QLatin1String("Invalid signature `%1' in return from call to "
-                                       DBUS_INTERFACE_PROPERTIES);
+    if (reply.signature() != "v"_L1) {
+        QString errmsg =
+                "Invalid signature '%1' in return from call to " DBUS_INTERFACE_PROPERTIES ""_L1;
         lastError = QDBusError(QDBusError::InvalidSignature, std::move(errmsg).arg(reply.signature()));
         return false;
     }
@@ -193,42 +159,42 @@ bool QDBusAbstractInterfacePrivate::property(const QMetaProperty &mp, void *retu
     const char *foundType = nullptr;
     QVariant value = qvariant_cast<QDBusVariant>(reply.arguments().at(0)).variant();
 
-    if (value.userType() == type || type == QMetaType::QVariant
+    if (value.metaType() == type || type.id() == QMetaType::QVariant
         || (expectedSignature[0] == 'v' && expectedSignature[1] == '\0')) {
         // simple match
-        if (type == QMetaType::QVariant) {
+        if (type.id() == QMetaType::QVariant) {
             *reinterpret_cast<QVariant*>(returnValuePtr) = value;
         } else {
-            QMetaType::destruct(type, returnValuePtr);
-            QMetaType::construct(type, returnValuePtr, value.constData());
+            QMetaType(type).destruct(returnValuePtr);
+            QMetaType(type).construct(returnValuePtr, value.constData());
         }
         return true;
     }
 
-    if (value.userType() == qMetaTypeId<QDBusArgument>()) {
+    if (value.metaType() == QMetaType::fromType<QDBusArgument>()) {
         QDBusArgument arg = qvariant_cast<QDBusArgument>(value);
 
         foundType = "user type";
         foundSignature = arg.currentSignature().toLatin1();
         if (foundSignature == expectedSignature) {
             // signatures match, we can demarshall
-            return QDBusMetaType::demarshall(arg, type, returnValuePtr);
+            return QDBusMetaType::demarshall(arg, QMetaType(type), returnValuePtr);
         }
     } else {
         foundType = value.typeName();
-        foundSignature = QDBusMetaType::typeToSignature(value.userType());
+        foundSignature = QDBusMetaType::typeToSignature(value.metaType());
     }
 
     // there was an error...
-    const auto errmsg = QLatin1String("Unexpected `%1' (%2) when retrieving property `%3.%4' "
-                                      "(expected type `%5' (%6))");
+    const auto errmsg = "Unexpected '%1' (%2) when retrieving property '%3.%4' "
+                        "(expected type '%5' (%6))"_L1;
     lastError = QDBusError(QDBusError::InvalidSignature,
-                           errmsg.arg(QLatin1String(foundType),
-                                      QLatin1String(foundSignature),
+                           errmsg.arg(QLatin1StringView(foundType),
+                                      QLatin1StringView(foundSignature),
                                       interface,
-                                      QLatin1String(mp.name()),
-                                      QLatin1String(mp.typeName()),
-                                      QLatin1String(expectedSignature)));
+                                      QLatin1StringView(mp.name()),
+                                      QLatin1StringView(mp.typeName()),
+                                      QLatin1StringView(expectedSignature)));
     return false;
 }
 
@@ -257,7 +223,6 @@ void QDBusAbstractInterfacePrivate::_q_serviceOwnerChanged(const QString &name,
                                                            const QString &newOwner)
 {
     Q_UNUSED(oldOwner);
-    Q_UNUSED(name);
     //qDebug() << "QDBusAbstractInterfacePrivate serviceOwnerChanged" << name << oldOwner << newOwner;
     Q_ASSERT(name == service);
     currentOwner = newOwner;
@@ -281,10 +246,10 @@ int QDBusAbstractInterfaceBase::qt_metacall(QMetaObject::Call _c, int _id, void 
 
         if (_c == QMetaObject::WriteProperty) {
             QVariant value;
-            if (mp.userType() == qMetaTypeId<QDBusVariant>())
+            if (mp.metaType() == QMetaType::fromType<QDBusVariant>())
                 value = reinterpret_cast<const QDBusVariant*>(_a[0])->variant();
             else
-                value = QVariant(mp.userType(), _a[0]);
+                value = QVariant(mp.metaType(), _a[0]);
             status = d_func()->setProperty(mp, value) ? 1 : 0;
         } else {
             bool readStatus = d_func()->property(mp, _a[0]);
@@ -433,6 +398,43 @@ int QDBusAbstractInterface::timeout() const
 }
 
 /*!
+    Configures whether, for asynchronous calls, the caller
+    is prepared to wait for interactive authorization.
+
+    If \a enable is set to \c true, the D-Bus messages generated for
+    asynchronous calls via this interface will set the
+    \c ALLOW_INTERACTIVE_AUTHORIZATION flag.
+
+    This flag is only useful when unprivileged code calls a more privileged
+    method call, and an authorization framework is deployed that allows
+    possibly interactive authorization.
+
+    The default is \c false.
+
+    \since 6.7
+    \sa QDBusMessage::setInteractiveAuthorizationAllowed()
+*/
+void QDBusAbstractInterface::setInteractiveAuthorizationAllowed(bool enable)
+{
+    d_func()->interactiveAuthorizationAllowed = enable;
+}
+
+/*!
+    Returns whether, for asynchronous calls, the caller
+    is prepared to wait for interactive authorization.
+
+    The default is \c false.
+
+    \since 6.7
+    \sa setInteractiveAuthorizationAllowed(),
+        QDBusMessage::setInteractiveAuthorizationAllowed()
+*/
+bool QDBusAbstractInterface::isInteractiveAuthorizationAllowed() const
+{
+    return d_func()->interactiveAuthorizationAllowed;
+}
+
+/*!
     Places a call to the remote method specified by \a method on this interface, using \a args as
     arguments. This function returns the message that was received as a reply, which can be a normal
     QDBusMessage::ReplyMessage (indicating success) or QDBusMessage::ErrorMessage (if the call
@@ -460,7 +462,7 @@ QDBusMessage QDBusAbstractInterface::callWithArgumentList(QDBus::CallMode mode,
 
     QString m = method;
     // split out the signature from the method
-    int pos = method.indexOf(QLatin1Char('.'));
+    int pos = method.indexOf(u'.');
     if (pos != -1)
         m.truncate(pos);
 
@@ -511,6 +513,9 @@ QDBusMessage QDBusAbstractInterface::callWithArgumentList(QDBus::CallMode mode,
 
     Normally, you should place calls using asyncCall().
 
+    \note Method calls to objects registered by the application itself are never
+    asynchronous due to implementation limitations.
+
     \threadsafe
 */
 QDBusPendingCall QDBusAbstractInterface::asyncCallWithArgumentList(const QString& method,
@@ -524,6 +529,8 @@ QDBusPendingCall QDBusAbstractInterface::asyncCallWithArgumentList(const QString
     QDBusMessage msg = QDBusMessage::createMethodCall(service(), path(), interface(), method);
     QDBusMessagePrivate::setParametersValidated(msg, true);
     msg.setArguments(args);
+    if (d->interactiveAuthorizationAllowed)
+        msg.setInteractiveAuthorizationAllowed(true);
     return d->connection.asyncCall(msg, d->timeout);
 }
 
@@ -544,6 +551,9 @@ QDBusPendingCall QDBusAbstractInterface::asyncCallWithArgumentList(const QString
     by the function call. Optionally, it may have a QDBusMessage
     parameter as its last or only parameter.  The \a errorMethod must
     have a QDBusError as its only parameter.
+
+    \note Method calls to objects registered by the application itself are never
+    asynchronous due to implementation limitations.
 
     \since 4.3
     \sa QDBusError, QDBusMessage
@@ -712,32 +722,12 @@ void QDBusAbstractInterface::internalPropSet(const char *propname, const QVarian
     This example illustrates function calling with 0, 1 and 2 parameters and illustrates different
     parameter types passed in each (the first call to \c "ProcessWorkUnicode" will contain one
     Unicode string, the second call to \c "ProcessWork" will contain one string and one byte array).
+    See asyncCall() for the same example in non-blocking (asynchronous) calls.
 
     \note Before Qt 5.14, this function accepted a maximum of just eight (8) arguments.
 
     \sa callWithArgumentList()
 */
-
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-/*!
-    \internal
-
-    This function exists for binary compatibility with Qt versions < 5.14.
-    Programs recompiled against Qt 5.14 will use the variadic template function
-    instead.
-*/
-QDBusMessage QDBusAbstractInterface::call(const QString &method, const QVariant &arg1,
-                                          const QVariant &arg2,
-                                          const QVariant &arg3,
-                                          const QVariant &arg4,
-                                          const QVariant &arg5,
-                                          const QVariant &arg6,
-                                          const QVariant &arg7,
-                                          const QVariant &arg8)
-{
-    return call(QDBus::AutoDetect, method, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
-}
-#endif
 
 /*!
     \fn QDBusAbstractInterface::call(QDBus::CallMode mode, const QString &message)
@@ -768,59 +758,6 @@ QDBusMessage QDBusAbstractInterface::call(const QString &method, const QVariant 
     \sa callWithArgumentList()
 */
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-/*!
-    \internal
-
-    This function exists for binary compatibility with Qt versions < 5.14.
-    Programs recompiled against Qt 5.14 will use the variadic template function
-    instead.
-*/
-QDBusMessage QDBusAbstractInterface::call(QDBus::CallMode mode, const QString &method,
-                                          const QVariant &arg1,
-                                          const QVariant &arg2,
-                                          const QVariant &arg3,
-                                          const QVariant &arg4,
-                                          const QVariant &arg5,
-                                          const QVariant &arg6,
-                                          const QVariant &arg7,
-                                          const QVariant &arg8)
-{
-    QList<QVariant> argList;
-    int count = 0 + arg1.isValid() + arg2.isValid() + arg3.isValid() + arg4.isValid() +
-                arg5.isValid() + arg6.isValid() + arg7.isValid() + arg8.isValid();
-
-    switch (count) {
-    case 8:
-        argList.prepend(arg8);
-        Q_FALLTHROUGH();
-    case 7:
-        argList.prepend(arg7);
-        Q_FALLTHROUGH();
-    case 6:
-        argList.prepend(arg6);
-        Q_FALLTHROUGH();
-    case 5:
-        argList.prepend(arg5);
-        Q_FALLTHROUGH();
-    case 4:
-        argList.prepend(arg4);
-        Q_FALLTHROUGH();
-    case 3:
-        argList.prepend(arg3);
-        Q_FALLTHROUGH();
-    case 2:
-        argList.prepend(arg2);
-        Q_FALLTHROUGH();
-    case 1:
-        argList.prepend(arg1);
-        break;
-    }
-
-    return callWithArgumentList(mode, method, argList);
-}
-#endif // Qt 5
-
 /*!
     \fn QDBusAbstractInterface::asyncCall(const QString &message)
     \internal
@@ -843,63 +780,16 @@ QDBusMessage QDBusAbstractInterface::call(QDBus::CallMode mode, const QString &m
     This example illustrates function calling with 0, 1 and 2 parameters and illustrates different
     parameter types passed in each (the first call to \c "ProcessWorkUnicode" will contain one
     Unicode string, the second call to \c "ProcessWork" will contain one string and one byte array).
+    See call() for the same example in blocking (synchronous) calls.
 
     \note Before Qt 5.14, this function accepted a maximum of just eight (8) arguments.
+
+    \note Method calls to local \c{QDBusServer}'s are never asynchronous
+    due to implementation limitations.
 
     \sa asyncCallWithArgumentList()
 */
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-/*!
-    \internal
-
-    This function exists for binary compatibility with Qt versions < 5.14.
-    Programs recompiled against Qt 5.14 will use the variadic template function
-    instead.
-*/
-QDBusPendingCall QDBusAbstractInterface::asyncCall(const QString &method, const QVariant &arg1,
-                                                   const QVariant &arg2,
-                                                   const QVariant &arg3,
-                                                   const QVariant &arg4,
-                                                   const QVariant &arg5,
-                                                   const QVariant &arg6,
-                                                   const QVariant &arg7,
-                                                   const QVariant &arg8)
-{
-    QList<QVariant> argList;
-    int count = 0 + arg1.isValid() + arg2.isValid() + arg3.isValid() + arg4.isValid() +
-                arg5.isValid() + arg6.isValid() + arg7.isValid() + arg8.isValid();
-
-    switch (count) {
-    case 8:
-        argList.prepend(arg8);
-        Q_FALLTHROUGH();
-    case 7:
-        argList.prepend(arg7);
-        Q_FALLTHROUGH();
-    case 6:
-        argList.prepend(arg6);
-        Q_FALLTHROUGH();
-    case 5:
-        argList.prepend(arg5);
-        Q_FALLTHROUGH();
-    case 4:
-        argList.prepend(arg4);
-        Q_FALLTHROUGH();
-    case 3:
-        argList.prepend(arg3);
-        Q_FALLTHROUGH();
-    case 2:
-        argList.prepend(arg2);
-        Q_FALLTHROUGH();
-    case 1:
-        argList.prepend(arg1);
-        break;
-    }
-
-    return asyncCallWithArgumentList(method, argList);
-}
-#endif // Qt 5
 
 /*!
     \internal

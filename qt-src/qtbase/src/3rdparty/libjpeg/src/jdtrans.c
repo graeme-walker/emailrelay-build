@@ -3,8 +3,8 @@
  *
  * This file was part of the Independent JPEG Group's software:
  * Copyright (C) 1995-1997, Thomas G. Lane.
- * It was modified by The libjpeg-turbo Project to include only code relevant
- * to libjpeg-turbo.
+ * libjpeg-turbo Modifications:
+ * Copyright (C) 2020, 2022, D. R. Commander.
  * For conditions of distribution and use, see the accompanying README.ijg
  * file.
  *
@@ -16,6 +16,7 @@
 #define JPEG_INTERNALS
 #include "jinclude.h"
 #include "jpeglib.h"
+#include "jpegapicomp.h"
 
 
 /* Forward declarations */
@@ -47,6 +48,9 @@ LOCAL(void) transdecode_master_selection(j_decompress_ptr cinfo);
 GLOBAL(jvirt_barray_ptr *)
 jpeg_read_coefficients(j_decompress_ptr cinfo)
 {
+  if (cinfo->master->lossless)
+    ERREXIT(cinfo, JERR_NOTIMPL);
+
   if (cinfo->global_state == DSTATE_READY) {
     /* First call: initialize active modules */
     transdecode_master_selection(cinfo);
@@ -126,7 +130,10 @@ transdecode_master_selection(j_decompress_ptr cinfo)
   }
 
   /* Always get a full-image coefficient buffer. */
-  jinit_d_coef_controller(cinfo, TRUE);
+  if (cinfo->data_precision == 12)
+    j12init_d_coef_controller(cinfo, TRUE);
+  else
+    jinit_d_coef_controller(cinfo, TRUE);
 
   /* We can now tell the memory manager to allocate virtual arrays. */
   (*cinfo->mem->realize_virt_arrays) ((j_common_ptr)cinfo);

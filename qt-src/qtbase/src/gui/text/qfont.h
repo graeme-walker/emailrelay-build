@@ -1,56 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QFONT_H
 #define QFONT_H
 
+#include <QtCore/qcompare.h>
+#include <QtCore/qendian.h>
+#include <QtCore/qshareddata.h>
 #include <QtGui/qtguiglobal.h>
 #include <QtGui/qwindowdefs.h>
 #include <QtCore/qstring.h>
-#include <QtCore/qsharedpointer.h>
 
 
 QT_BEGIN_NAMESPACE
 
 
 class QFontPrivate;                                     /* don't touch */
-class QStringList;
 class QVariant;
 
 class Q_GUI_EXPORT QFont
@@ -71,22 +36,20 @@ public:
     Q_ENUM(StyleHint)
 
     enum StyleStrategy {
-        PreferDefault       = 0x0001,
-        PreferBitmap        = 0x0002,
-        PreferDevice        = 0x0004,
-        PreferOutline       = 0x0008,
-        ForceOutline        = 0x0010,
-        PreferMatch         = 0x0020,
-        PreferQuality       = 0x0040,
-        PreferAntialias     = 0x0080,
-        NoAntialias         = 0x0100,
-#if QT_DEPRECATED_SINCE(5, 15)
-        OpenGLCompatible Q_DECL_ENUMERATOR_DEPRECATED = 0x0200,
-        ForceIntegerMetrics Q_DECL_ENUMERATOR_DEPRECATED = 0x0400,
-#endif
-        NoSubpixelAntialias = 0x0800,
-        PreferNoShaping     = 0x1000,
-        NoFontMerging       = 0x8000
+        PreferDefault           = 0x0001,
+        PreferBitmap            = 0x0002,
+        PreferDevice            = 0x0004,
+        PreferOutline           = 0x0008,
+        ForceOutline            = 0x0010,
+        PreferMatch             = 0x0020,
+        PreferQuality           = 0x0040,
+        PreferAntialias         = 0x0080,
+        NoAntialias             = 0x0100,
+        NoSubpixelAntialias     = 0x0800,
+        PreferNoShaping         = 0x1000,
+        ContextFontMerging      = 0x2000,
+        PreferTypoLineMetrics   = 0x4000,
+        NoFontMerging           = 0x8000
     };
     Q_ENUM(StyleStrategy)
 
@@ -98,17 +61,16 @@ public:
     };
     Q_ENUM(HintingPreference)
 
-    // Mapping OpenType weight value.
     enum Weight {
-        Thin     = 0,    // 100
-        ExtraLight = 12, // 200
-        Light    = 25,   // 300
-        Normal   = 50,   // 400
-        Medium   = 57,   // 500
-        DemiBold = 63,   // 600
-        Bold     = 75,   // 700
-        ExtraBold = 81,  // 800
-        Black    = 87    // 900
+        Thin = 100,
+        ExtraLight = 200,
+        Light = 300,
+        Normal = 400,
+        Medium = 500,
+        DemiBold = 600,
+        Bold = 700,
+        ExtraBold = 800,
+        Black = 900
     };
     Q_ENUM(Weight)
 
@@ -168,21 +130,22 @@ public:
         HintingPreferenceResolved   = 0x8000,
         StyleNameResolved           = 0x10000,
         FamiliesResolved            = 0x20000,
-        AllPropertiesResolved       = 0x3ffff
+        FeaturesResolved            = 0x40000,
+        VariableAxesResolved        = 0x80000,
+        AllPropertiesResolved       = 0xfffff
     };
     Q_ENUM(ResolveProperties)
 
     QFont();
+
     QFont(const QString &family, int pointSize = -1, int weight = -1, bool italic = false);
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    QFont(const QFont &font, QPaintDevice *pd);
-#endif
+    explicit QFont(const QStringList &families, int pointSize = -1, int weight = -1, bool italic = false);
     QFont(const QFont &font, const QPaintDevice *pd);
     QFont(const QFont &font);
     ~QFont();
 
-    void swap(QFont &other)
-    { qSwap(d, other.d); qSwap(resolve_mask, other.resolve_mask); }
+    void swap(QFont &other) noexcept
+    { d.swap(other.d); std::swap(resolve_mask, other.resolve_mask); }
 
     QString family() const;
     void setFamily(const QString &);
@@ -201,8 +164,8 @@ public:
     int pixelSize() const;
     void setPixelSize(int);
 
-    int weight() const;
-    void setWeight(int);
+    Weight weight() const;
+    void setWeight(Weight weight);
 
     inline bool bold() const;
     inline void setBold(bool);
@@ -249,10 +212,74 @@ public:
     void setHintingPreference(HintingPreference hintingPreference);
     HintingPreference hintingPreference() const;
 
-#if QT_DEPRECATED_SINCE(5, 5)
-    bool rawMode() const;
-    void setRawMode(bool);
+    struct Tag
+    {
+        constexpr Tag() = default;
+
+        template <size_t N>
+        constexpr Q_IMPLICIT Tag(const char (&str)[N]) noexcept
+            :  m_value((quint32(str[0]) << 24) | (quint32(str[1]) << 16)
+                     | (quint32(str[2]) << 8) | quint32(str[3]))
+        {
+            static_assert(N == 5, "The tag name must be exactly 4 characters long!");
+        }
+
+        constexpr bool isValid() const noexcept { return m_value != 0; }
+        constexpr quint32 value() const noexcept { return m_value; }
+
+        QByteArray toString() const
+        {
+            const char data[] = {
+                char((m_value & 0xff000000) >> 24),
+                char((m_value & 0x00ff0000) >> 16),
+                char((m_value & 0x0000ff00) >> 8),
+                char((m_value & 0x000000ff)) };
+            return QByteArray(data, sizeof(data));
+        }
+
+        static constexpr std::optional<Tag> fromValue(quint32 value) noexcept
+        {
+            Tag maybeTag;
+            maybeTag.m_value = value;
+            return maybeTag.isValid() ? std::optional<Tag>(maybeTag) : std::nullopt;
+        }
+        Q_GUI_EXPORT static std::optional<Tag> fromString(QAnyStringView view) noexcept;
+
+#ifndef QT_NO_DATASTREAM
+        friend Q_GUI_EXPORT QDataStream &operator<<(QDataStream &, Tag);
+        friend Q_GUI_EXPORT QDataStream &operator>>(QDataStream &, Tag &);
 #endif
+
+#ifndef QT_NO_DEBUG_STREAM
+        friend Q_GUI_EXPORT QDebug operator<<(QDebug debug, Tag tag);
+#endif
+
+        friend constexpr size_t qHash(Tag key, size_t seed = 0) noexcept
+        { return qHash(key.value(), seed); }
+
+    private:
+        friend constexpr bool comparesEqual(const Tag &lhs, const Tag &rhs) noexcept
+        { return lhs.m_value == rhs.m_value; }
+        friend constexpr Qt::strong_ordering compareThreeWay(const Tag &lhs, const Tag &rhs) noexcept
+        { return Qt::compareThreeWay(lhs.m_value, rhs.m_value); }
+        Q_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE(QFont::Tag)
+
+        quint32 m_value = 0;
+    };
+
+    void setFeature(Tag tag, quint32 value);
+    void unsetFeature(Tag tag);
+    quint32 featureValue(Tag tag) const;
+    bool isFeatureSet(Tag tag) const;
+    QList<Tag> featureTags() const;
+    void clearFeatures();
+
+    void setVariableAxis(Tag tag, float value);
+    void unsetVariableAxis(Tag tag);
+    bool isVariableAxisSet(Tag tag) const;
+    float variableAxisValue(Tag tag) const;
+    void clearVariableAxes();
+    QList<Tag> variableAxisTags() const;
 
     // dupicated from QFontInfo
     bool exactMatch() const;
@@ -263,14 +290,7 @@ public:
     bool operator<(const QFont &) const;
     operator QVariant() const;
     bool isCopyOf(const QFont &) const;
-    inline QFont &operator=(QFont &&other) noexcept
-    { qSwap(d, other.d); qSwap(resolve_mask, other.resolve_mask);  return *this; }
-
-#if QT_DEPRECATED_SINCE(5, 3)
-    // needed for X11
-    QT_DEPRECATED void setRawName(const QString &);
-    QT_DEPRECATED QString rawName() const;
-#endif
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QFont)
 
     QString key() const;
 
@@ -283,22 +303,20 @@ public:
     static void insertSubstitution(const QString&, const QString &);
     static void insertSubstitutions(const QString&, const QStringList &);
     static void removeSubstitutions(const QString &);
-#if QT_DEPRECATED_SINCE(5, 0)
-    static QT_DEPRECATED void removeSubstitution(const QString &family) { removeSubstitutions(family); }
-#endif
     static void initialize();
     static void cleanup();
     static void cacheStatistics();
 
     QString defaultFamily() const;
-#if QT_DEPRECATED_SINCE(5, 13)
-    QT_DEPRECATED QString lastResortFamily() const;
-    QT_DEPRECATED QString lastResortFont() const;
-#endif
 
     QFont resolve(const QFont &) const;
-    inline uint resolve() const { return resolve_mask; }
-    inline void resolve(uint mask) { resolve_mask = mask; }
+    inline uint resolveMask() const { return resolve_mask; }
+    inline void setResolveMask(uint mask) { resolve_mask = mask; }
+
+#if QT_DEPRECATED_SINCE(6, 0)
+    QT_DEPRECATED_VERSION_X_6_0("Use setWeight() instead") void setLegacyWeight(int legacyWeight);
+    QT_DEPRECATED_VERSION_X_6_0("Use weight() instead") int legacyWeight() const;
+#endif
 
 private:
     explicit QFont(QFontPrivate *);
@@ -347,7 +365,7 @@ private:
 
 Q_DECLARE_SHARED(QFont)
 
-Q_GUI_EXPORT uint qHash(const QFont &font, uint seed = 0) noexcept;
+Q_GUI_EXPORT size_t qHash(const QFont &font, size_t seed = 0) noexcept;
 
 inline bool QFont::bold() const
 { return weight() > Medium; }

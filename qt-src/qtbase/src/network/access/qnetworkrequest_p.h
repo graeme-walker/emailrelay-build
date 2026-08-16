@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QNETWORKREQUEST_P_H
 #define QNETWORKREQUEST_P_H
@@ -52,6 +16,7 @@
 //
 
 #include <QtNetwork/private/qtnetworkglobal_p.h>
+#include <QtNetwork/qhttpheaders.h>
 #include "qnetworkrequest.h"
 #include "QtCore/qbytearray.h"
 #include "QtCore/qlist.h"
@@ -62,6 +27,8 @@
 
 QT_BEGIN_NAMESPACE
 
+class QNetworkCookie;
+
 // this is the common part between QNetworkRequestPrivate, QNetworkReplyPrivate and QHttpPartPrivate
 class QNetworkHeadersPrivate
 {
@@ -71,27 +38,52 @@ public:
     typedef QHash<QNetworkRequest::KnownHeaders, QVariant> CookedHeadersMap;
     typedef QHash<QNetworkRequest::Attribute, QVariant> AttributesMap;
 
-    RawHeadersList rawHeaders;
+    mutable struct {
+        RawHeadersList headersList;
+        bool isCached = false;
+    } rawHeaderCache;
+
+    QHttpHeaders httpHeaders;
     CookedHeadersMap cookedHeaders;
     AttributesMap attributes;
     QPointer<QObject> originatingObject;
 
-    RawHeadersList::ConstIterator findRawHeader(const QByteArray &key) const;
-    RawHeadersList allRawHeaders() const;
+    const RawHeadersList &allRawHeaders() const;
     QList<QByteArray> rawHeadersKeys() const;
+    QByteArray rawHeader(QAnyStringView headerName) const;
     void setRawHeader(const QByteArray &key, const QByteArray &value);
-    void setAllRawHeaders(const RawHeadersList &list);
     void setCookedHeader(QNetworkRequest::KnownHeaders header, const QVariant &value);
 
-    static QDateTime fromHttpDate(const QByteArray &value);
+    QHttpHeaders headers() const;
+    void setHeaders(const QHttpHeaders &newHeaders);
+    void setHeaders(QHttpHeaders &&newHeaders);
+    void setHeader(QHttpHeaders::WellKnownHeader name, QByteArrayView value);
+
+    void clearHeaders();
+
+    static QDateTime fromHttpDate(QByteArrayView value);
     static QByteArray toHttpDate(const QDateTime &dt);
 
+    static std::optional<qint64> toInt(QByteArrayView value);
+
+    typedef QList<QNetworkCookie> NetworkCookieList;
+    static QByteArray fromCookieList(const NetworkCookieList &cookies);
+    static std::optional<NetworkCookieList> toSetCookieList(const QList<QByteArray> &values);
+    static std::optional<NetworkCookieList> toCookieList(const QList<QByteArray> &values);
+
+    static RawHeadersList fromHttpToRaw(const QHttpHeaders &headers);
+    static QHttpHeaders fromRawToHttp(const RawHeadersList &raw);
+
 private:
-    void setRawHeaderInternal(const QByteArray &key, const QByteArray &value);
-    void parseAndSetHeader(const QByteArray &key, const QByteArray &value);
+    void invalidateHeaderCache();
+
+    void setCookedFromHttp(const QHttpHeaders &newHeaders);
+    void parseAndSetHeader(QByteArrayView key, QByteArrayView value);
+    void parseAndSetHeader(QNetworkRequest::KnownHeaders key, QByteArrayView value);
+
 };
 
-Q_DECLARE_TYPEINFO(QNetworkHeadersPrivate::RawHeaderPair, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QNetworkHeadersPrivate::RawHeaderPair, Q_RELOCATABLE_TYPE);
 
 QT_END_NAMESPACE
 

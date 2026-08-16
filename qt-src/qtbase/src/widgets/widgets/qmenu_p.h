@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QMENU_P_H
 #define QMENU_P_H
@@ -52,6 +16,7 @@
 //
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
+#include "QtWidgets/qmenu.h"
 #if QT_CONFIG(menubar)
 #include "QtWidgets/qmenubar.h"
 #endif
@@ -63,6 +28,8 @@
 #include "private/qwidget_p.h"
 
 #include <qpa/qplatformmenu.h>
+
+#include <QtCore/qpointer.h>
 
 #include <functional>
 
@@ -136,13 +103,14 @@ public:
 
     void initialize(QMenu *menu)
     {
+        const auto style = menu->style();
         m_menu = menu;
-        m_uni_directional = menu->style()->styleHint(QStyle::SH_Menu_SubMenuUniDirection, nullptr, menu);
-        m_uni_dir_fail_at_count = short(menu->style()->styleHint(QStyle::SH_Menu_SubMenuUniDirectionFailCount, nullptr, menu));
-        m_select_other_actions = menu->style()->styleHint(QStyle::SH_Menu_SubMenuSloppySelectOtherActions, nullptr , menu);
-        m_timeout = short(menu->style()->styleHint(QStyle::SH_Menu_SubMenuSloppyCloseTimeout));
-        m_discard_state_when_entering_parent = menu->style()->styleHint(QStyle::SH_Menu_SubMenuResetWhenReenteringParent);
-        m_dont_start_time_on_leave = menu->style()->styleHint(QStyle::SH_Menu_SubMenuDontStartSloppyOnLeave);
+        m_uni_directional = style->styleHint(QStyle::SH_Menu_SubMenuUniDirection, nullptr, menu);
+        m_uni_dir_fail_at_count = short(style->styleHint(QStyle::SH_Menu_SubMenuUniDirectionFailCount, nullptr, menu));
+        m_select_other_actions = style->styleHint(QStyle::SH_Menu_SubMenuSloppySelectOtherActions, nullptr, menu);
+        m_timeout = short(style->styleHint(QStyle::SH_Menu_SubMenuSloppyCloseTimeout, nullptr, menu));
+        m_discard_state_when_entering_parent = style->styleHint(QStyle::SH_Menu_SubMenuResetWhenReenteringParent, nullptr, menu);
+        m_dont_start_time_on_leave = style->styleHint(QStyle::SH_Menu_SubMenuDontStartSloppyOnLeave, nullptr, menu);
         reset();
     }
 
@@ -347,12 +315,11 @@ public:
     //item calculations
     QRect actionRect(QAction *) const;
 
-    mutable QVector<QRect> actionRects;
+    mutable QList<QRect> actionRects;
     mutable QHash<QAction *, QWidget *> widgetItems;
     void updateActionRects() const;
     void updateActionRects(const QRect &screen) const;
-    QRect popupGeometry() const;
-    QRect popupGeometry(int screen) const;
+    QRect popupGeometry(QScreen *screen = nullptr) const;
     bool useFullScreenForPopup() const;
     int getLastVisibleAction() const;
     void popup(const QPoint &p, QAction *atAction, PositionFunction positionFunction = {});
@@ -360,7 +327,7 @@ public:
 
     //selection
     static QMenu *mouseDown;
-    QPoint mousePopupPos;
+    QPointF mousePopupPos;
 
     QAction *currentAction = nullptr;
 #ifdef QT_KEYPAD_NAVIGATION
@@ -436,10 +403,11 @@ public:
         QPointer<QWidget> widget;
         QPointer<QAction> action;
     };
-    virtual QVector<QPointer<QWidget> > calcCausedStack() const;
+    virtual QList<QPointer<QWidget>> calcCausedStack() const;
     QMenuCaused causedPopup;
     void hideUpToMenuBar();
     void hideMenu(QMenu *menu);
+    QWindow *transientParentWindow() const;
 
     //index mappings
     inline QAction *actionAt(int i) const { return q_func()->actions().at(i); }
@@ -461,7 +429,8 @@ public:
 
     //firing of events
     void activateAction(QAction *, QAction::ActionEvent, bool self=true);
-    void activateCausedStack(const QVector<QPointer<QWidget> > &, QAction *, QAction::ActionEvent, bool);
+    void activateCausedStack(const QList<QPointer<QWidget>> &, QAction *, QAction::ActionEvent,
+                             bool);
 
     void _q_actionTriggered();
     void _q_actionHovered();
@@ -496,6 +465,16 @@ public:
     void drawTearOff(QPainter *painter, const QRect &rect);
     QRect rect() const;
 
+    bool considerAction(const QAction *action) const
+    {
+        Q_Q(const QMenu);
+        if (!action || action->isSeparator())
+            return false;
+        if (action->isEnabled())
+            return true;
+        return q->style()->styleHint(QStyle::SH_Menu_AllowActiveAndDisabled, nullptr, q);
+    }
+
     mutable uint maxIconWidth = 0;
     mutable uint tabWidth = 0;
     int motions = 0;
@@ -504,6 +483,11 @@ public:
     bool activationRecursionGuard = false;
 
     mutable quint8 ncols = 0; // "255cols ought to be enough for anybody."
+
+    // Contains the screen of the popup point during popup(QPoint).
+    // This is to make sure the screen is remembered,
+    // when the menu contains many items on multiple screens
+    QPointer<QScreen> popupScreen;
 
     mutable bool itemsDirty : 1;
     mutable bool hasCheckableItems : 1;
@@ -521,8 +505,6 @@ public:
     bool tearoffHighlighted : 1;
     //menu fading/scrolling effects
     bool doChildEffects : 1;
-
-    int popupScreen = -1;
 };
 
 QT_END_NAMESPACE

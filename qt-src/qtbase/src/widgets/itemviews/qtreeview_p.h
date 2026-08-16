@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTREEVIEW_P_H
 #define QTREEVIEW_P_H
@@ -53,11 +17,13 @@
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include "private/qabstractitemview_p.h"
+#include <QtCore/qabstractitemmodel.h>
+#include <QtCore/qlist.h>
 #if QT_CONFIG(animation)
 #include <QtCore/qvariantanimation.h>
 #endif
-#include <QtCore/qabstractitemmodel.h>
-#include <QtCore/qvector.h>
+
+#include <array>
 
 QT_REQUIRE_CONFIG(treeview);
 
@@ -78,7 +44,7 @@ struct QTreeViewItem
     int height : 16; // row height
 };
 
-Q_DECLARE_TYPEINFO(QTreeViewItem, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QTreeViewItem, Q_RELOCATABLE_TYPE);
 
 class Q_WIDGETS_EXPORT QTreeViewPrivate : public QAbstractItemViewPrivate
 {
@@ -98,6 +64,7 @@ public:
 
     ~QTreeViewPrivate() {}
     void initialize();
+    void clearConnections();
     int logicalIndexForTree() const;
     inline bool isTreePosition(int logicalIndex) const
     {
@@ -124,17 +91,18 @@ public:
     void beginAnimatedOperation();
     void drawAnimatedOperation(QPainter *painter) const;
     QPixmap renderTreeToPixmapForAnimation(const QRect &rect) const;
-    void _q_endAnimatedOperation();
+    void endAnimatedOperation();
 #endif // animation
 
     void expand(int item, bool emitSignal);
     void collapse(int item, bool emitSignal);
 
-    void _q_columnsAboutToBeRemoved(const QModelIndex &, int, int) override;
-    void _q_columnsRemoved(const QModelIndex &, int, int) override;
-    void _q_modelAboutToBeReset();
-    void _q_sortIndicatorChanged(int column, Qt::SortOrder order);
-    void _q_modelDestroyed() override;
+    void columnsAboutToBeRemoved(const QModelIndex &, int, int) override;
+    void columnsRemoved(const QModelIndex &, int, int) override;
+    void modelAboutToBeReset();
+    void sortIndicatorChanged(int column, Qt::SortOrder order);
+    void modelDestroyed() override;
+    QRect intersectedRect(const QRect rect, const QModelIndex &topLeft, const QModelIndex &bottomRight) const override;
 
     void layout(int item, bool recusiveExpanding = false, bool afterIsUninitialized = false);
 
@@ -169,11 +137,11 @@ public:
     int itemDecorationAt(const QPoint &pos) const;
     QRect itemDecorationRect(const QModelIndex &index) const;
 
-
-    QVector<QPair<int, int> > columnRanges(const QModelIndex &topIndex, const QModelIndex &bottomIndex) const;
+    QList<std::pair<int, int>> columnRanges(const QModelIndex &topIndex,
+                                        const QModelIndex &bottomIndex) const;
     void select(const QModelIndex &start, const QModelIndex &stop, QItemSelectionModel::SelectionFlags command);
 
-    QPair<int,int> startAndEndColumns(const QRect &rect) const;
+    std::pair<int,int> startAndEndColumns(const QRect &rect) const;
 
     void updateChildCount(const int parentItem, const int delta);
 
@@ -181,12 +149,29 @@ public:
 
     // logicalIndices: vector of currently visibly logical indices
     // itemPositions: vector of view item positions (beginning/middle/end/onlyone)
-    void calcLogicalIndices(QVector<int> *logicalIndices, QVector<QStyleOptionViewItem::ViewItemPosition> *itemPositions, int left, int right) const;
+    void calcLogicalIndices(QList<int> *logicalIndices,
+                            QList<QStyleOptionViewItem::ViewItemPosition> *itemPositions, int left,
+                            int right) const;
     int widthHintForIndex(const QModelIndex &index, int hint, const QStyleOptionViewItem &option, int i) const;
+
+    enum RectRule {
+        FullRow,
+        SingleSection,
+        AddRowIndicatorToFirstSection
+    };
+
+    // Base class will get the first visual rect including row indicator
+    QRect visualRect(const QModelIndex &index) const override
+    {
+        return visualRect(index, AddRowIndicatorToFirstSection);
+    }
+
+    QRect visualRect(const QModelIndex &index, RectRule rule) const;
+
     QHeaderView *header;
     int indent;
 
-    mutable QVector<QTreeViewItem> viewItems;
+    mutable QList<QTreeViewItem> viewItems;
     mutable int lastViewedItem;
     int defaultItemHeight; // this is just a number; contentsHeight() / numItems
     bool uniformRowHeights; // used when all rows have the same height
@@ -198,7 +183,7 @@ public:
     bool customIndent;
 
     // used for drawing
-    mutable QPair<int,int> leftAndRight;
+    mutable std::pair<int,int> leftAndRight;
     mutable int current;
     mutable bool spanning;
 
@@ -229,7 +214,7 @@ public:
     }
 
     inline bool isItemHiddenOrDisabled(int i) const {
-        if (i < 0 || i >= viewItems.count())
+        if (i < 0 || i >= viewItems.size())
             return false;
         const QModelIndex index = viewItems.at(i).index;
         return isRowHidden(index) || !isIndexEnabled(index);
@@ -238,7 +223,7 @@ public:
     inline int above(int item) const
         { int i = item; while (isItemHiddenOrDisabled(--item)){} return item < 0 ? i : item; }
     inline int below(int item) const
-        { int i = item; while (isItemHiddenOrDisabled(++item)){} return item >= viewItems.count() ? i : item; }
+        { int i = item; while (isItemHiddenOrDisabled(++item)){} return item >= viewItems.size() ? i : item; }
     inline void invalidateHeightCache(int item) const
         { viewItems[item].height = 0; }
 
@@ -261,7 +246,7 @@ public:
     int autoExpandDelay;
     QBasicTimer openTimer;
 
-    // used for drawing hilighted expand/collapse indicators
+    // used for drawing highlighted expand/collapse indicators
     mutable int hoverBranch;
 
     // used for blocking recursion when calling setViewportMargins from updateGeometries
@@ -272,6 +257,18 @@ public:
 
     // tree position
     int treePosition;
+
+    // pending accessibility update
+#if QT_CONFIG(accessibility)
+    bool pendingAccessibilityUpdate = false;
+#endif
+    void updateAccessibility();
+
+    QMetaObject::Connection animationConnection;
+    QMetaObject::Connection selectionmodelConnection;
+    std::array<QMetaObject::Connection, 2> modelConnections;
+    std::array<QMetaObject::Connection, 5> headerConnections;
+    QMetaObject::Connection sortHeaderConnection;
 };
 
 QT_END_NAMESPACE

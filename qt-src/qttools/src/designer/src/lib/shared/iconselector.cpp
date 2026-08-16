@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "iconselector_p.h"
 #include "qdesigner_utils_p.h"
@@ -39,10 +14,11 @@
 #include <QtDesigner/abstractlanguage.h>
 #include <QtDesigner/abstractintegration.h>
 #include <QtDesigner/qextensionmanager.h>
+#include <QtDesigner/private/resourcebuilder_p.h>
 
+#include <QtWidgets/qabstractitemview.h>
 #include <QtWidgets/qtoolbutton.h>
 #include <QtWidgets/qcombobox.h>
-#include <QtWidgets/qaction.h>
 #include <QtWidgets/qdialogbuttonbox.h>
 #include <QtWidgets/qpushbutton.h>
 #include <QtWidgets/qdialog.h>
@@ -53,14 +29,59 @@
 #include <QtWidgets/qdialogbuttonbox.h>
 #include <QtWidgets/qlineedit.h>
 #include <QtWidgets/qlabel.h>
-#include <QtGui/qvalidator.h>
-#include <QtCore/qdebug.h>
-#include <QtCore/qvector.h>
 
+#include <QtGui/qaction.h>
+#include <QtGui/qvalidator.h>
+
+#include <QtCore/qdebug.h>
+#include <QtCore/qlist.h>
+
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 namespace qdesigner_internal {
+
+using ThemeIconEnumEntry = std::pair<QString, QIcon>;
+
+static const QList<ThemeIconEnumEntry> &themeEnumIcons()
+{
+    static QList<ThemeIconEnumEntry> result;
+    if (result.isEmpty()) {
+        const QStringList &names = QResourceBuilder::themeIconNames();
+        result.reserve(names.size());
+        for (qsizetype i = 0, size = names.size(); i < size; ++i)
+            result.append({names.at(i), QIcon::fromTheme(QIcon::ThemeIcon(i))});
+    }
+    return result;
+}
+
+static void initThemeCombo(QComboBox *cb)
+{
+    cb->view()->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+
+    for (const auto &te : themeEnumIcons())
+        cb->addItem(te.second, te.first);
+
+    cb->setCurrentIndex(-1);
+}
+
+// Validator for theme line edit, accepts empty or non-blank strings.
+class BlankSuppressingValidator : public QValidator {
+public:
+    explicit BlankSuppressingValidator(QObject * parent = nullptr) : QValidator(parent) {}
+    State validate(QString &input, int &pos) const override
+    {
+        const auto blankPos = input.indexOf(u' ');
+        if (blankPos != -1) {
+            pos = blankPos;
+            return Invalid;
+        }
+        return Acceptable;
+    }
+};
 
 // -------------------- LanguageResourceDialogPrivate
 class LanguageResourceDialogPrivate {
@@ -99,13 +120,14 @@ void LanguageResourceDialogPrivate::init(LanguageResourceDialog *p)
     QLayout *layout = new QVBoxLayout(p);
     layout->addWidget(m_browser);
     layout->addWidget(m_dialogButtonBox);
-    QObject::connect(m_dialogButtonBox, SIGNAL(accepted()), p, SLOT(slotAccepted()));
+    QObject::connect(m_dialogButtonBox, &QDialogButtonBox::accepted, p, [this] { slotAccepted(); });
     QObject::connect(m_dialogButtonBox, &QDialogButtonBox::rejected, p, &QDialog::reject);
-    QObject::connect(m_browser, SIGNAL(currentPathChanged(QString)), p, SLOT(slotPathChanged(QString)));
-    QObject::connect(m_browser, SIGNAL(pathActivated(QString)), p, SLOT(slotAccepted()));
+    QObject::connect(m_browser, &QDesignerResourceBrowserInterface::currentPathChanged,
+                     p, [this](const QString &fileName) { slotPathChanged(fileName); });
+    QObject::connect(m_browser, &QDesignerResourceBrowserInterface::pathActivated,
+                     p, [this] { slotAccepted(); });
     p->setModal(true);
     p->setWindowTitle(LanguageResourceDialog::tr("Choose Resource"));
-    p->setWindowFlags(p->windowFlags() & ~Qt::WindowContextHelpButtonHint);
     setOkButtonEnabled(false);
 }
 
@@ -168,12 +190,24 @@ LanguageResourceDialog* LanguageResourceDialog::create(QDesignerFormEditorInterf
 
 // ------------ IconSelectorPrivate
 
-static inline QPixmap emptyPixmap()
+struct QIconStateName
 {
-    QImage img(16, 16, QImage::Format_ARGB32_Premultiplied);
-    img.fill(0);
-    return QPixmap::fromImage(img);
-}
+    std::pair<QIcon::Mode, QIcon::State> state;
+    const char *name;
+};
+
+constexpr QIconStateName stateToName[] = {
+    {{QIcon::Normal,   QIcon::Off}, QT_TRANSLATE_NOOP("IconSelector", "Normal Off")},
+    {{QIcon::Normal,   QIcon::On},  QT_TRANSLATE_NOOP("IconSelector", "Normal On")},
+    {{QIcon::Disabled, QIcon::Off}, QT_TRANSLATE_NOOP("IconSelector", "Disabled Off")},
+    {{QIcon::Disabled, QIcon::On},  QT_TRANSLATE_NOOP("IconSelector", "Disabled On")},
+    {{QIcon::Active,   QIcon::Off}, QT_TRANSLATE_NOOP("IconSelector", "Active Off")},
+    {{QIcon::Active,   QIcon::On},  QT_TRANSLATE_NOOP("IconSelector", "Active On")},
+    {{QIcon::Selected, QIcon::Off}, QT_TRANSLATE_NOOP("IconSelector", "Selected Off")},
+    {{QIcon::Selected, QIcon::On},  QT_TRANSLATE_NOOP("IconSelector", "Selected On")}
+};
+
+constexpr int stateToNameSize = int(sizeof(stateToName) / sizeof(stateToName[0]));
 
 class IconSelectorPrivate
 {
@@ -190,10 +224,12 @@ public:
     void slotResetAllActivated();
     void slotUpdate();
 
-    QVector<QPair<QPair<QIcon::Mode, QIcon::State>, QString> > m_stateToName; // could be static map
-
-    QMap<QPair<QIcon::Mode, QIcon::State>, int>  m_stateToIndex;
-    QMap<int, QPair<QIcon::Mode, QIcon::State> > m_indexToState;
+    std::pair<QIcon::Mode, QIcon::State> currentState() const
+    {
+        const int i = m_stateComboBox->currentIndex();
+        return i >= 0 && i < stateToNameSize
+            ? stateToName[i].state : std::pair<QIcon::Mode, QIcon::State>{};
+    }
 
     const QIcon m_emptyIcon;
     QComboBox *m_stateComboBox = nullptr;
@@ -213,12 +249,10 @@ void IconSelectorPrivate::slotUpdate()
     if (m_iconCache)
         icon = m_iconCache->icon(m_icon);
 
-    QMap<QPair<QIcon::Mode, QIcon::State>, PropertySheetPixmapValue> paths = m_icon.paths();
-    for (auto itIndex = m_stateToIndex.cbegin(), end = m_stateToIndex.cend(); itIndex != end; ++itIndex) {
-        const QPair<QIcon::Mode, QIcon::State> state = itIndex.key();
+    const auto &paths = m_icon.paths();
+    for (int index = 0; index < stateToNameSize; ++index) {
+        const auto &state = stateToName[index].state;
         const PropertySheetPixmapValue pixmap = paths.value(state);
-        const int index = itIndex.value();
-
         QIcon pixmapIcon = QIcon(icon.pixmap(16, 16, state.first, state.second));
         if (pixmapIcon.isNull())
             pixmapIcon = m_emptyIcon;
@@ -229,8 +263,7 @@ void IconSelectorPrivate::slotUpdate()
         m_stateComboBox->setItemData(index, font, Qt::FontRole);
     }
 
-    QPair<QIcon::Mode, QIcon::State> state = m_indexToState.value(m_stateComboBox->currentIndex());
-    PropertySheetPixmapValue currentPixmap = paths.value(state);
+    PropertySheetPixmapValue currentPixmap = paths.value(currentState());
     m_resetAction->setEnabled(!currentPixmap.path().isEmpty());
     m_resetAllAction->setEnabled(!paths.isEmpty());
     m_stateComboBox->update();
@@ -243,7 +276,7 @@ void IconSelectorPrivate::slotStateActivated()
 
 void IconSelectorPrivate::slotSetActivated()
 {
-    QPair<QIcon::Mode, QIcon::State> state = m_indexToState.value(m_stateComboBox->currentIndex());
+    const auto state = currentState();
     const PropertySheetPixmapValue pixmap = m_icon.pixmap(state.first, state.second);
     // Default to resource
     const PropertySheetPixmapValue::PixmapSource ps = pixmap.path().isEmpty() ? PropertySheetPixmapValue::ResourcePixmap : pixmap.pixmapSource(m_core);
@@ -282,7 +315,7 @@ QString IconSelector::choosePixmapResource(QDesignerFormEditorInterface *core, Q
 
 void IconSelectorPrivate::slotSetResourceActivated()
 {
-    const QPair<QIcon::Mode, QIcon::State> state = m_indexToState.value(m_stateComboBox->currentIndex());
+    const auto state = currentState();
 
     PropertySheetPixmapValue pixmap = m_icon.pixmap(state.first, state.second);
     const QString oldPath = pixmap.path();
@@ -331,19 +364,18 @@ static QString imageFilter()
 {
     QString filter = QApplication::translate("IconSelector", "All Pixmaps (");
     const auto supportedImageFormats = QImageReader::supportedImageFormats();
-    const QString jpeg = QStringLiteral("JPEG");
-    const int count = supportedImageFormats.count();
-    for (int i = 0; i< count; ++i) {
+    const qsizetype count = supportedImageFormats.size();
+    for (qsizetype i = 0; i < count; ++i) {
         if (i)
-            filter += QLatin1Char(' ');
-        filter += QStringLiteral("*.");
+            filter += u' ';
+        filter += "*."_L1;
         const QString outputFormat = QString::fromUtf8(supportedImageFormats.at(i));
-        if (outputFormat != jpeg)
+        if (outputFormat != "JPEG"_L1)
             filter += outputFormat.toLower();
         else
-            filter += QStringLiteral("jpg *.jpeg");
+            filter += "jpg *.jpeg"_L1;
     }
-    filter += QLatin1Char(')');
+    filter += u')';
     return filter;
 }
 
@@ -367,7 +399,7 @@ QString IconSelector::choosePixmapFile(const QString &directory, QDesignerDialog
 
 void IconSelectorPrivate::slotSetFileActivated()
 {
-    QPair<QIcon::Mode, QIcon::State> state = m_indexToState.value(m_stateComboBox->currentIndex());
+    const auto state = currentState();
 
     PropertySheetPixmapValue pixmap = m_icon.pixmap(state.first, state.second);
     const QString newPath = IconSelector::choosePixmapFile(pixmap.path(), m_core->dialogGui(), q_ptr);
@@ -383,7 +415,7 @@ void IconSelectorPrivate::slotSetFileActivated()
 
 void IconSelectorPrivate::slotResetActivated()
 {
-    QPair<QIcon::Mode, QIcon::State> state = m_indexToState.value(m_stateComboBox->currentIndex());
+    const auto state = currentState();
 
     PropertySheetPixmapValue pixmap = m_icon.pixmap(state.first, state.second);
     const PropertySheetPixmapValue newPixmap;
@@ -420,15 +452,6 @@ IconSelector::IconSelector(QWidget *parent) :
     l->addWidget(d_ptr->m_iconButton);
     l->setContentsMargins(QMargins());
 
-    d_ptr->m_stateToName << qMakePair(qMakePair(QIcon::Normal,   QIcon::Off), tr("Normal Off")   );
-    d_ptr->m_stateToName << qMakePair(qMakePair(QIcon::Normal,   QIcon::On),  tr("Normal On")    );
-    d_ptr->m_stateToName << qMakePair(qMakePair(QIcon::Disabled, QIcon::Off), tr("Disabled Off") );
-    d_ptr->m_stateToName << qMakePair(qMakePair(QIcon::Disabled, QIcon::On),  tr("Disabled On")  );
-    d_ptr->m_stateToName << qMakePair(qMakePair(QIcon::Active,   QIcon::Off), tr("Active Off")   );
-    d_ptr->m_stateToName << qMakePair(qMakePair(QIcon::Active,   QIcon::On),  tr("Active On")    );
-    d_ptr->m_stateToName << qMakePair(qMakePair(QIcon::Selected, QIcon::Off), tr("Selected Off") );
-    d_ptr->m_stateToName << qMakePair(qMakePair(QIcon::Selected, QIcon::On),  tr("Selected On")  );
-
     QMenu *setMenu = new QMenu(this);
 
     QAction *setResourceAction = new QAction(tr("Choose Resource..."), this);
@@ -437,7 +460,7 @@ IconSelector::IconSelector(QWidget *parent) :
     d_ptr->m_resetAllAction = new QAction(tr("Reset All"), this);
     d_ptr->m_resetAction->setEnabled(false);
     d_ptr->m_resetAllAction->setEnabled(false);
-    //d_ptr->m_resetAction->setIcon(createIconSet(QString::fromUtf8("resetproperty.png")));
+    //d_ptr->m_resetAction->setIcon(createIconSet("resetproperty.png"_L1));
 
     setMenu->addAction(setResourceAction);
     setMenu->addAction(setFileAction);
@@ -445,28 +468,23 @@ IconSelector::IconSelector(QWidget *parent) :
     setMenu->addAction(d_ptr->m_resetAction);
     setMenu->addAction(d_ptr->m_resetAllAction);
 
-    int index = 0;
-    QStringList items;
-    for (const auto &item : qAsConst(d_ptr->m_stateToName)) {
-        const QPair<QIcon::Mode, QIcon::State> state = item.first;
-        const QString name = item.second;
-
-        items.append(name);
-        d_ptr->m_stateToIndex[state] = index;
-        d_ptr->m_indexToState[index] = state;
-        index++;
-    }
-    d_ptr->m_stateComboBox->addItems(items);
+    for (const auto &item : stateToName)
+        d_ptr->m_stateComboBox->addItem(tr(item.name));
 
     d_ptr->m_iconButton->setMenu(setMenu);
 
-    connect(d_ptr->m_stateComboBox, SIGNAL(activated(int)), this, SLOT(slotStateActivated()));
-    connect(d_ptr->m_iconButton, SIGNAL(clicked()), this, SLOT(slotSetActivated()));
-    connect(setResourceAction, SIGNAL(triggered()), this, SLOT(slotSetResourceActivated()));
-    connect(setFileAction, SIGNAL(triggered()), this, SLOT(slotSetFileActivated()));
-    connect(d_ptr->m_resetAction, SIGNAL(triggered()), this, SLOT(slotResetActivated()));
-    connect(d_ptr->m_resetAllAction, SIGNAL(triggered()), this, SLOT(slotResetAllActivated()));
-
+    connect(d_ptr->m_stateComboBox, &QComboBox::activated,
+            this, [this] { d_ptr->slotStateActivated(); });
+    connect(d_ptr->m_iconButton, &QAbstractButton::clicked,
+            this, [this] { d_ptr->slotSetActivated(); });
+    connect(setResourceAction, &QAction::triggered,
+            this, [this] { d_ptr->slotSetResourceActivated(); });
+    connect(setFileAction, &QAction::triggered,
+            this, [this] { d_ptr->slotSetFileActivated(); });
+    connect(d_ptr->m_resetAction, &QAction::triggered,
+            this, [this] { d_ptr->slotResetActivated(); });
+    connect(d_ptr->m_resetAllAction, &QAction::triggered,
+            this, [this] { d_ptr->slotResetAllActivated(); });
     d_ptr->slotUpdate();
 }
 
@@ -496,117 +514,134 @@ void IconSelector::setFormEditor(QDesignerFormEditorInterface *core)
 void IconSelector::setIconCache(DesignerIconCache *iconCache)
 {
     d_ptr->m_iconCache = iconCache;
-    connect(iconCache, SIGNAL(reloaded()), this, SLOT(slotUpdate()));
+    connect(iconCache, &DesignerIconCache::reloaded, this, [this] { d_ptr->slotUpdate(); });
     d_ptr->slotUpdate();
 }
 
 void IconSelector::setPixmapCache(DesignerPixmapCache *pixmapCache)
 {
     d_ptr->m_pixmapCache = pixmapCache;
-    connect(pixmapCache, SIGNAL(reloaded()), this, SLOT(slotUpdate()));
+    connect(pixmapCache, &DesignerPixmapCache::reloaded, this, [this] { d_ptr->slotUpdate(); });
     d_ptr->slotUpdate();
 }
 
 // --- IconThemeEditor
 
-// Validator for theme line edit, accepts empty or non-blank strings.
-class BlankSuppressingValidator : public QValidator {
-public:
-    explicit BlankSuppressingValidator(QObject * parent = nullptr) : QValidator(parent) {}
-
-    State validate(QString &input, int &pos) const override
-    {
-        const int blankPos = input.indexOf(QLatin1Char(' '));
-        if (blankPos != -1) {
-            pos = blankPos;
-            return Invalid;
-        }
-        return Acceptable;
-    }
-};
+static const QMap<QString, QIcon> &themeIcons()
+{
+   static QMap<QString, QIcon> result;
+   if (result.isEmpty()) {
+       QFile file(u":/qt-project.org/designer/icon-naming-spec.txt"_s);
+       if (file.open(QIODevice::ReadOnly)) {
+           while (!file.atEnd()) {
+               const auto line = file.readLine().trimmed();
+               if (line.isEmpty() || line.startsWith('#'))
+                   continue;
+               const auto iconName = QString::fromUtf8(line);
+               result.insert(iconName, QIcon::fromTheme(iconName));
+           }
+           file.close();
+       }
+   }
+   return result;
+}
 
 struct IconThemeEditorPrivate {
-    IconThemeEditorPrivate();
+    void create(QWidget *topLevel, bool wantResetButton);
 
-    const QPixmap m_emptyPixmap;
-    QLineEdit *m_themeLineEdit;
-    QLabel *m_themeLabel;
+    QComboBox *m_themeComboBox{};
+    QToolButton *m_themeResetButton{};
 };
 
-IconThemeEditorPrivate::IconThemeEditorPrivate() :
-    m_emptyPixmap(emptyPixmap()),
-    m_themeLineEdit(new QLineEdit),
-    m_themeLabel(new QLabel)
+void IconThemeEditorPrivate::create(QWidget *topLevel, bool wantResetButton)
 {
+    m_themeComboBox = new QComboBox();
+    QHBoxLayout *mainHLayout = new QHBoxLayout(topLevel);
+    mainHLayout->setContentsMargins({});
+    mainHLayout->addWidget(m_themeComboBox);
+    if (wantResetButton) {
+        m_themeResetButton = new QToolButton;
+        m_themeResetButton->setIcon(createIconSet("resetproperty.png"_L1));
+        mainHLayout->addWidget(m_themeResetButton);
+    }
+    topLevel->setFocusProxy(m_themeComboBox);
 }
 
 IconThemeEditor::IconThemeEditor(QWidget *parent, bool wantResetButton) :
     QWidget (parent), d(new IconThemeEditorPrivate)
 {
-    QHBoxLayout *mainHLayout = new QHBoxLayout;
-    mainHLayout->setContentsMargins(QMargins());
+    d->create(this, wantResetButton);
+    d->m_themeComboBox->setEditable(true);
 
-    // Vertically center theme preview label
-    d->m_themeLabel->setPixmap(d->m_emptyPixmap);
-
-    QVBoxLayout *themeLabelVLayout = new QVBoxLayout;
-    d->m_themeLabel->setMargin(1);
-    themeLabelVLayout->setContentsMargins(QMargins());
-    themeLabelVLayout->addSpacerItem(new QSpacerItem(0, 0, QSizePolicy::Ignored, QSizePolicy::MinimumExpanding));
-    themeLabelVLayout->addWidget(d->m_themeLabel);
-    themeLabelVLayout->addSpacerItem(new QSpacerItem(0, 0, QSizePolicy::Ignored, QSizePolicy::MinimumExpanding));
-    mainHLayout->addLayout(themeLabelVLayout);
-
-    d->m_themeLineEdit = new QLineEdit;
-    d->m_themeLineEdit->setValidator(new BlankSuppressingValidator(d->m_themeLineEdit));
-    connect(d->m_themeLineEdit, &QLineEdit::textChanged, this, &IconThemeEditor::slotChanged);
-    connect(d->m_themeLineEdit, &QLineEdit::textEdited, this, &IconThemeEditor::edited);
-    mainHLayout->addWidget(d->m_themeLineEdit);
-
-    if (wantResetButton) {
-        QToolButton *themeResetButton = new QToolButton;
-        themeResetButton->setIcon(createIconSet(QStringLiteral("resetproperty.png")));
-        connect(themeResetButton, &QAbstractButton::clicked, this, &IconThemeEditor::reset);
-        mainHLayout->addWidget(themeResetButton);
-    }
-
-    setLayout(mainHLayout);
-    setFocusProxy(d->m_themeLineEdit);
+    const auto icons = themeIcons();
+    for (auto i = icons.constBegin(); i != icons.constEnd(); ++i)
+        d->m_themeComboBox->addItem(i.value(), i.key());
+    d->m_themeComboBox->setCurrentIndex(-1);
+    d->m_themeComboBox->lineEdit()->setValidator(new BlankSuppressingValidator(this));
+    connect(d->m_themeComboBox, &QComboBox::currentTextChanged, this, &IconThemeEditor::edited);
+    if (wantResetButton)
+        connect(d->m_themeResetButton, &QAbstractButton::clicked, this, &IconThemeEditor::reset);
 }
 
 IconThemeEditor::~IconThemeEditor() = default;
 
 void IconThemeEditor::reset()
 {
-    d->m_themeLineEdit->clear();
+    d->m_themeComboBox->setCurrentIndex(-1);
     emit edited(QString());
-}
-
-void IconThemeEditor::slotChanged(const QString &theme)
-{
-    updatePreview(theme);
-}
-
-void IconThemeEditor::updatePreview(const QString &t)
-{
-    // Update preview label with icon.
-    if (t.isEmpty() || !QIcon::hasThemeIcon(t)) { // Empty
-        if (d->m_themeLabel->pixmap(Qt::ReturnByValue).cacheKey() != d->m_emptyPixmap.cacheKey())
-            d->m_themeLabel->setPixmap(d->m_emptyPixmap);
-    } else {
-        const QIcon icon = QIcon::fromTheme(t);
-        d->m_themeLabel->setPixmap(icon.pixmap(d->m_emptyPixmap.size()));
-    }
 }
 
 QString IconThemeEditor::theme() const
 {
-    return d->m_themeLineEdit->text();
+    return d->m_themeComboBox->currentText();
 }
 
 void IconThemeEditor::setTheme(const QString &t)
 {
-    d->m_themeLineEdit->setText(t);
+    d->m_themeComboBox->setCurrentText(t);
+}
+
+IconThemeEnumEditor::IconThemeEnumEditor(QWidget *parent, bool wantResetButton) :
+      QWidget (parent), d(new IconThemeEditorPrivate)
+{
+    d->create(this, wantResetButton);
+    initThemeCombo(d->m_themeComboBox);
+
+    connect(d->m_themeComboBox, &QComboBox::currentIndexChanged,
+            this, &IconThemeEnumEditor::edited);
+    if (wantResetButton)
+        connect(d->m_themeResetButton, &QAbstractButton::clicked, this, &IconThemeEnumEditor::reset);
+}
+
+IconThemeEnumEditor::~IconThemeEnumEditor() = default;
+
+void IconThemeEnumEditor::reset()
+{
+    d->m_themeComboBox->setCurrentIndex(-1);
+    emit edited(-1);
+}
+
+int IconThemeEnumEditor::themeEnum() const
+{
+    return d->m_themeComboBox->currentIndex();
+}
+
+void IconThemeEnumEditor::setThemeEnum(int t)
+{
+    Q_ASSERT(t >= -1 && t < int(QIcon::ThemeIcon::NThemeIcons));
+    d->m_themeComboBox->setCurrentIndex(t);
+}
+
+QString IconThemeEnumEditor::iconName(int e)
+{
+    return QResourceBuilder::themeIconNames().value(e);
+}
+
+QComboBox *IconThemeEnumEditor::createComboBox(QWidget *parent)
+{
+    auto *result = new QComboBox(parent);
+    initThemeCombo(result);
+    return result;
 }
 
 } // qdesigner_internal

@@ -1,46 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Stephen Kelly <stephen.kelly@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Stephen Kelly <stephen.kelly@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QDBUSCPP2XML_TEST1_H
 #define QDBUSCPP2XML_TEST1_H
 
 #include <QObject>
-
-class QDBusObjectPath;
-class QDBusUnixFileDescriptor;
-class QDBusSignature;
+#include <QtDBus/QDBusSignature>
+#include <QtDBus/QDBusObjectPath>
+#include <QtDBus/QDBusUnixFileDescriptor>
 
 class Test1 : public QObject
 {
     Q_OBJECT
+    Q_MOC_INCLUDE(<QtDBus/qdbusextratypes.h>)
+    Q_MOC_INCLUDE(<QtDBus/qdbusunixfiledescriptor.h>)
     Q_CLASSINFO("D-Bus Interface", "org.qtProject.qdbuscpp2xmlTests.Test1")
     Q_PROPERTY(int numProperty1 READ numProperty1 CONSTANT)
     Q_PROPERTY(int numProperty2 READ numProperty2 WRITE setNumProperty2)
+    Q_PROPERTY(int numProperty3 MEMBER m_numProperty3)
     Q_ENUMS(Salaries)
 public:
     // C++1y allows use of single quote as a digit separator, useful for large
@@ -53,7 +30,7 @@ public:
 #endif
     };
 
-    Test1(QObject *parent = 0) : QObject(parent) {}
+    Test1(QObject *parent = nullptr) : QObject(parent) {}
 
     int numProperty1() { return 42; }
 
@@ -121,6 +98,9 @@ protected:
 private:
     Q_SCRIPTABLE void neverExported11() {}
     Q_SCRIPTABLE int neverExported12() { return 42; }
+
+private:
+    int m_numProperty3;
 };
 
 #endif

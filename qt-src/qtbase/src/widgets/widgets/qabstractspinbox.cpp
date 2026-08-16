@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qplatformdefs.h>
 #include <private/qabstractspinbox_p.h>
@@ -58,10 +22,11 @@
 #include <qpalette.h>
 #include <qstylepainter.h>
 #include <qdebug.h>
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 # include <qaccessible.h>
 #endif
 
+#include <QtCore/qpointer.h>
 
 //#define QABSTRACTSPINBOX_QSBDEBUG
 #ifdef QABSTRACTSPINBOX_QSBDEBUG
@@ -71,6 +36,8 @@
 #endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*!
     \class QAbstractSpinBox
@@ -420,7 +387,7 @@ bool QAbstractSpinBox::isAccelerated() const
      \since 5.3
 
 
-     This property holds whether a thousands separator is enabled. By default this
+     \brief whether a thousands separator is enabled. By default this
      property is false.
 */
 bool QAbstractSpinBox::isGroupSeparatorShown() const
@@ -671,7 +638,8 @@ void QAbstractSpinBox::stepBy(int steps)
     } else if (e == AlwaysEmit) {
         d->emitSignals(e, old);
     }
-    selectAll();
+    if (style()->styleHint(QStyle::SH_SpinBox_SelectOnStep, nullptr, this, nullptr))
+        selectAll();
 }
 
 /*!
@@ -724,14 +692,14 @@ void QAbstractSpinBox::setLineEdit(QLineEdit *lineEdit)
     d->edit->setAcceptDrops(false);
 
     if (d->type != QMetaType::UnknownType) {
-        connect(d->edit, SIGNAL(textChanged(QString)),
-                this, SLOT(_q_editorTextChanged(QString)));
-        connect(d->edit, SIGNAL(cursorPositionChanged(int,int)),
-                this, SLOT(_q_editorCursorPositionChanged(int,int)));
-        connect(d->edit, SIGNAL(cursorPositionChanged(int,int)),
-                this, SLOT(updateMicroFocus()));
-        connect(d->edit->d_func()->control, SIGNAL(updateMicroFocus()),
-                this, SLOT(updateMicroFocus()));
+        QObjectPrivate::connect(d->edit, &QLineEdit::textChanged,
+                                d, &QAbstractSpinBoxPrivate::editorTextChanged);
+        QObjectPrivate::connect(d->edit, &QLineEdit::cursorPositionChanged,
+                                d, &QAbstractSpinBoxPrivate::editorCursorPositionChanged);
+        connect(d->edit, &QLineEdit::cursorPositionChanged,
+                this, [this]() { updateMicroFocus(); });
+        connect(d->edit->d_func()->control, &QWidgetLineControl::updateMicroFocus,
+                this, [this]() { updateMicroFocus(); });
     }
     d->updateEditFieldGeometry();
     d->edit->setContextMenuPolicy(Qt::NoContextMenu);
@@ -795,7 +763,7 @@ bool QAbstractSpinBox::event(QEvent *event)
     case QEvent::HoverEnter:
     case QEvent::HoverLeave:
     case QEvent::HoverMove:
-        d->updateHoverControl(static_cast<const QHoverEvent *>(event)->pos());
+        d->updateHoverControl(static_cast<const QHoverEvent *>(event)->position().toPoint());
         break;
     case QEvent::ShortcutOverride:
         if (d->edit->event(event))
@@ -905,7 +873,7 @@ QSize QAbstractSpinBox::sizeHint() const
         int h = d->edit->sizeHint().height();
         int w = 0;
         QString s;
-        QString fixedContent =  d->prefix + d->suffix + QLatin1Char(' ');
+        QString fixedContent =  d->prefix + d->suffix + u' ';
         s = d->textFromValue(d->minimum);
         s.truncate(18);
         s += fixedContent;
@@ -924,8 +892,7 @@ QSize QAbstractSpinBox::sizeHint() const
         QStyleOptionSpinBox opt;
         initStyleOption(&opt);
         QSize hint(w, h);
-        d->cachedSizeHint = style()->sizeFromContents(QStyle::CT_SpinBox, &opt, hint, this)
-                            .expandedTo(QApplication::globalStrut());
+        d->cachedSizeHint = style()->sizeFromContents(QStyle::CT_SpinBox, &opt, hint, this);
     }
     return d->cachedSizeHint;
 }
@@ -946,7 +913,7 @@ QSize QAbstractSpinBox::minimumSizeHint() const
         int w = 0;
 
         QString s;
-        QString fixedContent =  d->prefix + QLatin1Char(' ');
+        QString fixedContent =  d->prefix + u' ';
         s = d->textFromValue(d->minimum);
         s.truncate(18);
         s += fixedContent;
@@ -966,8 +933,7 @@ QSize QAbstractSpinBox::minimumSizeHint() const
         initStyleOption(&opt);
         QSize hint(w, h);
 
-        d->cachedMinimumSizeHint = style()->sizeFromContents(QStyle::CT_SpinBox, &opt, hint, this)
-                                   .expandedTo(QApplication::globalStrut());
+        d->cachedMinimumSizeHint = style()->sizeFromContents(QStyle::CT_SpinBox, &opt, hint, this);
     }
     return d->cachedMinimumSizeHint;
 }
@@ -1012,6 +978,8 @@ void QAbstractSpinBox::keyPressEvent(QKeyEvent *event)
 {
     Q_D(QAbstractSpinBox);
 
+    d->keyboardModifiers = event->modifiers();
+
     if (!event->text().isEmpty() && d->edit->cursorPosition() < d->prefix.size())
         d->edit->setCursorPosition(d->prefix.size());
 
@@ -1048,12 +1016,12 @@ void QAbstractSpinBox::keyPressEvent(QKeyEvent *event)
         }
         if (d->spinClickTimerId == -1)
             stepBy(steps);
-        if(event->isAutoRepeat() && !isPgUpOrDown) {
-            if(d->spinClickThresholdTimerId == -1 && d->spinClickTimerId == -1) {
+        if (event->isAutoRepeat() && !isPgUpOrDown) {
+            if (d->spinClickThresholdTimerId == -1 && d->spinClickTimerId == -1) {
                 d->updateState(up, true);
             }
         }
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
         QAccessibleValueChangeEvent event(this, d->value);
         QAccessible::updateAccessibility(&event);
 #endif
@@ -1095,7 +1063,7 @@ void QAbstractSpinBox::keyPressEvent(QKeyEvent *event)
 
     case Qt::Key_U:
         if (event->modifiers() & Qt::ControlModifier
-            && QGuiApplication::platformName() == QLatin1String("xcb")) { // only X11
+            && QGuiApplication::platformName() == "xcb"_L1) { // only X11
             event->accept();
             if (!isReadOnly())
                 clear();
@@ -1152,6 +1120,7 @@ void QAbstractSpinBox::keyReleaseEvent(QKeyEvent *event)
 {
     Q_D(QAbstractSpinBox);
 
+    d->keyboardModifiers = event->modifiers();
     if (d->buttonState & Keyboard && !event->isAutoRepeat())  {
         d->reset();
     } else {
@@ -1268,7 +1237,7 @@ void QAbstractSpinBox::timerEvent(QTimerEvent *event)
         killTimer(d->spinClickThresholdTimerId);
         d->spinClickThresholdTimerId = -1;
         d->effectiveSpinRepeatRate = d->buttonState & Keyboard
-                                     ? QGuiApplication::styleHints()->keyboardAutoRepeatRate()
+                                     ? QGuiApplication::styleHints()->keyboardAutoRepeatRateF()
                                      : d->spinClickTimerInterval;
         d->spinClickTimerId = startTimer(d->effectiveSpinRepeatRate);
         doStep = true;
@@ -1284,7 +1253,7 @@ void QAbstractSpinBox::timerEvent(QTimerEvent *event)
     }
 
     if (doStep) {
-        const bool increaseStepRate = QGuiApplication::keyboardModifiers() & d->stepModifier;
+        const bool increaseStepRate = d->keyboardModifiers & d->stepModifier;
         const StepEnabled st = stepEnabled();
         if (d->buttonState & Up) {
             if (!(st & StepUpEnabled)) {
@@ -1361,7 +1330,8 @@ void QAbstractSpinBox::mouseMoveEvent(QMouseEvent *event)
 {
     Q_D(QAbstractSpinBox);
 
-    d->updateHoverControl(event->pos());
+    d->keyboardModifiers = event->modifiers();
+    d->updateHoverControl(event->position().toPoint());
 
     // If we have a timer ID, update the state
     if (d->spinClickTimerId != -1 && d->buttonSymbols != NoButtons) {
@@ -1384,11 +1354,12 @@ void QAbstractSpinBox::mousePressEvent(QMouseEvent *event)
 {
     Q_D(QAbstractSpinBox);
 
+    d->keyboardModifiers = event->modifiers();
     if (event->button() != Qt::LeftButton || d->buttonState != None) {
         return;
     }
 
-    d->updateHoverControl(event->pos());
+    d->updateHoverControl(event->position().toPoint());
     event->accept();
 
     const StepEnabled se = (d->buttonSymbols == NoButtons) ? StepEnabled(StepNone) : stepEnabled();
@@ -1408,6 +1379,7 @@ void QAbstractSpinBox::mouseReleaseEvent(QMouseEvent *event)
 {
     Q_D(QAbstractSpinBox);
 
+    d->keyboardModifiers = event->modifiers();
     if ((d->buttonState & Mouse) != 0)
         d->reset();
     event->accept();
@@ -1421,15 +1393,9 @@ void QAbstractSpinBox::mouseReleaseEvent(QMouseEvent *event)
 */
 
 QAbstractSpinBoxPrivate::QAbstractSpinBoxPrivate()
-    : edit(nullptr), type(QMetaType::UnknownType), spinClickTimerId(-1),
-      spinClickTimerInterval(100), spinClickThresholdTimerId(-1), spinClickThresholdTimerInterval(-1),
-      effectiveSpinRepeatRate(1), buttonState(None), cachedText(QLatin1String("\x01")),
-      cachedState(QValidator::Invalid), pendingEmit(false), readOnly(false), wrapping(false),
-      ignoreCursorPositionChanged(false), frame(true), accelerate(false), keyboardTracking(true),
-      cleared(false), ignoreUpdateEdit(false), correctionMode(QAbstractSpinBox::CorrectToPreviousValue),
-      stepModifier(Qt::ControlModifier), acceleration(0), hoverControl(QStyle::SC_None),
-      buttonSymbols(QAbstractSpinBox::UpDownArrows), validator(nullptr), showGroupSeparator(0),
-      wheelDeltaRemainder(0)
+    :  pendingEmit(false), readOnly(false), wrapping(false),
+       ignoreCursorPositionChanged(false), frame(true), accelerate(false), keyboardTracking(true),
+       cleared(false), ignoreUpdateEdit(false), showGroupSeparator(false)
 {
 }
 
@@ -1484,7 +1450,7 @@ QStyle::SubControl QAbstractSpinBoxPrivate::newHoverControl(const QPoint &pos)
 
 QString QAbstractSpinBoxPrivate::stripped(const QString &t, int *pos) const
 {
-    QStringRef text(&t);
+    QStringView text(t);
     if (specialValueText.size() == 0 || text != specialValueText) {
         int from = 0;
         int size = text.size();
@@ -1545,7 +1511,7 @@ void QAbstractSpinBoxPrivate::emitSignals(EmitPolicy, const QVariant &)
     signal.
 */
 
-void QAbstractSpinBoxPrivate::_q_editorTextChanged(const QString &t)
+void QAbstractSpinBoxPrivate::editorTextChanged(const QString &t)
 {
     Q_Q(QAbstractSpinBox);
 
@@ -1575,7 +1541,7 @@ void QAbstractSpinBoxPrivate::_q_editorTextChanged(const QString &t)
     the different sections etc.
 */
 
-void QAbstractSpinBoxPrivate::_q_editorCursorPositionChanged(int oldpos, int newpos)
+void QAbstractSpinBoxPrivate::editorCursorPositionChanged(int oldpos, int newpos)
 {
     if (!edit->hasSelectedText() && !ignoreCursorPositionChanged && !specialValue()) {
         ignoreCursorPositionChanged = true;
@@ -1626,11 +1592,13 @@ void QAbstractSpinBoxPrivate::init()
     Q_Q(QAbstractSpinBox);
 
     q->setLineEdit(new QLineEdit(q));
-    edit->setObjectName(QLatin1String("qt_spinbox_lineedit"));
+    edit->setObjectName("qt_spinbox_lineedit"_L1);
     validator = new QSpinBoxValidator(q, this);
     edit->setValidator(validator);
 
     QStyleOptionSpinBox opt;
+    // ### This is called from the ctor and thus we shouldn't call initStyleOption yet
+    // ### as we only call the base class implementation of initStyleOption called.
     q->initStyleOption(&opt);
     spinClickTimerInterval = q->style()->styleHint(QStyle::SH_SpinBox_ClickAutoRepeatRate, &opt, q);
     spinClickThresholdTimerInterval = q->style()->styleHint(QStyle::SH_SpinBox_ClickAutoRepeatThreshold, &opt, q);
@@ -1680,11 +1648,11 @@ void QAbstractSpinBoxPrivate::updateState(bool up, bool fromKeyboard /* = false 
                                   : QAbstractSpinBox::StepDownEnabled))) {
         buttonState = (up ? Up : Down) | (fromKeyboard ? Keyboard : Mouse);
         int steps = up ? 1 : -1;
-        if (QGuiApplication::keyboardModifiers() & stepModifier)
+        if (keyboardModifiers & stepModifier)
             steps *= 10;
         q->stepBy(steps);
         spinClickThresholdTimerId = q->startTimer(spinClickThresholdTimerInterval);
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
         QAccessibleValueChangeEvent event(q, value);
         QAccessible::updateAccessibility(&event);
 #endif
@@ -1954,7 +1922,7 @@ void QAbstractSpinBoxPrivate::clearCache() const
 
 QVariant QAbstractSpinBoxPrivate::calculateAdaptiveDecimalStep(int steps) const
 {
-    Q_UNUSED(steps)
+    Q_UNUSED(steps);
     return singleStep;
 }
 
@@ -1968,7 +1936,7 @@ QVariant QAbstractSpinBoxPrivate::calculateAdaptiveDecimalStep(int steps) const
 QSpinBoxValidator::QSpinBoxValidator(QAbstractSpinBox *qp, QAbstractSpinBoxPrivate *dp)
     : QValidator(qp), qptr(qp), dptr(dp)
 {
-    setObjectName(QLatin1String("qt_spinboxvalidator"));
+    setObjectName("qt_spinboxvalidator"_L1);
 }
 
 /*!
@@ -1985,7 +1953,7 @@ QValidator::State QSpinBoxValidator::validate(QString &input, int &pos) const
 
     if (!dptr->prefix.isEmpty() && !input.startsWith(dptr->prefix)) {
         input.prepend(dptr->prefix);
-        pos += dptr->prefix.length();
+        pos += dptr->prefix.size();
     }
 
     if (!dptr->suffix.isEmpty() && !input.endsWith(dptr->suffix))
@@ -2075,6 +2043,7 @@ QVariant operator-(const QVariant &arg1, const QVariant &arg2)
                 dt.setTime(dt.time().addMSecs(msecs));
             ret = QVariant(dt);
         }
+        break;
     }
     default: break;
     }

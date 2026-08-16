@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2014 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2014 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSTRINGITERATOR_H
 #define QSTRINGITERATOR_H
@@ -60,7 +24,9 @@ QT_BEGIN_NAMESPACE
 class QStringIterator
 {
     QString::const_iterator i, pos, e;
-    Q_STATIC_ASSERT((std::is_same<QString::const_iterator, const QChar *>::value));
+    static_assert((std::is_same<QString::const_iterator, const QChar *>::value));
+    static bool less(const QChar *lhs, const QChar *rhs) noexcept
+    { return std::less{}(lhs, rhs); }
 public:
     explicit QStringIterator(QStringView string, qsizetype idx = 0)
         : i(string.begin()),
@@ -76,7 +42,7 @@ public:
     {
     }
 
-    inline explicit QStringIterator(const QChar *begin, int idx, const QChar *end)
+    explicit QStringIterator(const QChar *begin, qsizetype idx, const QChar *end)
         : i(begin),
           pos(begin + idx),
           e(end)
@@ -88,14 +54,15 @@ public:
         return pos;
     }
 
-    inline int index() const
+    qsizetype index() const
     {
         return pos - i;
     }
 
     inline void setPosition(QString::const_iterator position)
     {
-        Q_ASSERT_X(i <= position && position <= e, Q_FUNC_INFO, "position out of bounds");
+        Q_ASSERT_X(!less(position, i) && !less(e, position),
+                   Q_FUNC_INFO, "position out of bounds");
         pos = position;
     }
 
@@ -103,7 +70,7 @@ public:
 
     inline bool hasNext() const
     {
-        return pos < e;
+        return less(pos, e);
     }
 
     inline void advance()
@@ -120,21 +87,25 @@ public:
     {
         Q_ASSERT_X(hasNext(), Q_FUNC_INFO, "iterator hasn't a next item");
 
-        if (Q_UNLIKELY((pos++)->isHighSurrogate()))
+        if (Q_UNLIKELY((pos++)->isHighSurrogate())) {
+            Q_ASSERT(hasNext() && pos->isLowSurrogate());
             ++pos;
+        }
     }
 
-    inline uint peekNextUnchecked() const
+    inline char32_t peekNextUnchecked() const
     {
         Q_ASSERT_X(hasNext(), Q_FUNC_INFO, "iterator hasn't a next item");
 
-        if (Q_UNLIKELY(pos->isHighSurrogate()))
+        if (Q_UNLIKELY(pos->isHighSurrogate())) {
+            Q_ASSERT(less(pos + 1, e) && pos[1].isLowSurrogate());
             return QChar::surrogateToUcs4(pos[0], pos[1]);
+        }
 
         return pos->unicode();
     }
 
-    inline uint peekNext(uint invalidAs = QChar::ReplacementCharacter) const
+    inline char32_t peekNext(char32_t invalidAs = QChar::ReplacementCharacter) const
     {
         Q_ASSERT_X(hasNext(), Q_FUNC_INFO, "iterator hasn't a next item");
 
@@ -150,23 +121,25 @@ public:
         return pos->unicode();
     }
 
-    inline uint nextUnchecked()
+    inline char32_t nextUnchecked()
     {
         Q_ASSERT_X(hasNext(), Q_FUNC_INFO, "iterator hasn't a next item");
 
         const QChar cur = *pos++;
-        if (Q_UNLIKELY(cur.isHighSurrogate()))
+        if (Q_UNLIKELY(cur.isHighSurrogate())) {
+            Q_ASSERT(hasNext() && pos->isLowSurrogate());
             return QChar::surrogateToUcs4(cur, *pos++);
+        }
         return cur.unicode();
     }
 
-    inline uint next(uint invalidAs = QChar::ReplacementCharacter)
+    inline char32_t next(char32_t invalidAs = QChar::ReplacementCharacter)
     {
         Q_ASSERT_X(hasNext(), Q_FUNC_INFO, "iterator hasn't a next item");
 
         const QChar uc = *pos++;
         if (Q_UNLIKELY(uc.isSurrogate())) {
-            if (Q_LIKELY(uc.isHighSurrogate() && pos < e && pos->isLowSurrogate()))
+            if (Q_LIKELY(uc.isHighSurrogate() && hasNext() && pos->isLowSurrogate()))
                 return QChar::surrogateToUcs4(uc, *pos++);
             return invalidAs;
         }
@@ -178,7 +151,7 @@ public:
 
     inline bool hasPrevious() const
     {
-        return pos > i;
+        return less(i, pos);
     }
 
     inline void recede()
@@ -196,20 +169,24 @@ public:
     {
         Q_ASSERT_X(hasPrevious(), Q_FUNC_INFO, "iterator hasn't a previous item");
 
-        if (Q_UNLIKELY((--pos)->isLowSurrogate()))
+        if (Q_UNLIKELY((--pos)->isLowSurrogate())) {
+            Q_ASSERT(hasPrevious() && pos[-1].isHighSurrogate());
             --pos;
+        }
     }
 
-    inline uint peekPreviousUnchecked() const
+    inline char32_t peekPreviousUnchecked() const
     {
         Q_ASSERT_X(hasPrevious(), Q_FUNC_INFO, "iterator hasn't a previous item");
 
-        if (Q_UNLIKELY(pos[-1].isLowSurrogate()))
+        if (Q_UNLIKELY(pos[-1].isLowSurrogate())) {
+            Q_ASSERT(less(i + 1, pos) && pos[-2].isHighSurrogate());
             return QChar::surrogateToUcs4(pos[-2], pos[-1]);
+        }
         return pos[-1].unicode();
     }
 
-    inline uint peekPrevious(uint invalidAs = QChar::ReplacementCharacter) const
+    inline char32_t peekPrevious(char32_t invalidAs = QChar::ReplacementCharacter) const
     {
         Q_ASSERT_X(hasPrevious(), Q_FUNC_INFO, "iterator hasn't a previous item");
 
@@ -225,23 +202,25 @@ public:
         return pos[-1].unicode();
     }
 
-    inline uint previousUnchecked()
+    inline char32_t previousUnchecked()
     {
         Q_ASSERT_X(hasPrevious(), Q_FUNC_INFO, "iterator hasn't a previous item");
 
         const QChar cur = *--pos;
-        if (Q_UNLIKELY(cur.isLowSurrogate()))
+        if (Q_UNLIKELY(cur.isLowSurrogate())) {
+            Q_ASSERT(hasPrevious() && pos[-1].isHighSurrogate());
             return QChar::surrogateToUcs4(*--pos, cur);
+        }
         return cur.unicode();
     }
 
-    inline uint previous(uint invalidAs = QChar::ReplacementCharacter)
+    inline char32_t previous(char32_t invalidAs = QChar::ReplacementCharacter)
     {
         Q_ASSERT_X(hasPrevious(), Q_FUNC_INFO, "iterator hasn't a previous item");
 
         const QChar uc = *--pos;
         if (Q_UNLIKELY(uc.isSurrogate())) {
-            if (Q_LIKELY(uc.isLowSurrogate() && pos > i && pos[-1].isHighSurrogate()))
+            if (Q_LIKELY(uc.isLowSurrogate() && hasPrevious() && pos[-1].isHighSurrogate()))
                 return QChar::surrogateToUcs4(*--pos, uc);
             return invalidAs;
         }

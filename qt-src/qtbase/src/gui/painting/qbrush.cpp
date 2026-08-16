@@ -1,41 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2019 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qbrush.h"
 #include "qpixmap.h"
@@ -53,8 +18,16 @@
 #include <QtCore/qnumeric.h>
 #include <QtCore/qfile.h>
 #include <QtCore/qmutex.h>
+#include <QtCore/private/qoffsetstringarray_p.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+// Avoid an ABI break due to the QScopedPointer->std::unique_ptr change
+static_assert(sizeof(QBrush::DataPtr) == sizeof(QScopedPointer<QBrushData, QBrushDataPointerDeleter>));
+#endif
 
 const uchar *qt_patternForBrush(int brushStyle, bool invert)
 {
@@ -108,7 +81,7 @@ Q_GUI_EXPORT QPixmap qt_pixmapForBrush(int brushStyle, bool invert)
 {
 
     QPixmap pm;
-    QString key = QLatin1String("$qt-brush$")
+    QString key = "$qt-brush$"_L1
                   % HexString<uint>(brushStyle)
                   % QLatin1Char(invert ? '1' : '0');
     if (!QPixmapCache::find(key, &pm)) {
@@ -230,7 +203,7 @@ bool Q_GUI_EXPORT qHasPixmapTexture(const QBrush& brush)
 {
     if (brush.style() != Qt::TexturePattern)
         return false;
-    QTexturedBrushData *tx_data = static_cast<QTexturedBrushData *>(brush.d.data());
+    QTexturedBrushData *tx_data = static_cast<QTexturedBrushData *>(brush.d.get());
     return tx_data->m_has_pixmap_texture;
 }
 
@@ -239,31 +212,27 @@ struct QGradientBrushData : public QBrushData
     QGradient gradient;
 };
 
-struct QBrushDataPointerDeleter
+static void deleteData(QBrushData *d)
 {
-    static inline void deleteData(QBrushData *d)
-    {
-        switch (d->style) {
-        case Qt::TexturePattern:
-            delete static_cast<QTexturedBrushData*>(d);
-            break;
-        case Qt::LinearGradientPattern:
-        case Qt::RadialGradientPattern:
-        case Qt::ConicalGradientPattern:
-            delete static_cast<QGradientBrushData*>(d);
-            break;
-        default:
-            delete d;
-        }
+    switch (d->style) {
+    case Qt::TexturePattern:
+        delete static_cast<QTexturedBrushData*>(d);
+        break;
+    case Qt::LinearGradientPattern:
+    case Qt::RadialGradientPattern:
+    case Qt::ConicalGradientPattern:
+        delete static_cast<QGradientBrushData*>(d);
+        break;
+    default:
+        delete d;
     }
+}
 
-    static inline void cleanup(QBrushData *d)
-    {
-        if (d && !d->ref.deref()) {
-            deleteData(d);
-        }
-    }
-};
+void QBrushDataPointerDeleter::operator()(QBrushData *d) const noexcept
+{
+    if (d && !d->ref.deref())
+        deleteData(d);
+}
 
 /*!
     \class QBrush
@@ -531,7 +500,7 @@ QBrush::QBrush(Qt::GlobalColor color, const QPixmap &pixmap)
 */
 
 QBrush::QBrush(const QBrush &other)
-    : d(other.d.data())
+    : d(other.d.get())
 {
     d->ref.ref();
 }
@@ -558,7 +527,7 @@ QBrush::QBrush(const QGradient &gradient)
     };
 
     init(QColor(), enum_table[gradient.type()]);
-    QGradientBrushData *grad = static_cast<QGradientBrushData *>(d.data());
+    QGradientBrushData *grad = static_cast<QGradientBrushData *>(d.get());
     grad->gradient = gradient;
 }
 
@@ -570,12 +539,7 @@ QBrush::~QBrush()
 {
 }
 
-void QBrush::cleanUp(QBrushData *x)
-{
-    QBrushDataPointerDeleter::deleteData(x);
-}
-
-static Q_DECL_CONSTEXPR inline bool use_same_brushdata(Qt::BrushStyle lhs, Qt::BrushStyle rhs)
+static constexpr inline bool use_same_brushdata(Qt::BrushStyle lhs, Qt::BrushStyle rhs)
 {
     return lhs == rhs // includes Qt::TexturePattern
         || (lhs >= Qt::NoBrush && lhs <= Qt::DiagCrossPattern && rhs >= Qt::NoBrush && rhs <= Qt::DiagCrossPattern)
@@ -590,12 +554,12 @@ void QBrush::detach(Qt::BrushStyle newStyle)
         return;
     }
 
-    QScopedPointer<QBrushData, QBrushDataPointerDeleter> x;
+    DataPtr x;
     switch(newStyle) {
     case Qt::TexturePattern: {
         QTexturedBrushData *tbd = new QTexturedBrushData;
         if (d->style == Qt::TexturePattern) {
-            QTexturedBrushData *data = static_cast<QTexturedBrushData *>(d.data());
+            QTexturedBrushData *data = static_cast<QTexturedBrushData *>(d.get());
             if (data->m_has_pixmap_texture)
                 tbd->setPixmap(data->pixmap());
             else
@@ -613,7 +577,7 @@ void QBrush::detach(Qt::BrushStyle newStyle)
         case Qt::RadialGradientPattern:
         case Qt::ConicalGradientPattern:
             gbd->gradient =
-                    static_cast<QGradientBrushData *>(d.data())->gradient;
+                    static_cast<QGradientBrushData *>(d.get())->gradient;
             break;
         default:
             break;
@@ -646,7 +610,7 @@ QBrush &QBrush::operator=(const QBrush &b)
         return *this;
 
     b.d->ref.ref();
-    d.reset(b.d.data());
+    d.reset(b.d.get());
     return *this;
 }
 
@@ -661,9 +625,7 @@ QBrush &QBrush::operator=(const QBrush &b)
 /*!
     \fn void QBrush::swap(QBrush &other)
     \since 4.8
-
-    Swaps brush \a other with this brush. This operation is very
-    fast and never fails.
+    \memberswap{brush}
 */
 
 /*!
@@ -671,7 +633,7 @@ QBrush &QBrush::operator=(const QBrush &b)
 */
 QBrush::operator QVariant() const
 {
-    return QVariant(QMetaType::QBrush, this);
+    return QVariant::fromValue(*this);
 }
 
 /*!
@@ -747,7 +709,7 @@ void QBrush::setColor(const QColor &c)
 QPixmap QBrush::texture() const
 {
     return d->style == Qt::TexturePattern
-                     ? (static_cast<QTexturedBrushData *>(d.data()))->pixmap()
+                     ? (static_cast<QTexturedBrushData *>(d.get()))->pixmap()
                      : QPixmap();
 }
 
@@ -765,7 +727,7 @@ void QBrush::setTexture(const QPixmap &pixmap)
 {
     if (!pixmap.isNull()) {
         detach(Qt::TexturePattern);
-        QTexturedBrushData *data = static_cast<QTexturedBrushData *>(d.data());
+        QTexturedBrushData *data = static_cast<QTexturedBrushData *>(d.get());
         data->setPixmap(pixmap);
     } else {
         detach(Qt::NoBrush);
@@ -788,7 +750,7 @@ void QBrush::setTexture(const QPixmap &pixmap)
 QImage QBrush::textureImage() const
 {
     return d->style == Qt::TexturePattern
-                     ? (static_cast<QTexturedBrushData *>(d.data()))->image()
+                     ? (static_cast<QTexturedBrushData *>(d.get()))->image()
                      : QImage();
 }
 
@@ -813,7 +775,7 @@ void QBrush::setTextureImage(const QImage &image)
 {
     if (!image.isNull()) {
         detach(Qt::TexturePattern);
-        QTexturedBrushData *data = static_cast<QTexturedBrushData *>(d.data());
+        QTexturedBrushData *data = static_cast<QTexturedBrushData *>(d.get());
         data->setImage(image);
     } else {
         detach(Qt::NoBrush);
@@ -829,7 +791,7 @@ const QGradient *QBrush::gradient() const
     if (d->style == Qt::LinearGradientPattern
         || d->style == Qt::RadialGradientPattern
         || d->style == Qt::ConicalGradientPattern) {
-        return &static_cast<const QGradientBrushData *>(d.data())->gradient;
+        return &static_cast<const QGradientBrushData *>(d.get())->gradient;
     }
     return nullptr;
 }
@@ -865,7 +827,7 @@ Q_GUI_EXPORT bool qt_isExtendedRadialGradient(const QBrush &brush)
 
 bool QBrush::isOpaque() const
 {
-    bool opaqueColor = d->color.alpha() == 255;
+    bool opaqueColor = d->color.alphaF() >= 1.0f;
 
     // Test awfully simple case first
     if (d->style == Qt::SolidPattern)
@@ -879,7 +841,7 @@ bool QBrush::isOpaque() const
         || d->style == Qt::ConicalGradientPattern) {
         QGradientStops stops = gradient()->stops();
         for (int i=0; i<stops.size(); ++i)
-            if (stops.at(i).second.alpha() != 255)
+            if (stops.at(i).second.alphaF() < 1.0f)
                 return false;
         return true;
     } else if (d->style == Qt::TexturePattern) {
@@ -890,26 +852,6 @@ bool QBrush::isOpaque() const
 
     return false;
 }
-
-
-#if QT_DEPRECATED_SINCE(5, 15)
-/*!
-    \since 4.2
-    \obsolete
-
-    Use setTransform() instead.
-
-    Sets \a matrix as an explicit transformation matrix on the
-    current brush. The brush transformation matrix is merged with
-    QPainter transformation matrix to produce the final result.
-
-    \sa matrix()
-*/
-void QBrush::setMatrix(const QMatrix &matrix)
-{
-    setTransform(QTransform(matrix));
-}
-#endif // QT_DEPRECATED_SINCE(5, 15)
 
 /*!
     \since 4.3
@@ -926,20 +868,6 @@ void QBrush::setTransform(const QTransform &matrix)
     d->transform = matrix;
 }
 
-
-#if QT_DEPRECATED_SINCE(5, 15)
-/*!
-    \fn void QBrush::matrix() const
-    \since 4.2
-    \obsolete
-
-    Use transform() instead.
-
-    Returns the current transformation matrix for the brush.
-
-    \sa setMatrix()
-*/
-#endif // QT_DEPRECATED_SINCE(5, 15)
 
 /*!
     \fn bool QBrush::operator!=(const QBrush &brush) const
@@ -981,16 +909,16 @@ bool QBrush::operator==(const QBrush &b) const
             const QPixmap *us = nullptr, *them = nullptr;
             qint64 cacheKey1, cacheKey2;
             if (qHasPixmapTexture(*this)) {
-                us = (static_cast<QTexturedBrushData *>(d.data()))->m_pixmap;
+                us = (static_cast<QTexturedBrushData *>(d.get()))->m_pixmap;
                 cacheKey1 = us->cacheKey();
             } else
-                cacheKey1 = (static_cast<QTexturedBrushData *>(d.data()))->image().cacheKey();
+                cacheKey1 = (static_cast<QTexturedBrushData *>(d.get()))->image().cacheKey();
 
             if (qHasPixmapTexture(b)) {
-                them = (static_cast<QTexturedBrushData *>(b.d.data()))->m_pixmap;
+                them = (static_cast<QTexturedBrushData *>(b.d.get()))->m_pixmap;
                 cacheKey2 = them->cacheKey();
             } else
-                cacheKey2 = (static_cast<QTexturedBrushData *>(b.d.data()))->image().cacheKey();
+                cacheKey2 = (static_cast<QTexturedBrushData *>(b.d.get()))->image().cacheKey();
 
             if (cacheKey1 != cacheKey2)
                 return false;
@@ -1007,8 +935,8 @@ bool QBrush::operator==(const QBrush &b) const
     case Qt::RadialGradientPattern:
     case Qt::ConicalGradientPattern:
         {
-            const QGradientBrushData *d1 = static_cast<QGradientBrushData *>(d.data());
-            const QGradientBrushData *d2 = static_cast<QGradientBrushData *>(b.d.data());
+            const QGradientBrushData *d1 = static_cast<QGradientBrushData *>(d.get());
+            const QGradientBrushData *d2 = static_cast<QGradientBrushData *>(b.d.get());
             return d1->gradient == d2->gradient;
         }
     default:
@@ -1022,7 +950,7 @@ bool QBrush::operator==(const QBrush &b) const
 */
 QDebug operator<<(QDebug dbg, const QBrush &b)
 {
-    static const char BRUSH_STYLES[][24] = {
+    static constexpr auto BRUSH_STYLES = qOffsetStringArray(
      "NoBrush",
      "SolidPattern",
      "Dense1Pattern",
@@ -1043,7 +971,7 @@ QDebug operator<<(QDebug dbg, const QBrush &b)
      "ConicalGradientPattern",
      "", "", "", "", "", "",
      "TexturePattern" // 24
-    };
+    );
 
     QDebugStateSaver saver(dbg);
     dbg.nospace() << "QBrush(" << b.color() << ',' << BRUSH_STYLES[b.style()] << ')';
@@ -1104,7 +1032,7 @@ QDataStream &operator<<(QDataStream &s, const QBrush &b)
             // ensure that we write doubles here instead of streaming the stops
             // directly; otherwise, platforms that redefine qreal might generate
             // data that cannot be read on other platforms.
-            QVector<QGradientStop> stops = gradient->stops();
+            QList<QGradientStop> stops = gradient->stops();
             s << quint32(stops.size());
             for (int i = 0; i < stops.size(); ++i) {
                 const QGradientStop &stop = stops.at(i);
@@ -1119,6 +1047,8 @@ QDataStream &operator<<(QDataStream &s, const QBrush &b)
             s << static_cast<const QRadialGradient *>(gradient)->center();
             s << static_cast<const QRadialGradient *>(gradient)->focalPoint();
             s << (double) static_cast<const QRadialGradient *>(gradient)->radius();
+            if (s.version() >= QDataStream::Qt_6_0)
+                s << (double) static_cast<const QRadialGradient *>(gradient)->focalRadius();
         } else { // type == Conical
             s << static_cast<const QConicalGradient *>(gradient)->center();
             s << (double) static_cast<const QConicalGradient *>(gradient)->angle();
@@ -1209,6 +1139,7 @@ QDataStream &operator>>(QDataStream &s, QBrush &b)
         } else if (type == QGradient::RadialGradient) {
             QPointF center, focal;
             double radius;
+            double focalRadius = 0;
             s >> center;
             s >> focal;
             s >> radius;
@@ -1217,6 +1148,9 @@ QDataStream &operator>>(QDataStream &s, QBrush &b)
             rg.setSpread(spread);
             rg.setCoordinateMode(cmode);
             rg.setInterpolationMode(imode);
+            if (s.version() >= QDataStream::Qt_6_0)
+                s >> focalRadius;
+            rg.setFocalRadius(focalRadius);
             b = QBrush(rg);
         } else { // type == QGradient::ConicalGradient
             QPointF center;
@@ -1304,7 +1238,7 @@ QDataStream &operator>>(QDataStream &s, QBrush &b)
     \snippet brush/brush.cpp 1
 
     It is possible to repeat or reflect the gradient outside its area
-    by specifiying the \l {QGradient::Spread}{spread method} using the
+    by specifying the \l {QGradient::Spread}{spread method} using the
     setSpread() function. The default is to pad the outside area with
     the color at the closest stop point. The currently set \l
     {QGradient::Spread}{spread method} can be retrieved using the
@@ -1345,7 +1279,7 @@ QDataStream &operator>>(QDataStream &s, QBrush &b)
     \internal
 */
 QGradient::QGradient()
-    : m_type(NoGradient), dummy(nullptr)
+    : m_type(NoGradient)
 {
 }
 
@@ -1354,8 +1288,179 @@ QGradient::QGradient()
     \since 5.12
 
     This enum specifies a set of predefined presets for QGradient,
-    based on the gradients from https://webgradients.com/.
+    based on the gradients from \l {https://webgradients.com/}.
+
+    \value WarmFlame
+    \value NightFade
+    \value SpringWarmth
+    \value JuicyPeach
+    \value YoungPassion
+    \value LadyLips
+    \value SunnyMorning
+    \value RainyAshville
+    \value FrozenDreams
+    \value WinterNeva
+    \value DustyGrass
+    \value TemptingAzure
+    \value HeavyRain
+    \value AmyCrisp
+    \value MeanFruit
+    \value DeepBlue
+    \value RipeMalinka
+    \value CloudyKnoxville
+    \value MalibuBeach
+    \value NewLife
+    \value TrueSunset
+    \value MorpheusDen
+    \value RareWind
+    \value NearMoon
+    \value WildApple
+    \value SaintPetersburg
+    \value PlumPlate
+    \value EverlastingSky
+    \value HappyFisher
+    \value Blessing
+    \value SharpeyeEagle
+    \value LadogaBottom
+    \value LemonGate
+    \value ItmeoBranding
+    \value ZeusMiracle
+    \value OldHat
+    \value StarWine
+    \value HappyAcid
+    \value AwesomePine
+    \value NewYork
+    \value ShyRainbow
+    \value MixedHopes
+    \value FlyHigh
+    \value StrongBliss
+    \value FreshMilk
+    \value SnowAgain
+    \value FebruaryInk
+    \value KindSteel
+    \value SoftGrass
+    \value GrownEarly
+    \value SharpBlues
+    \value ShadyWater
+    \value DirtyBeauty
+    \value GreatWhale
+    \value TeenNotebook
+    \value PoliteRumors
+    \value SweetPeriod
+    \value WideMatrix
+    \value SoftCherish
+    \value RedSalvation
+    \value BurningSpring
+    \value NightParty
+    \value SkyGlider
+    \value HeavenPeach
+    \value PurpleDivision
+    \value AquaSplash
+    \value SpikyNaga
+    \value LoveKiss
+    \value CleanMirror
+    \value PremiumDark
+    \value ColdEvening
+    \value CochitiLake
+    \value SummerGames
+    \value PassionateBed
+    \value MountainRock
+    \value DesertHump
+    \value JungleDay
+    \value PhoenixStart
+    \value OctoberSilence
+    \value FarawayRiver
+    \value AlchemistLab
+    \value OverSun
+    \value PremiumWhite
+    \value MarsParty
+    \value EternalConstance
+    \value JapanBlush
+    \value SmilingRain
+    \value CloudyApple
+    \value BigMango
+    \value HealthyWater
+    \value AmourAmour
+    \value RiskyConcrete
+    \value StrongStick
+    \value ViciousStance
+    \value PaloAlto
+    \value HappyMemories
+    \value MidnightBloom
+    \value Crystalline
+    \value PartyBliss
+    \value ConfidentCloud
+    \value LeCocktail
+    \value RiverCity
+    \value FrozenBerry
+    \value ChildCare
+    \value FlyingLemon
+    \value NewRetrowave
+    \value HiddenJaguar
+    \value AboveTheSky
+    \value Nega
+    \value DenseWater
+    \value Seashore
+    \value MarbleWall
+    \value CheerfulCaramel
+    \value NightSky
+    \value MagicLake
+    \value YoungGrass
+    \value ColorfulPeach
+    \value GentleCare
+    \value PlumBath
+    \value HappyUnicorn
+    \value AfricanField
+    \value SolidStone
+    \value OrangeJuice
+    \value GlassWater
+    \value NorthMiracle
+    \value FruitBlend
+    \value MillenniumPine
+    \value HighFlight
+    \value MoleHall
+    \value SpaceShift
+    \value ForestInei
+    \value RoyalGarden
+    \value RichMetal
+    \value JuicyCake
+    \value SmartIndigo
+    \value SandStrike
+    \value NorseBeauty
+    \value AquaGuidance
+    \value SunVeggie
+    \value SeaLord
+    \value BlackSea
+    \value GrassShampoo
+    \value LandingAircraft
+    \value WitchDance
+    \value SleeplessNight
+    \value AngelCare
+    \value CrystalRiver
+    \value SoftLipstick
+    \value SaltMountain
+    \value PerfectWhite
+    \value FreshOasis
+    \value StrictNovember
+    \value MorningSalad
+    \value DeepRelief
+    \value SeaStrike
+    \value NightCall
+    \value SupremeSky
+    \value LightBlue
+    \value MindCrawl
+    \value LilyMeadow
+    \value SugarLollipop
+    \value SweetDessert
+    \value MagicRay
+    \value TeenParty
+    \value FrozenHeat
+    \value GagarinView
+    \value FabledSunset
+    \value PerfectBlue
 */
+
+#include "webgradients.cpp"
 
 /*!
     \fn QGradient::QGradient(QGradient::Preset preset)
@@ -1368,50 +1473,11 @@ QGradient::QGradient()
     to be applied to arbitrary object sizes.
 */
 QGradient::QGradient(Preset preset)
-    : QGradient()
+    : m_type(LinearGradient)
+    , m_stops(qt_preset_gradient_stops(preset))
+    , m_data(qt_preset_gradient_data[preset - 1])
+    , m_coordinateMode(ObjectMode)
 {
-    static QHash<int, QGradient> cachedPresets;
-    static QMutex cacheMutex;
-    QMutexLocker locker(&cacheMutex);
-    if (cachedPresets.contains(preset)) {
-        const QGradient &cachedPreset = cachedPresets.value(preset);
-        m_type = cachedPreset.m_type;
-        m_data = cachedPreset.m_data;
-        m_stops = cachedPreset.m_stops;
-        m_spread = cachedPreset.m_spread;
-        dummy = cachedPreset.dummy;
-    } else {
-        static QJsonDocument jsonPresets = []() {
-            QFile webGradients(QLatin1String(":/qgradient/webgradients.binaryjson"));
-            webGradients.open(QFile::ReadOnly);
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-            return QJsonDocument::fromBinaryData(webGradients.readAll());
-QT_WARNING_POP
-        }();
-
-        const QJsonValue presetData = jsonPresets[preset - 1];
-        if (!presetData.isObject())
-            return;
-
-        m_type = LinearGradient;
-        setCoordinateMode(ObjectMode);
-        setSpread(PadSpread);
-
-        const QJsonValue start = presetData[QLatin1String("start")];
-        const QJsonValue end = presetData[QLatin1String("end")];
-        m_data.linear.x1 = start[QLatin1String("x")].toDouble();
-        m_data.linear.y1 = start[QLatin1String("y")].toDouble();
-        m_data.linear.x2 = end[QLatin1String("x")].toDouble();
-        m_data.linear.y2 = end[QLatin1String("y")].toDouble();
-
-        for (const QJsonValue &stop : presetData[QLatin1String("stops")].toArray()) {
-            setColorAt(stop[QLatin1String("position")].toDouble(),
-                QColor(QRgb(stop[QLatin1String("color")].toInt())));
-        }
-
-        cachedPresets.insert(preset, *this);
-    }
 }
 
 /*!
@@ -1420,11 +1486,6 @@ QT_WARNING_POP
 QGradient::~QGradient()
 {
 }
-
-QT_END_NAMESPACE
-static void initGradientPresets() { Q_INIT_RESOURCE(qmake_webgradients); }
-Q_CONSTRUCTOR_FUNCTION(initGradientPresets);
-QT_BEGIN_NAMESPACE
 
 /*!
     \enum QGradient::Type
@@ -1544,7 +1605,6 @@ static inline bool ok(const QGradientStops &stops)
 */
 void QGradient::setStops(const QGradientStops &stops)
 {
-    // ## Qt 6: consider taking \a stops by value, so we can move into m_stops
     if (Q_LIKELY(ok(stops))) {
         // fast path for the common case: if everything is ok with the stops, just copy them
         m_stops = stops;
@@ -1569,14 +1629,13 @@ void QGradient::setStops(const QGradientStops &stops)
 QGradientStops QGradient::stops() const
 {
     if (m_stops.isEmpty()) {
-        QGradientStops tmp;
-        tmp << QGradientStop(0, Qt::black) << QGradientStop(1, Qt::white);
-        return tmp;
+        static constexpr QGradientStop blackAndWhite[] = {
+            {0, QColorConstants::Black}, {1, QColorConstants::White},
+        };
+        return QGradientStops::fromReadOnlyData(blackAndWhite);
     }
     return m_stops;
 }
-
-#define Q_DUMMY_ACCESSOR union {void *p; uint i;}; p = dummy;
 
 /*!
     \enum QGradient::CoordinateMode
@@ -1610,8 +1669,7 @@ QGradientStops QGradient::stops() const
 */
 QGradient::CoordinateMode QGradient::coordinateMode() const
 {
-    Q_DUMMY_ACCESSOR
-    return CoordinateMode(i & 0x03);
+    return m_coordinateMode;
 }
 
 /*!
@@ -1622,10 +1680,7 @@ QGradient::CoordinateMode QGradient::coordinateMode() const
 */
 void QGradient::setCoordinateMode(CoordinateMode mode)
 {
-    Q_DUMMY_ACCESSOR
-    i &= ~0x03;
-    i |= uint(mode);
-    dummy = p;
+    m_coordinateMode = mode;
 }
 
 /*!
@@ -1648,8 +1703,7 @@ void QGradient::setCoordinateMode(CoordinateMode mode)
 */
 QGradient::InterpolationMode QGradient::interpolationMode() const
 {
-    Q_DUMMY_ACCESSOR
-    return InterpolationMode((i >> 2) & 0x01);
+    return m_interpolationMode;
 }
 
 /*!
@@ -1661,10 +1715,7 @@ QGradient::InterpolationMode QGradient::interpolationMode() const
 */
 void QGradient::setInterpolationMode(InterpolationMode mode)
 {
-    Q_DUMMY_ACCESSOR
-    i &= ~(1 << 2);
-    i |= (uint(mode) << 2);
-    dummy = p;
+    m_interpolationMode = mode;
 }
 
 /*!
@@ -1687,7 +1738,8 @@ bool QGradient::operator==(const QGradient &gradient) const
 {
     if (gradient.m_type != m_type
         || gradient.m_spread != m_spread
-        || gradient.dummy != dummy) return false;
+        || gradient.m_coordinateMode != m_coordinateMode
+        || gradient.m_interpolationMode != m_interpolationMode) return false;
 
     if (m_type == LinearGradient) {
         if (m_data.linear.x1 != gradient.m_data.linear.x1
@@ -1700,7 +1752,8 @@ bool QGradient::operator==(const QGradient &gradient) const
             || m_data.radial.cy != gradient.m_data.radial.cy
             || m_data.radial.fx != gradient.m_data.radial.fx
             || m_data.radial.fy != gradient.m_data.radial.fy
-            || m_data.radial.cradius != gradient.m_data.radial.cradius)
+            || m_data.radial.cradius != gradient.m_data.radial.cradius
+            || m_data.radial.fradius != gradient.m_data.radial.fradius)
             return false;
     } else { // m_type == ConicalGradient
         if (m_data.conical.cx != gradient.m_data.conical.cx
@@ -1974,6 +2027,7 @@ QRadialGradient::QRadialGradient(const QPointF &center, qreal radius, const QPoi
     m_data.radial.cx = center.x();
     m_data.radial.cy = center.y();
     m_data.radial.cradius = radius;
+    m_data.radial.fradius = 0;
 
     QPointF adapted_focal = qt_radial_gradient_adapt_focal_point(center, radius, focalPoint);
     m_data.radial.fx = adapted_focal.x();
@@ -1993,6 +2047,7 @@ QRadialGradient::QRadialGradient(const QPointF &center, qreal radius)
     m_data.radial.cx = center.x();
     m_data.radial.cy = center.y();
     m_data.radial.cradius = radius;
+    m_data.radial.fradius = 0;
     m_data.radial.fx = center.x();
     m_data.radial.fy = center.y();
 }
@@ -2038,6 +2093,7 @@ QRadialGradient::QRadialGradient()
     m_data.radial.cx = 0;
     m_data.radial.cy = 0;
     m_data.radial.cradius = 1;
+    m_data.radial.fradius = 0;
     m_data.radial.fx = 0;
     m_data.radial.fy = 0;
 }
@@ -2055,6 +2111,7 @@ QRadialGradient::QRadialGradient(const QPointF &center, qreal centerRadius, cons
     m_data.radial.cx = center.x();
     m_data.radial.cy = center.y();
     m_data.radial.cradius = centerRadius;
+    m_data.radial.fradius = 0;
 
     m_data.radial.fx = focalPoint.x();
     m_data.radial.fy = focalPoint.y();
@@ -2075,6 +2132,7 @@ QRadialGradient::QRadialGradient(qreal cx, qreal cy, qreal centerRadius, qreal f
     m_data.radial.cx = cx;
     m_data.radial.cy = cy;
     m_data.radial.cradius = centerRadius;
+    m_data.radial.fradius = 0;
 
     m_data.radial.fx = fx;
     m_data.radial.fy = fy;
@@ -2194,12 +2252,7 @@ void QRadialGradient::setCenterRadius(qreal radius)
 qreal QRadialGradient::focalRadius() const
 {
     Q_ASSERT(m_type == RadialGradient);
-    Q_DUMMY_ACCESSOR
-
-    // mask away low three bits
-    union { float f; quint32 i; } u;
-    u.i = i & ~0x07;
-    return u.f;
+    return m_data.radial.fradius;
 }
 
 /*!
@@ -2211,17 +2264,7 @@ qreal QRadialGradient::focalRadius() const
 void QRadialGradient::setFocalRadius(qreal radius)
 {
     Q_ASSERT(m_type == RadialGradient);
-    Q_DUMMY_ACCESSOR
-
-    // Since there's no QGradientData, we only have the dummy void * to
-    // store additional data in. The three lowest bits are already
-    // taken, thus we cut the three lowest bits from the significand
-    // and store the radius as a float.
-    union { float f; quint32 i; } u;
-    u.f = float(radius);
-    // add 0x04 to round up when we drop the three lowest bits
-    i |= (u.i + 0x04) & ~0x07;
-    dummy = p;
+    m_data.radial.fradius = radius;
 }
 
 /*!
@@ -2438,7 +2481,7 @@ void QConicalGradient::setAngle(qreal angle)
     \typedef QGradientStops
     \relates QGradient
 
-    Typedef for QVector<QGradientStop>.
+    Typedef for QList<QGradientStop>.
 */
 
 /*!
@@ -2466,6 +2509,6 @@ void QConicalGradient::setAngle(qreal angle)
     \sa setTransform()
 */
 
-#undef Q_DUMMY_ACCESSOR
-
 QT_END_NAMESPACE
+
+#include "moc_qbrush.cpp"

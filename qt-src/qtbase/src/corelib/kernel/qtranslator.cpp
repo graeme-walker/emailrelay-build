@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplatformdefs.h"
 
@@ -51,18 +15,22 @@
 #include "qdatastream.h"
 #include "qendian.h"
 #include "qfile.h"
-#include "qmap.h"
 #include "qalgorithms.h"
 #include "qtranslator_p.h"
 #include "qlocale.h"
+#include "qlogging.h"
+#include "qloggingcategory.h"
+#include "qdebug.h"
 #include "qendian.h"
 #include "qresource.h"
 
+#include <QtCore/private/qduplicatetracker_p.h>
+
 #if defined(Q_OS_UNIX) && !defined(Q_OS_INTEGRITY)
-#define QT_USE_MMAP
-#include "private/qcore_unix_p.h"
+#  define QT_USE_MMAP
+#  include "private/qcore_unix_p.h"
 // for mmap
-#include <sys/mman.h>
+#  include <sys/mman.h>
 #endif
 
 #include <stdlib.h>
@@ -70,10 +38,18 @@
 
 #include "qobject_p.h"
 
+#include <vector>
+#include <memory>
+
 QT_BEGIN_NAMESPACE
 
+static Q_LOGGING_CATEGORY(lcTranslator, "qt.core.qtranslator")
+
+namespace {
 enum Tag { Tag_End = 1, Tag_SourceText16, Tag_Translation, Tag_Context16, Tag_Obsolete1,
            Tag_SourceText, Tag_Context, Tag_Comment, Tag_Obsolete2 };
+}
+
 /*
 $ mcookie
 3cb86418caef9c95cd211cbf60a1bddd
@@ -300,10 +276,10 @@ public:
     qsizetype unmapLength;
 
     // The resource object in case we loaded the translations from a resource
-    QResource *resource;
+    std::unique_ptr<QResource> resource;
 
     // used if the translator has dependencies
-    QList<QTranslator*> subTranslators;
+    std::vector<std::unique_ptr<QTranslator>> subTranslators;
 
     // Pointers and offsets into unmapPointer[unmapLength] array, or user
     // provided data array
@@ -482,12 +458,12 @@ bool QTranslator::load(const QString & filename, const QString & directory,
     QString prefix;
     if (QFileInfo(filename).isRelative()) {
         prefix = directory;
-        if (prefix.length() && !prefix.endsWith(QLatin1Char('/')))
-            prefix += QLatin1Char('/');
+        if (prefix.size() && !prefix.endsWith(u'/'))
+            prefix += u'/';
     }
 
     const QString suffixOrDotQM = suffix.isNull() ? dotQmLiteral() : suffix;
-    QStringRef fname(&filename);
+    QStringView fname(filename);
     QString realname;
     const QString delims = search_delimiters.isNull() ? QStringLiteral("_.") : search_delimiters;
 
@@ -505,7 +481,7 @@ bool QTranslator::load(const QString & filename, const QString & directory,
             break;
 
         int rightmost = 0;
-        for (int i = 0; i < (int)delims.length(); i++) {
+        for (int i = 0; i < (int)delims.size(); i++) {
             int k = fname.lastIndexOf(delims[i]);
             if (k > rightmost)
                 rightmost = k;
@@ -527,11 +503,11 @@ bool QTranslatorPrivate::do_load(const QString &realname, const QString &directo
     QTranslatorPrivate *d = this;
     bool ok = false;
 
-    if (realname.startsWith(QLatin1Char(':'))) {
+    if (realname.startsWith(u':')) {
         // If the translation is in a non-compressed resource file, the data is already in
         // memory, so no need to use QFile to copy it again.
         Q_ASSERT(!d->resource);
-        d->resource = new QResource(realname);
+        d->resource = std::make_unique<QResource>(realname);
         if (resource->isValid() && resource->compressionAlgorithm() == QResource::NoCompression
                 && resource->size() >= MagicLength
                 && !memcmp(resource->data(), magic, MagicLength)) {
@@ -542,7 +518,6 @@ bool QTranslatorPrivate::do_load(const QString &realname, const QString &directo
 #endif
             ok = true;
         } else {
-            delete resource;
             resource = nullptr;
         }
     }
@@ -601,9 +576,14 @@ bool QTranslatorPrivate::do_load(const QString &realname, const QString &directo
         }
     }
 
-    if (ok && d->do_load(reinterpret_cast<const uchar *>(d->unmapPointer), d->unmapLength, directory)) {
-        d->filePath = realname;
-        return true;
+    if (ok) {
+        const QString base_dir =
+                !directory.isEmpty() ? directory : QFileInfo(realname).absolutePath();
+        if (d->do_load(reinterpret_cast<const uchar *>(d->unmapPointer), d->unmapLength,
+                       base_dir)) {
+            d->filePath = realname;
+            return true;
+        }
     }
 
 #if defined(QT_USE_MMAP)
@@ -615,7 +595,6 @@ bool QTranslatorPrivate::do_load(const QString &realname, const QString &directo
     if (!d->resource)
         delete [] unmapPointer;
 
-    delete d->resource;
     d->resource = nullptr;
     d->unmapPointer = nullptr;
     d->unmapLength = 0;
@@ -627,7 +606,10 @@ Q_NEVER_INLINE
 static bool is_readable_file(const QString &name)
 {
     const QFileInfo fi(name);
-    return fi.isReadable() && fi.isFile();
+    const bool isReadableFile = fi.isReadable() && fi.isFile();
+    qCDebug(lcTranslator) << "Testing file" << name << isReadableFile;
+
+    return isReadableFile;
 }
 
 static QString find_translation(const QLocale & locale,
@@ -636,35 +618,85 @@ static QString find_translation(const QLocale & locale,
                                 const QString & directory,
                                 const QString & suffix)
 {
+    qCDebug(lcTranslator).noquote().nospace() << "Searching translation for "
+                          << filename << prefix << locale << suffix
+                          << " in " << directory;
     QString path;
     if (QFileInfo(filename).isRelative()) {
         path = directory;
-        if (!path.isEmpty() && !path.endsWith(QLatin1Char('/')))
-            path += QLatin1Char('/');
+        if (!path.isEmpty() && !path.endsWith(u'/'))
+            path += u'/';
     }
     const QString suffixOrDotQM = suffix.isNull() ? dotQmLiteral() : suffix;
 
     QString realname;
     realname += path + filename + prefix; // using += in the hope for some reserve capacity
-    const int realNameBaseSize = realname.size();
-    QStringList fuzzyLocales;
+    const qsizetype realNameBaseSize = realname.size();
 
     // see http://www.unicode.org/reports/tr35/#LanguageMatching for inspiration
 
-    QStringList languages = locale.uiLanguages();
-#if defined(Q_OS_UNIX)
-    for (int i = languages.size()-1; i >= 0; --i) {
-        QString lang = languages.at(i);
+    // For each language_country returned by locale.uiLanguages(), add
+    // also a lowercase version to the list. Since these languages are
+    // used to create file names, this is important on case-sensitive
+    // file systems, where otherwise a file called something like
+    // "prefix_en_us.qm" won't be found under the "en_US" locale. Note
+    // that the Qt resource system is always case-sensitive, even on
+    // Windows (in other words: this codepath is *not* UNIX-only).
+    QStringList languages = locale.uiLanguages(QLocale::TagSeparator::Underscore);
+    qCDebug(lcTranslator) << "Requested UI languages" << languages;
+
+    QDuplicateTracker<QString> duplicates(languages.size() * 2);
+    for (const auto &l : std::as_const(languages))
+        (void)duplicates.hasSeen(l);
+
+    for (qsizetype i = languages.size() - 1; i >= 0; --i) {
+        QString language = languages.at(i);
+
+        // Add candidates for each entry where we progressively truncate sections
+        // from the end, until a matching language tag is found. For compatibility
+        // reasons (see QTBUG-124898) we add a special case: if we find a
+        // language_Script_Territory entry (i.e. an entry with two sections), try
+        // language_Territory as well as language_Script. Use QDuplicateTracker
+        // so that we don't add any entries as fallbacks that are already in the
+        // list anyway.
+        // This is a kludge, and such entries are added at the end of the candidate
+        // list; from 6.9 on, this is fixed in QLocale::uiLanguages().
+        QStringList fallbacks;
+        const auto addIfNew = [&duplicates, &fallbacks](const QString &fallback) {
+            if (!duplicates.hasSeen(fallback))
+                fallbacks.append(fallback);
+        };
+
+        while (true) {
+            const qsizetype last = language.lastIndexOf(u'_');
+            if (last < 0) // no more sections
+                break;
+
+            const qsizetype first = language.indexOf(u'_');
+             // two sections, add fallback without script
+            if (first != last && language.count(u'_') == 2) {
+                QString fallback = language.left(first) + language.mid(last);
+                addIfNew(fallback);
+            }
+            QString fallback = language.left(last);
+            addIfNew(fallback);
+
+            language.truncate(last);
+        }
+        for (qsizetype j = fallbacks.size() - 1; j >= 0; --j)
+            languages.insert(i + 1, fallbacks.at(j));
+    }
+
+    qCDebug(lcTranslator) << "Augmented UI languages" << languages;
+    for (qsizetype i = languages.size() - 1; i >= 0; --i) {
+        const QString &lang = languages.at(i);
         QString lowerLang = lang.toLower();
         if (lang != lowerLang)
-            languages.insert(i+1, lowerLang);
+            languages.insert(i + 1, lowerLang);
     }
-#endif
 
-    // try explicit locales names first
-    for (QString localeName : qAsConst(languages)) {
-        localeName.replace(QLatin1Char('-'), QLatin1Char('_'));
-
+    for (QString localeName : std::as_const(languages)) {
+        // try each locale with and without suffix
         realname += localeName + suffixOrDotQM;
         if (is_readable_file(realname))
             return realname;
@@ -674,29 +706,6 @@ static QString find_translation(const QLocale & locale,
             return realname;
 
         realname.truncate(realNameBaseSize);
-        fuzzyLocales.append(localeName);
-    }
-
-    // start guessing
-    for (const QString &fuzzyLocale : qAsConst(fuzzyLocales)) {
-        QStringRef localeName(&fuzzyLocale);
-        for (;;) {
-            int rightmost = localeName.lastIndexOf(QLatin1Char('_'));
-            // no truncations? fail
-            if (rightmost <= 0)
-                break;
-            localeName.truncate(rightmost);
-
-            realname += localeName + suffixOrDotQM;
-            if (is_readable_file(realname))
-                return realname;
-
-            realname.truncate(realNameBaseSize + localeName.size());
-            if (is_readable_file(realname))
-                return realname;
-
-            realname.truncate(realNameBaseSize);
-        }
     }
 
     const int realNameBaseSizeFallbacks = path.size() + filename.size();
@@ -754,10 +763,10 @@ static QString find_translation(const QLocale & locale,
     \li \c /opt/foolib/foo.es
     \li \c /opt/foolib/foo.fr_CA.qm
     \li \c /opt/foolib/foo.fr_CA
-    \li \c /opt/foolib/foo.de.qm
-    \li \c /opt/foolib/foo.de
     \li \c /opt/foolib/foo.fr.qm
     \li \c /opt/foolib/foo.fr
+    \li \c /opt/foolib/foo.de.qm
+    \li \c /opt/foolib/foo.de
     \li \c /opt/foolib/foo.qm
     \li \c /opt/foolib/foo.
     \li \c /opt/foolib/foo
@@ -836,7 +845,7 @@ bool QTranslatorPrivate::do_load(const uchar *data, qsizetype len, const QString
         }
 
         if (tag == QTranslatorPrivate::Language) {
-            language = QString::fromUtf8((const char*)data, blockLen);
+            language = QString::fromUtf8((const char *)data, blockLen);
         } else if (tag == QTranslatorPrivate::Contexts) {
             contextArray = data;
             contextLength = blockLen;
@@ -864,21 +873,18 @@ bool QTranslatorPrivate::do_load(const uchar *data, qsizetype len, const QString
     if (ok && !isValidNumerusRules(numerusRulesArray, numerusRulesLength))
         ok = false;
     if (ok) {
-        const int dependenciesCount = dependencies.count();
-        subTranslators.reserve(dependenciesCount);
-        for (int i = 0 ; i < dependenciesCount; ++i) {
-            QTranslator *translator = new QTranslator;
-            subTranslators.append(translator);
-            ok = translator->load(dependencies.at(i), directory);
+        subTranslators.reserve(std::size_t(dependencies.size()));
+        for (const QString &dependency : std::as_const(dependencies)) {
+            auto translator = std::make_unique<QTranslator>();
+            ok = translator->load(dependency, directory);
             if (!ok)
                 break;
+            subTranslators.push_back(std::move(translator));
         }
 
         // In case some dependencies fail to load, unload all the other ones too.
-        if (!ok) {
-            qDeleteAll(subTranslators);
+        if (!ok)
             subTranslators.clear();
-        }
     }
 
     if (!ok) {
@@ -908,12 +914,12 @@ static QString getMessage(const uchar *m, const uchar *end, const char *context,
         uchar tag = 0;
         if (m < end)
             tag = read8(m++);
-        switch((Tag)tag) {
+        switch ((Tag)tag) {
         case Tag_End:
             goto end;
         case Tag_Translation: {
             int len = read32(m);
-            if (len % 1)
+            if (len & 1)
                 return QString();
             m += 4;
             if (!numerus--) {
@@ -958,7 +964,7 @@ end:
     if (!tn)
         return QString();
     QString str(tn_length / 2, Qt::Uninitialized);
-    qFromBigEndian<ushort>(tn, str.length(), str.data());
+    qFromBigEndian<char16_t>(tn, str.size(), str.data());
     return str;
 }
 
@@ -1017,7 +1023,7 @@ QString QTranslatorPrivate::do_translate(const char *context, const char *source
         elfHash_finish(h);
 
         const uchar *start = offsetArray;
-        const uchar *end = start + ((numItems-1) << 3);
+        const uchar *end = start + ((numItems - 1) << 3);
         while (start <= end) {
             const uchar *middle = start + (((end - start) >> 4) << 3);
             uint hash = read32(middle);
@@ -1033,7 +1039,7 @@ QString QTranslatorPrivate::do_translate(const char *context, const char *source
 
         if (start <= end) {
             // go back on equal key
-            while (start != offsetArray && read32(start) == read32(start-8))
+            while (start != offsetArray && read32(start) == read32(start - 8))
                 start -= 8;
 
             while (start < offsetArray + offsetLength) {
@@ -1055,7 +1061,7 @@ QString QTranslatorPrivate::do_translate(const char *context, const char *source
     }
 
 searchDependencies:
-    for (QTranslator *translator : subTranslators) {
+    for (const auto &translator : subTranslators) {
         QString tn = translator->translate(context, sourceText, comment, n);
         if (!tn.isNull())
             return tn;
@@ -1083,7 +1089,6 @@ void QTranslatorPrivate::clear()
             delete [] unmapPointer;
     }
 
-    delete resource;
     resource = nullptr;
     unmapPointer = nullptr;
     unmapLength = 0;
@@ -1096,7 +1101,6 @@ void QTranslatorPrivate::clear()
     offsetLength = 0;
     numerusRulesLength = 0;
 
-    qDeleteAll(subTranslators);
     subTranslators.clear();
 
     language.clear();
@@ -1120,7 +1124,7 @@ void QTranslatorPrivate::clear()
     If \a n is not -1, it is used to choose an appropriate form for
     the translation (e.g. "%n file found" vs. "%n files found").
 
-    If you need to programatically insert translations into a
+    If you need to programmatically insert translations into a
     QTranslator, this function can be reimplemented.
 
     \sa load()
@@ -1140,7 +1144,7 @@ bool QTranslator::isEmpty() const
 {
     Q_D(const QTranslator);
     return !d->messageArray && !d->offsetArray && !d->contextArray
-            && d->subTranslators.isEmpty();
+            && d->subTranslators.empty();
 }
 
 /*!

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPDF_P_H
 #define QPDF_P_H
@@ -55,13 +19,15 @@
 
 #ifndef QT_NO_PDF
 
+#include "QtCore/qlist.h"
 #include "QtCore/qstring.h"
-#include "QtCore/qvector.h"
-#include "private/qstroker_p.h"
-#include "private/qpaintengine_p.h"
+#include "QtCore/quuid.h"
 #include "private/qfontengine_p.h"
 #include "private/qfontsubset_p.h"
+#include "private/qpaintengine_p.h"
+#include "private/qstroker_p.h"
 #include "qpagelayout.h"
+#include "qpdfoutputintent.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -86,6 +52,8 @@ namespace QPdf {
         ByteStream &operator <<(const ByteStream &src);
         ByteStream &operator <<(qreal val);
         ByteStream &operator <<(int val);
+        ByteStream &operator <<(uint val) { return (*this << int(val)); }
+        ByteStream &operator <<(qint64 val) { return (*this << int(val)); }
         ByteStream &operator <<(const QPointF &p);
         // Note that the stream may be invalidated by calls that insert data.
         QIODevice *stream();
@@ -93,10 +61,6 @@ namespace QPdf {
 
         static inline int maxMemorySize() { return 100000000; }
         static inline int chunkSize()     { return 10000000; }
-
-    protected:
-        void constructor_helper(QIODevice *dev);
-        void constructor_helper(QByteArray *ba);
 
     private:
         void prepareBuffer();
@@ -147,13 +111,13 @@ class QPdfPage : public QPdf::ByteStream
 public:
     QPdfPage();
 
-    QVector<uint> images;
-    QVector<uint> graphicStates;
-    QVector<uint> patterns;
-    QVector<uint> fonts;
-    QVector<uint> annotations;
+    QList<uint> images;
+    QList<uint> graphicStates;
+    QList<uint> patterns;
+    QList<uint> fonts;
+    QList<uint> annotations;
 
-    void streamImage(int w, int h, int object);
+    void streamImage(int w, int h, uint object);
 
     QSize pageSize;
 private:
@@ -172,11 +136,12 @@ public:
     {
         Version_1_4,
         Version_A1b,
-        Version_1_6
+        Version_1_6,
+        Version_X4,
     };
 
     QPdfEngine();
-    QPdfEngine(QPdfEnginePrivate &d);
+    explicit QPdfEngine(QPdfEnginePrivate &d);
     ~QPdfEngine() {}
 
     void setOutputFilename(const QString &filename);
@@ -190,6 +155,18 @@ public:
     QByteArray documentXmpMetadata() const;
 
     void addFileAttachment(const QString &fileName, const QByteArray &data, const QString &mimeType);
+
+    // keep in sync with QPdfWriter
+    enum class ColorModel
+    {
+        RGB,
+        Grayscale,
+        CMYK,
+        Auto,
+    };
+
+    ColorModel colorModel() const;
+    void setColorModel(ColorModel model);
 
     // reimplementations QPaintEngine
     bool begin(QPaintDevice *pdev) override;
@@ -265,14 +242,16 @@ public:
     QPointF brushOrigin;
     QBrush brush;
     QPen pen;
-    QVector<QPainterPath> clips;
+    QList<QPainterPath> clips;
     bool clipEnabled;
     bool allClipped;
     bool hasPen;
     bool hasBrush;
     bool simplePen;
+    bool needsTransform;
     qreal opacity;
     QPdfEngine::PdfVersion pdfVersion;
+    QPdfEngine::ColorModel colorModel;
 
     QHash<QFontEngine::FaceId, QFontSubset *> fonts;
 
@@ -286,9 +265,10 @@ public:
     QString outputFileName;
     QString title;
     QString creator;
+    QUuid documentId = QUuid::createUuid();
     bool embedFonts;
     int resolution;
-    bool grayscale;
+    QPdfOutputIntent outputIntent;
 
     // Page layout: size, orientation and margins
     QPageLayout m_pageLayout;
@@ -298,35 +278,59 @@ private:
     int generateGradientShader(const QGradient *gradient, const QTransform &matrix, bool alpha = false);
     int generateLinearGradientShader(const QLinearGradient *lg, const QTransform &matrix, bool alpha);
     int generateRadialGradientShader(const QRadialGradient *gradient, const QTransform &matrix, bool alpha);
-    int createShadingFunction(const QGradient *gradient, int from, int to, bool reflect, bool alpha);
+    struct ShadingFunctionResult
+    {
+        int function;
+        QPdfEngine::ColorModel colorModel;
+        void writeColorSpace(QPdf::ByteStream *stream) const;
+    };
+    ShadingFunctionResult createShadingFunction(const QGradient *gradient, int from, int to, bool reflect, bool alpha);
 
-    void writeInfo();
-    int writeXmpDcumentMetaData();
+    enum class ColorDomain {
+        Stroking,
+        NonStroking,
+        NonStrokingPattern,
+    };
+
+    QPdfEngine::ColorModel colorModelForColor(const QColor &color) const;
+    void writeColor(ColorDomain domain, const QColor &color);
+    void writeInfo(const QDateTime &date);
+    int writeXmpDocumentMetaData(const QDateTime &date);
     int writeOutputIntent();
     void writePageRoot();
+    void writeDestsRoot();
     void writeAttachmentRoot();
+    void writeNamesRoot();
     void writeFonts();
     void embedFont(QFontSubset *font);
     qreal calcUserUnit() const;
 
-    QVector<int> xrefPositions;
+    QList<int> xrefPositions;
     QDataStream* stream;
     int streampos;
 
-    int writeImage(const QByteArray &data, int width, int height, int depth,
+    enum class WriteImageOption
+    {
+        Monochrome,
+        Grayscale,
+        RGB,
+        CMYK,
+    };
+
+    int writeImage(const QByteArray &data, int width, int height, WriteImageOption option,
                    int maskObject, int softMaskObject, bool dct = false, bool isMono = false);
     void writePage();
 
     int addXrefEntry(int object, bool printostr = true);
-    void printString(const QString &string);
+    void printString(QStringView string);
     void xprintf(const char* fmt, ...);
-    inline void write(const QByteArray &data) {
+    inline void write(QByteArrayView data) {
         stream->writeRawData(data.constData(), data.size());
         streampos += data.size();
     }
 
     int writeCompressed(const char *src, int len);
-    inline int writeCompressed(const QByteArray &data) { return writeCompressed(data.constData(), data.length()); }
+    inline int writeCompressed(const QByteArray &data) { return writeCompressed(data.constData(), data.size()); }
     int writeCompressed(QIODevice *dev);
 
     struct AttachmentInfo
@@ -338,12 +342,24 @@ private:
         QString mimeType;
     };
 
+    struct DestInfo
+    {
+        QString anchor;
+        uint pageObj;
+        QPointF coords;
+    };
+
     // various PDF objects
-    int pageRoot, embeddedfilesRoot, namesRoot, catalog, info, graphicsState, patternColorSpace;
-    QVector<uint> pages;
+    int pageRoot, namesRoot, destsRoot, attachmentsRoot, catalog, info;
+    int graphicsState;
+    int patternColorSpaceRGB;
+    int patternColorSpaceGrayscale;
+    int patternColorSpaceCMYK;
+    QList<uint> pages;
     QHash<qint64, uint> imageCache;
     QHash<QPair<uint, uint>, uint > alphaCache;
-    QVector<AttachmentInfo> fileCache;
+    QList<DestInfo> destCache;
+    QList<AttachmentInfo> fileCache;
     QByteArray xmpDocumentMetadata;
 };
 

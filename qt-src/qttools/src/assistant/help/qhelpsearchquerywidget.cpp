@@ -1,75 +1,33 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhelpsearchquerywidget.h"
 
-#include <QtCore/QAbstractListModel>
-#include <QtCore/QObject>
-#include <QtCore/QStringList>
-#include <QtCore/QtGlobal>
-
-#include <QtWidgets/QCompleter>
-#include <QtWidgets/QLabel>
-#include <QtWidgets/QLayout>
-#include <QtWidgets/QLineEdit>
-#include <QtGui/QFocusEvent>
-#include <QtWidgets/QPushButton>
-#include <QtWidgets/QToolButton>
+#include <QtCore/qabstractitemmodel.h>
+#include <QtCore/qstringlist.h>
+#include <QtGui/qevent.h>
+#include <QtWidgets/qcompleter.h>
+#include <QtWidgets/qlabel.h>
+#include <QtWidgets/qlayout.h>
+#include <QtWidgets/qlineedit.h>
+#include <QtWidgets/qpushbutton.h>
+#include <QtWidgets/qtoolbutton.h>
 
 QT_BEGIN_NAMESPACE
 
 class QHelpSearchQueryWidgetPrivate : public QObject
 {
-    Q_OBJECT
-
-private:
+public:
     struct QueryHistory {
         explicit QueryHistory() : curQuery(-1) {}
         QStringList queries;
-        int curQuery;
+        int curQuery = 0;
     };
 
     class CompleterModel : public QAbstractListModel
     {
     public:
-        explicit CompleterModel(QObject *parent)
-          : QAbstractListModel(parent) {}
+        explicit CompleterModel(QObject *parent) : QAbstractListModel(parent) { }
 
         int rowCount(const QModelIndex &parent = QModelIndex()) const override
         {
@@ -78,9 +36,9 @@ private:
 
         QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override
         {
-            if (!index.isValid() || index.row() >= termList.count()||
+            if (!index.isValid() || index.row() >= termList.size()||
                 (role != Qt::EditRole && role != Qt::DisplayRole))
-                return QVariant();
+                return {};
             return termList.at(index.row());
         }
 
@@ -97,16 +55,7 @@ private:
         QStringList termList;
     };
 
-    QHelpSearchQueryWidgetPrivate()
-        : QObject()
-        , m_searchCompleter(new CompleterModel(this), this)
-    {
-    }
-
-    ~QHelpSearchQueryWidgetPrivate() override
-    {
-        // nothing todo
-    }
+    QHelpSearchQueryWidgetPrivate() : m_searchCompleter(new CompleterModel(this), this) {}
 
     void retranslate()
     {
@@ -136,7 +85,7 @@ private:
         // Otherwise, the respective button would be disabled.
         Q_ASSERT(m_queries.curQuery != maxOrMinIndex);
 
-        m_queries.curQuery = qBound(0, m_queries.curQuery + addend, m_queries.queries.count() - 1);
+        m_queries.curQuery = qBound(0, m_queries.curQuery + addend, m_queries.queries.size() - 1);
         const QString &query = m_queries.queries.at(m_queries.curQuery);
         m_lineEdit->setText(query);
 
@@ -148,11 +97,9 @@ private:
     void enableOrDisableToolButtons()
     {
         m_prevQueryButton->setEnabled(m_queries.curQuery > 0);
-        m_nextQueryButton->setEnabled(m_queries.curQuery
-            < m_queries.queries.size() - 1);
+        m_nextQueryButton->setEnabled(m_queries.curQuery < m_queries.queries.size() - 1);
     }
 
-private slots:
     bool eventFilter(QObject *ob, QEvent *event) override
     {
         if (event->type() == QEvent::KeyPress) {
@@ -167,7 +114,6 @@ private slots:
                     prevQuery();
                 return true;
             }
-
         }
         return QObject::eventFilter(ob, event);
     }
@@ -183,17 +129,10 @@ private slots:
 
     void nextQuery()
     {
-        nextOrPrevQuery(m_queries.queries.size() - 1, 1, m_nextQueryButton,
-                m_prevQueryButton);
+        nextOrPrevQuery(m_queries.queries.size() - 1, 1, m_nextQueryButton, m_prevQueryButton);
     }
 
-    void prevQuery()
-    {
-        nextOrPrevQuery(0, -1, m_prevQueryButton, m_nextQueryButton);
-    }
-
-private:
-    friend class QHelpSearchQueryWidget;
+    void prevQuery() { nextOrPrevQuery(0, -1, m_prevQueryButton, m_nextQueryButton); }
 
     QLabel *m_searchLabel = nullptr;
     QPushButton *m_searchButton = nullptr;
@@ -227,13 +166,12 @@ private:
 */
 QHelpSearchQueryWidget::QHelpSearchQueryWidget(QWidget *parent)
     : QWidget(parent)
+    , d(new QHelpSearchQueryWidgetPrivate)
 {
-    d = new QHelpSearchQueryWidgetPrivate();
-
     QVBoxLayout *vLayout = new QVBoxLayout(this);
-    vLayout->setContentsMargins(QMargins());
+    vLayout->setContentsMargins({});
 
-    QHBoxLayout* hBoxLayout = new QHBoxLayout();
+    QHBoxLayout* hBoxLayout = new QHBoxLayout;
     d->m_searchLabel = new QLabel(this);
     d->m_lineEdit = new QLineEdit(this);
     d->m_lineEdit->setClearButtonEnabled(true);
@@ -254,18 +192,13 @@ QHelpSearchQueryWidget::QHelpSearchQueryWidget(QWidget *parent)
 
     vLayout->addLayout(hBoxLayout);
 
-    connect(d->m_prevQueryButton, &QAbstractButton::clicked,
-            d, &QHelpSearchQueryWidgetPrivate::prevQuery);
-    connect(d->m_nextQueryButton, &QAbstractButton::clicked,
-            d, &QHelpSearchQueryWidgetPrivate::nextQuery);
-    connect(d->m_searchButton, &QAbstractButton::clicked,
-            this, &QHelpSearchQueryWidget::search);
-    connect(d->m_lineEdit, &QLineEdit::returnPressed,
-            this, &QHelpSearchQueryWidget::search);
+    connect(d->m_prevQueryButton, &QAbstractButton::clicked, this, [this] { d->prevQuery(); });
+    connect(d->m_nextQueryButton, &QAbstractButton::clicked, this, [this] { d->nextQuery(); });
+    connect(d->m_searchButton, &QAbstractButton::clicked, this, &QHelpSearchQueryWidget::search);
+    connect(d->m_lineEdit, &QLineEdit::returnPressed, this, &QHelpSearchQueryWidget::search);
 
     d->retranslate();
-    connect(this, &QHelpSearchQueryWidget::search,
-            d, &QHelpSearchQueryWidgetPrivate::searchRequested);
+    connect(this, &QHelpSearchQueryWidget::search, this, [this] { d->searchRequested(); });
     setCompactMode(true);
 }
 
@@ -294,19 +227,21 @@ void QHelpSearchQueryWidget::collapseExtendedSearch()
     // TODO: no extended search anymore, deprecate it?
 }
 
+#if QT_DEPRECATED_SINCE(5, 9)
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
 /*!
-    \obsolete
+    \deprecated
 
     Use searchInput() instead.
 */
 QList<QHelpSearchQuery> QHelpSearchQueryWidget::query() const
 {
-    return QList<QHelpSearchQuery>() << QHelpSearchQuery(QHelpSearchQuery::DEFAULT,
-           searchInput().split(QChar::Space, Qt::SkipEmptyParts));
+    return {{QHelpSearchQuery::DEFAULT, searchInput().split(QChar::Space, Qt::SkipEmptyParts)}};
 }
 
 /*!
-    \obsolete
+    \deprecated
 
     Use setSearchInput() instead.
 */
@@ -317,6 +252,8 @@ void QHelpSearchQueryWidget::setQuery(const QList<QHelpSearchQuery> &queryList)
 
     setSearchInput(queryList.first().wordList.join(QChar::Space));
 }
+QT_WARNING_POP
+#endif // QT_DEPRECATED_SINCE(5, 9)
 
 /*!
     \since 5.9
@@ -327,7 +264,7 @@ void QHelpSearchQueryWidget::setQuery(const QList<QHelpSearchQuery> &queryList)
 QString QHelpSearchQueryWidget::searchInput() const
 {
     if (d->m_queries.queries.isEmpty())
-        return QString();
+        return {};
     return d->m_queries.queries.last();
 }
 
@@ -343,9 +280,7 @@ QString QHelpSearchQueryWidget::searchInput() const
 void QHelpSearchQueryWidget::setSearchInput(const QString &searchInput)
 {
     d->m_lineEdit->clear();
-
     d->m_lineEdit->setText(searchInput);
-
     d->searchRequested();
 }
 
@@ -387,5 +322,3 @@ void QHelpSearchQueryWidget::changeEvent(QEvent *event)
 }
 
 QT_END_NAMESPACE
-
-#include "qhelpsearchquerywidget.moc"

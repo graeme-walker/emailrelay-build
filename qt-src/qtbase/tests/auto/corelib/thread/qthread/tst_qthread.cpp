@@ -1,32 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QTestEventLoop>
+#include <QSignalSpy>
+#include <QSemaphore>
+#include <QAbstractEventDispatcher>
+#if defined(Q_OS_WIN32)
+#include <QWinEventNotifier>
+#endif
 
 #include <qcoreapplication.h>
 #include <qelapsedtimer.h>
@@ -36,12 +18,15 @@
 #include <qwaitcondition.h>
 #include <qdebug.h>
 #include <qmetaobject.h>
+#include <qscopeguard.h>
+#include <private/qobject_p.h>
+#include <private/qthread_p.h>
 
 #ifdef Q_OS_UNIX
 #include <pthread.h>
 #endif
 #if defined(Q_OS_WIN)
-#include <windows.h>
+#include <qt_windows.h>
 #if defined(Q_OS_WIN32)
 #include <process.h>
 #endif
@@ -51,7 +36,9 @@
 #include <exception>
 #endif
 
-#include "emulationdetector.h"
+#include <QtTest/private/qemulationdetector_p.h>
+
+using namespace std::chrono_literals;
 
 class tst_QThread : public QObject
 {
@@ -66,6 +53,7 @@ private slots:
     void setStackSize();
     void exit();
     void start();
+    void startSlotUsedInStringBasedLookups();
     void terminate();
     void quit();
     void started();
@@ -85,6 +73,7 @@ private slots:
     void adoptedThreadExecFinished();
     void adoptMultipleThreads();
     void adoptMultipleThreadsOverlap();
+    void adoptedThreadBindingStatus();
 
     void exitAndStart();
     void exitAndExec();
@@ -92,6 +81,8 @@ private slots:
     void connectThreadFinishedSignalToObjectDeleteLaterSlot();
     void wait2();
     void wait3_slowDestructor();
+    void multiThreadWait_data();
+    void multiThreadWait();
     void destroyFinishRace();
     void startFinishRace();
     void startAndQuitCustomEventLoop();
@@ -106,6 +97,14 @@ private slots:
     void quitLock();
 
     void create();
+    void createDestruction();
+    void threadIdReuse();
+
+    void terminateAndPrematureDestruction();
+    void terminateAndDoubleDestruction();
+    void terminateSelfStressTest();
+
+    void bindingListCleanupAfterDelete();
 };
 
 enum { one_minute = 60 * 1000, five_minutes = 5 * one_minute };
@@ -141,11 +140,13 @@ class Current_Thread : public QThread
 public:
     Qt::HANDLE id;
     QThread *thread;
+    bool runCalledInCurrentThread = false;
 
-    void run()
+    void run() override
     {
         id = QThread::currentThreadId();
         thread = QThread::currentThread();
+        runCalledInCurrentThread = thread->isCurrentThread();
     }
 };
 
@@ -155,7 +156,7 @@ public:
     QMutex mutex;
     QWaitCondition cond;
 
-    void run()
+    void run() override
     {
         QMutexLocker locker(&mutex);
         cond.wakeOne();
@@ -180,7 +181,7 @@ public:
     int code;
     int result;
 
-    void run()
+    void run() override
     {
         Simple_Thread::run();
         if (object) {
@@ -195,7 +196,7 @@ public:
 class Terminate_Thread : public Simple_Thread
 {
 public:
-    void run()
+    void run() override
     {
         setTerminationEnabled(false);
         {
@@ -224,7 +225,7 @@ public:
     Quit_Object *object;
     int result;
 
-    void run()
+    void run() override
     {
         Simple_Thread::run();
         if (object) {
@@ -241,28 +242,30 @@ public:
     enum SleepType { Second, Millisecond, Microsecond };
 
     SleepType sleepType;
-    int interval;
+    ulong interval;
 
-    int elapsed; // result, in *MILLISECONDS*
+    qint64 elapsed; // result, in *MILLISECONDS*
 
-    void run()
+    void run() override
     {
         QMutexLocker locker(&mutex);
 
         elapsed = 0;
         QElapsedTimer timer;
         timer.start();
+        std::chrono::nanoseconds dur{0};
         switch (sleepType) {
         case Second:
-            sleep(interval);
+            dur = std::chrono::seconds{interval};
             break;
         case Millisecond:
-            msleep(interval);
+            dur = std::chrono::milliseconds{interval};
             break;
         case Microsecond:
-            usleep(interval);
+            dur = std::chrono::microseconds{interval};
             break;
         }
+        sleep(dur);
         elapsed = timer.elapsed();
 
         cond.wakeOne();
@@ -272,25 +275,30 @@ public:
 void tst_QThread::currentThreadId()
 {
     Current_Thread thread;
-    thread.id = 0;
-    thread.thread = 0;
+    thread.id = nullptr;
+    thread.thread = nullptr;
     thread.start();
     QVERIFY(thread.wait(five_minutes));
-    QVERIFY(thread.id != 0);
+    QVERIFY(thread.id != nullptr);
     QVERIFY(thread.id != QThread::currentThreadId());
+    QVERIFY(!thread.isCurrentThread());
+    QVERIFY(!thread.thread->isCurrentThread());
+    QVERIFY(thread.QThread::thread()->isCurrentThread());
+    QVERIFY(thread.runCalledInCurrentThread);
+    QVERIFY(qApp->thread()->isCurrentThread());
 }
 
 void tst_QThread::currentThread()
 {
-    QVERIFY(QThread::currentThread() != 0);
+    QVERIFY(QThread::currentThread() != nullptr);
     QCOMPARE(QThread::currentThread(), thread());
 
     Current_Thread thread;
-    thread.id = 0;
-    thread.thread = 0;
+    thread.id = nullptr;
+    thread.thread = nullptr;
     thread.start();
     QVERIFY(thread.wait(five_minutes));
-    QCOMPARE(thread.thread, (QThread *)&thread);
+    QCOMPARE(thread.thread, static_cast<QThread *>(&thread));
 }
 
 void tst_QThread::idealThreadCount()
@@ -429,7 +437,7 @@ void tst_QThread::exit()
     delete thread.object;
 
     Exit_Thread thread2;
-    thread2.object = 0;
+    thread2.object = nullptr;
     thread2.code = 53;
     thread2.result = 0;
     QMutexLocker locker2(&thread2.mutex);
@@ -469,11 +477,65 @@ void tst_QThread::start()
     }
 }
 
+class QThreadStarter : public QObject
+{
+    Q_OBJECT
+public:
+    using QObject::QObject;
+Q_SIGNALS:
+    void start(QThread::Priority);
+};
+
+class QThreadSelfStarter : public QThread
+{
+    Q_OBJECT
+public:
+    using QThread::QThread;
+
+    void check()
+    {
+        QVERIFY(connect(this, SIGNAL(starting(Priority)),
+                        this, SLOT(start(Priority))));
+        QVERIFY(QMetaObject::invokeMethod(this, "start", Q_ARG(Priority, IdlePriority)));
+    }
+
+Q_SIGNALS:
+    void starting(Priority);
+};
+
+void tst_QThread::startSlotUsedInStringBasedLookups()
+{
+    // QTBUG-124723
+
+    QThread thread;
+    {
+        QThreadStarter starter;
+        QVERIFY(QObject::connect(&starter, SIGNAL(start(QThread::Priority)),
+                                 &thread, SLOT(start(QThread::Priority))));
+    }
+    {
+        QThreadSelfStarter selfStarter;
+        selfStarter.check();
+        if (QTest::currentTestFailed())
+            return;
+        selfStarter.exit();
+        selfStarter.wait(30s);
+    }
+    QVERIFY(QMetaObject::invokeMethod(&thread, "start",
+                                      Q_ARG(QThread::Priority, QThread::IdlePriority)));
+    thread.exit();
+    thread.wait(30s);
+}
+
 void tst_QThread::terminate()
 {
-#if defined(Q_OS_WINRT) || defined(Q_OS_ANDROID)
-    QSKIP("Thread termination is not supported on WinRT or Android.");
+#if defined(Q_OS_ANDROID)
+    QSKIP("Thread termination is not supported on Android.");
 #endif
+#if defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)
+    QSKIP("Thread termination might result in stack underflow address sanitizer errors.");
+#endif
+
     Terminate_Thread thread;
     {
         QMutexLocker locker(&thread.mutex);
@@ -505,7 +567,7 @@ void tst_QThread::quit()
     delete thread.object;
 
     Quit_Thread thread2;
-    thread2.object = 0;
+    thread2.object = nullptr;
     thread2.result = -1;
     QMutexLocker locker2(&thread2.mutex);
     thread2.start();
@@ -537,9 +599,13 @@ void tst_QThread::finished()
 
 void tst_QThread::terminated()
 {
-#if defined(Q_OS_WINRT) || defined(Q_OS_ANDROID)
-    QSKIP("Thread termination is not supported on WinRT or Android.");
+#if defined(Q_OS_ANDROID)
+    QSKIP("Thread termination is not supported on Android.");
 #endif
+#if defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)
+    QSKIP("Thread termination might result in stack underflow address sanitizer errors.");
+#endif
+
     SignalRecorder recorder;
     Terminate_Thread thread;
     connect(&thread, SIGNAL(finished()), &recorder, SLOT(slot()), Qt::DirectConnection);
@@ -563,7 +629,7 @@ void tst_QThread::exec()
 
         MultipleExecThread() : res1(-2), res2(-2) { }
 
-        void run()
+        void run() override
         {
             {
                 Exit_Object o;
@@ -646,9 +712,9 @@ void noop(void*) { }
 class NativeThreadWrapper
 {
 public:
-    NativeThreadWrapper() : qthread(0), waitForStop(false) {}
-    void start(FunctionPointer functionPointer = noop, void *data = 0);
-    void startAndWait(FunctionPointer functionPointer = noop, void *data = 0);
+    NativeThreadWrapper() : qthread(nullptr), waitForStop(false) {}
+    void start(FunctionPointer functionPointer = noop, void *data = nullptr);
+    void startAndWait(FunctionPointer functionPointer = noop, void *data = nullptr);
     void join();
     void setWaitForStop() { waitForStop = true; }
     void stop();
@@ -672,10 +738,8 @@ void NativeThreadWrapper::start(FunctionPointer functionPointer, void *data)
     this->functionPointer = functionPointer;
     this->data = data;
 #if defined Q_OS_UNIX
-    const int state = pthread_create(&nativeThreadHandle, 0, NativeThreadWrapper::runUnix, this);
-    Q_UNUSED(state);
-#elif defined(Q_OS_WINRT)
-        nativeThreadHandle = CreateThread(NULL, 0 , (LPTHREAD_START_ROUTINE)NativeThreadWrapper::runWin , this, 0, NULL);
+    const int state = pthread_create(&nativeThreadHandle, nullptr, NativeThreadWrapper::runUnix, this);
+    Q_UNUSED(state)
 #elif defined Q_OS_WIN
     unsigned thrdid = 0;
     nativeThreadHandle = (Qt::HANDLE) _beginthreadex(NULL, 0, NativeThreadWrapper::runWin, this, 0, &thrdid);
@@ -692,7 +756,7 @@ void NativeThreadWrapper::startAndWait(FunctionPointer functionPointer, void *da
 void NativeThreadWrapper::join()
 {
 #if defined Q_OS_UNIX
-    pthread_join(nativeThreadHandle, 0);
+    pthread_join(nativeThreadHandle, nullptr);
 #elif defined Q_OS_WIN
     WaitForSingleObjectEx(nativeThreadHandle, INFINITE, FALSE);
     CloseHandle(nativeThreadHandle);
@@ -722,7 +786,7 @@ void *NativeThreadWrapper::runUnix(void *that)
             nativeThreadWrapper->stopCondition.wait(lock.mutex());
     }
 
-    return 0;
+    return nullptr;
 }
 
 unsigned WIN_FIX_STDCALL NativeThreadWrapper::runWin(void *data)
@@ -738,12 +802,12 @@ void NativeThreadWrapper::stop()
     stopCondition.wakeOne();
 }
 
-bool threadAdoptedOk = false;
-QThread *mainThread;
+static bool threadAdoptedOk = false;
+static QThread *mainThread;
 void testNativeThreadAdoption(void *)
 {
-    threadAdoptedOk = (QThread::currentThreadId() != 0
-                       && QThread::currentThread() != 0
+    threadAdoptedOk = (QThread::currentThreadId() != nullptr
+                       && QThread::currentThread() != nullptr
                        && QThread::currentThread() != mainThread);
 }
 void tst_QThread::nativeThreadAdoption()
@@ -771,14 +835,15 @@ void adoptedThreadAffinityFunction(void *arg)
 
 void tst_QThread::adoptedThreadAffinity()
 {
-    QThread *affinity[2] = { 0, 0 };
+    QThread *affinity[2] = { nullptr, nullptr };
 
     NativeThreadWrapper thread;
     thread.startAndWait(adoptedThreadAffinityFunction, affinity);
     thread.join();
 
-    // adopted thread should have affinity to itself
-    QCOMPARE(affinity[0], affinity[1]);
+    // adopted thread (deleted) should have affinity to itself
+    QCOMPARE(static_cast<const void *>(affinity[0]),
+             static_cast<const void *>(affinity[1]));
 }
 
 void tst_QThread::adoptedThreadSetPriority()
@@ -885,7 +950,7 @@ void tst_QThread::adoptMultipleThreads()
 #else
     const int numThreads = 5;
 #endif
-    QVector<NativeThreadWrapper*> nativeThreads;
+    QList<NativeThreadWrapper*> nativeThreads;
 
     SignalRecorder recorder;
 
@@ -917,7 +982,7 @@ void tst_QThread::adoptMultipleThreadsOverlap()
 #else
     const int numThreads = 5;
 #endif
-    QVector<NativeThreadWrapper*> nativeThreads;
+    QList<NativeThreadWrapper*> nativeThreads;
 
     SignalRecorder recorder;
 
@@ -946,10 +1011,24 @@ void tst_QThread::adoptMultipleThreadsOverlap()
     QCOMPARE(recorder.activationCount.loadRelaxed(), numThreads);
 }
 
+void tst_QThread::adoptedThreadBindingStatus()
+{
+    NativeThreadWrapper nativeThread;
+    nativeThread.setWaitForStop();
+
+    nativeThread.startAndWait();
+    QVERIFY(nativeThread.qthread);
+    auto privThread = static_cast<QThreadPrivate *>(QObjectPrivate::get(nativeThread.qthread));
+    QVERIFY(privThread->m_statusOrPendingObjects.bindingStatus());
+
+    nativeThread.stop();
+    nativeThread.join();
+}
+
 // Disconnects on WinCE
 void tst_QThread::stressTest()
 {
-    if (EmulationDetector::isRunningArmOnX86())
+    if (QTestPrivate::isRunningArmOnX86())
         QSKIP("Qemu uses too much memory for each thread. Test would run out of memory.");
 
     QElapsedTimer timer;
@@ -1004,7 +1083,8 @@ void tst_QThread::exitAndExec()
         QSemaphore sem1;
         QSemaphore sem2;
         volatile int value;
-        void run() {
+        void run() override
+        {
             sem1.acquire();
             value = exec();  //First entrence
             sem2.release();
@@ -1055,7 +1135,7 @@ public:
     QWaitCondition cond1;
     QWaitCondition cond2;
 
-    void run()
+    void run() override
     {
         QMutexLocker locker(&mutex);
         cond1.wait(&mutex);
@@ -1082,8 +1162,8 @@ void tst_QThread::wait2()
              qPrintable(msgElapsed(elapsed)));
 }
 
-
-class SlowSlotObject : public QObject {
+class SlowSlotObject : public QObject
+{
     Q_OBJECT
 public:
     QMutex mutex;
@@ -1099,28 +1179,136 @@ void tst_QThread::wait3_slowDestructor()
 {
     SlowSlotObject slow;
     QThread thread;
-    QObject::connect(&thread, SIGNAL(finished()), &slow, SLOT(slowSlot()), Qt::DirectConnection);
-
-    enum { WaitTime = 1800 };
+    QObject::connect(&thread, &QThread::finished,
+                     &slow, &SlowSlotObject::slowSlot, Qt::DirectConnection);
     QElapsedTimer timer;
 
     thread.start();
     thread.quit();
-    //the quit function will cause the thread to finish and enter the slowSlot that is blocking
+    // Calling quit() will cause the thread to finish and enter the blocking slowSlot().
 
     timer.start();
-    QVERIFY(!thread.wait(Waiting_Thread::WaitTime));
-    qint64 elapsed = timer.elapsed();
-    QVERIFY2(elapsed >= Waiting_Thread::WaitTime - 1, qPrintable(QString::fromLatin1("elapsed: %1").arg(elapsed)));
-
-    slow.cond.wakeOne();
-    //now the thread should finish quickly
+    {
+        // Ensure thread finishes quickly after the checks - regardless of success:
+        QScopeGuard wakeSlow([&slow]() -> void { slow.cond.wakeOne(); });
+        QVERIFY(!thread.wait(Waiting_Thread::WaitTime));
+        const qint64 elapsed = timer.elapsed();
+        QVERIFY2(elapsed >= Waiting_Thread::WaitTime - 1,
+                 qPrintable(QString::fromLatin1("elapsed: %1").arg(elapsed)));
+    }
     QVERIFY(thread.wait(one_minute));
+}
+
+void tst_QThread::multiThreadWait_data()
+{
+    QTest::addColumn<QList<int>>("deadlines");
+    auto addRow = [](auto &&... list) {
+        static_assert(sizeof...(list) <= 5,
+                "Limited by std::array in tst_QThread::multiThreadWait()");
+        QList<int> deadlines = { std::move(list)... };
+        QByteArrayList name;
+        for (int value : deadlines) {
+            if (value < 0)
+                name.append("Forever");
+            else
+                name.append(QByteArray::number(value));
+        }
+        QTest::newRow(name.join('-').constData()) << deadlines;
+    };
+
+    addRow(0, 0);
+    addRow(0, 0, 0, 0, 0);
+    addRow(-1, -1);
+    addRow(-1, -1, -1, -1, -1);
+
+    // this is probably too fast and the Forever gets in too quickly
+    addRow(0, -1);
+
+    addRow(100, -1);
+    addRow(100, 200, -1);
+    addRow(200, 100, -1);
+    addRow(-1, 100, 100, 100);
+}
+
+void tst_QThread::multiThreadWait()
+{
+    class TargetThread : public QThread {
+    public:
+        QSemaphore sync;
+        void run() override
+        {
+            sync.acquire();
+            msleep(Waiting_Thread::WaitTime);
+        }
+    };
+
+    class WaiterThread : public QThread {
+    public:
+        QSemaphore *startSema, *endSema;
+        QThread *target;
+        QDeadlineTimer deadline;
+        QElapsedTimer::Duration waitedDuration = {};
+        int result = -1;
+        void run() override
+        {
+            QElapsedTimer elapsed;
+            elapsed.start();
+            startSema->acquire();
+            result = target->wait(deadline);
+            waitedDuration = elapsed.durationElapsed();
+            endSema->release();
+        }
+    };
+
+    QFETCH(QList<int>, deadlines);
+    TargetThread target;
+    target.start();
+
+    QSemaphore startSema, endSema;
+    std::array<std::unique_ptr<WaiterThread>, 5> threads;   // 5 threads is enough
+    for (int i = 0; i < deadlines.size(); ++i) {
+        threads[i] = std::make_unique<WaiterThread>();
+        threads[i]->startSema = &startSema;
+        threads[i]->endSema = &endSema;
+        threads[i]->target = &target;
+        threads[i]->deadline = QDeadlineTimer(deadlines.at(i));
+        threads[i]->start();
+    }
+
+    // release the waiting threads first, then the target thread they're waiting on
+    startSema.release(deadlines.size());
+    target.sync.release();
+
+    // wait for our waiting threads on a semaphore instead of QThread::wait()
+    // to make debugging easier
+    QVERIFY(endSema.tryAcquire(deadlines.size(), QDeadlineTimer::Forever));
+
+    // wait for all the threads to end, before QVERIFY/QCOMPAREs
+    for (int i = 0; i < deadlines.size(); ++i)
+        threads[i]->wait();
+    target.wait();
+
+    std::chrono::milliseconds expectedDuration{Waiting_Thread::WaitTime};
+    for (int i = 0; i < deadlines.size(); ++i) {
+        auto printI = qScopeGuard([i] { qWarning("i = %i", i); });
+        if (unsigned(deadlines.at(i)) < Waiting_Thread::WaitTime / 2) {
+            QCOMPARE(threads[i]->result, false);
+            QCOMPARE_LT(threads[i]->waitedDuration, expectedDuration);
+        } else if (unsigned(deadlines.at(i)) > Waiting_Thread::WaitTime * 3 / 2) {
+            QCOMPARE(threads[i]->result, true);
+            QCOMPARE_GE(threads[i]->waitedDuration, expectedDuration);
+        } else {
+            qWarning("Wait time %i (index %i) is too close to the target time; test would be flaky",
+                     deadlines.at(i), i);
+        }
+        printI.dismiss();
+        threads[i].reset();
+    }
 }
 
 void tst_QThread::destroyFinishRace()
 {
-    class Thread : public QThread { void run() {} };
+    class Thread : public QThread { void run() override {} };
     for (int i = 0; i < 15; i++) {
         Thread *thr = new Thread;
         connect(thr, SIGNAL(finished()), thr, SLOT(deleteLater()));
@@ -1140,9 +1328,10 @@ void tst_QThread::startFinishRace()
     class Thread : public QThread {
     public:
         Thread() : i (50) {}
-        void run() {
+        void run() override
+        {
             i--;
-            if (!i) disconnect(this, SIGNAL(finished()), 0, 0);
+            if (!i) disconnect(this, SIGNAL(finished()), nullptr, nullptr);
         }
         int i;
     };
@@ -1163,7 +1352,7 @@ void tst_QThread::startFinishRace()
 void tst_QThread::startAndQuitCustomEventLoop()
 {
     struct Thread : QThread {
-        void run() { QEventLoop().exec(); }
+        void run() override { QEventLoop().exec(); }
     };
 
    for (int i = 0; i < 5; i++) {
@@ -1208,32 +1397,33 @@ void tst_QThread::isRunningInFinished()
     }
 }
 
-QT_BEGIN_NAMESPACE
-Q_CORE_EXPORT uint qGlobalPostedEventsCount();
-QT_END_NAMESPACE
-
-class DummyEventDispatcher : public QAbstractEventDispatcher {
+class DummyEventDispatcher : public QAbstractEventDispatcherV2
+{
+    Q_OBJECT
 public:
-    DummyEventDispatcher() : QAbstractEventDispatcher() {}
-    bool processEvents(QEventLoop::ProcessEventsFlags) {
+    bool processEvents(QEventLoop::ProcessEventsFlags) override {
         visited.storeRelaxed(true);
         emit awake();
         QCoreApplication::sendPostedEvents();
         return false;
     }
-    bool hasPendingEvents() {
-        return qGlobalPostedEventsCount();
+    void registerSocketNotifier(QSocketNotifier *) override {}
+    void unregisterSocketNotifier(QSocketNotifier *) override {}
+    void registerTimer(Qt::TimerId id, Duration, Qt::TimerType, QObject *) override
+    {
+        if (registeredTimerId <= Qt::TimerId::Invalid)
+            registeredTimerId = id;
     }
-    void registerSocketNotifier(QSocketNotifier *) {}
-    void unregisterSocketNotifier(QSocketNotifier *) {}
-    void registerTimer(int, int, Qt::TimerType, QObject *) {}
-    bool unregisterTimer(int ) { return false; }
-    bool unregisterTimers(QObject *) { return false; }
-    QList<TimerInfo> registeredTimers(QObject *) const { return QList<TimerInfo>(); }
-    int remainingTime(int) { return 0; }
-    void wakeUp() {}
-    void interrupt() {}
-    void flush() {}
+    bool unregisterTimer(Qt::TimerId id) override
+    {
+        Qt::TimerId oldId = std::exchange(registeredTimerId, Qt::TimerId::Invalid);
+        return id == oldId;
+    }
+    bool unregisterTimers(QObject *) override { return false; }
+    QList<TimerInfoV2> timersForObject(QObject *) const override { return {}; }
+    Duration remainingTime(Qt::TimerId) const override { return 0s; }
+    void wakeUp() override {}
+    void interrupt() override {}
 
 #ifdef Q_OS_WIN
     bool registerEventNotifier(QWinEventNotifier *) { return false; }
@@ -1241,25 +1431,47 @@ public:
 #endif
 
     QBasicAtomicInt visited; // bool
+    Qt::TimerId registeredTimerId = Qt::TimerId::Invalid;
 };
 
-class ThreadObj : public QObject
+struct ThreadLocalContent
 {
-    Q_OBJECT
-public slots:
-    void visit() {
-        emit visited();
+    static inline const QMetaObject *atStart;
+    static inline const QMetaObject *atEnd;
+    QSemaphore *sem;
+    QBasicTimer timer;
+
+    ThreadLocalContent(QObject *obj, QSemaphore *sem)
+        : sem(sem)
+    {
+        ensureEventDispatcher();
+        atStart = QAbstractEventDispatcher::instance()->metaObject();
+        timer.start(10s, obj);
     }
-signals:
-    void visited();
+    ~ThreadLocalContent()
+    {
+        ensureEventDispatcher();
+        atEnd = QAbstractEventDispatcher::instance()->metaObject();
+        timer.stop();
+        sem->release();
+    }
+
+    void ensureEventDispatcher()
+    {
+        // QEventLoop's constructor has a call to QThreadData::ensureEventDispatcher()
+        QEventLoop dummy;
+    }
 };
 
 void tst_QThread::customEventDispatcher()
 {
+    ThreadLocalContent::atStart = ThreadLocalContent::atEnd = nullptr;
+
     QThread thr;
     // there should be no ED yet
     QVERIFY(!thr.eventDispatcher());
     DummyEventDispatcher *ed = new DummyEventDispatcher;
+    QPointer<DummyEventDispatcher> weak_ed(ed);
     thr.setEventDispatcher(ed);
     // the new ED should be set
     QCOMPARE(thr.eventDispatcher(), ed);
@@ -1268,32 +1480,47 @@ void tst_QThread::customEventDispatcher()
     thr.start();
     // start() should not overwrite the ED
     QCOMPARE(thr.eventDispatcher(), ed);
+    QVERIFY(!weak_ed.isNull());
 
-    ThreadObj obj;
+    QObject obj;
     obj.moveToThread(&thr);
     // move was successful?
     QCOMPARE(obj.thread(), &thr);
-    QEventLoop loop;
-    connect(&obj, SIGNAL(visited()), &loop, SLOT(quit()), Qt::QueuedConnection);
-    QMetaObject::invokeMethod(&obj, "visit", Qt::QueuedConnection);
-    loop.exec();
+
+    QSemaphore threadLocalSemaphore;
+    QMetaObject::invokeMethod(&obj, [&]() {
+#if !QT_CONFIG(broken_threadlocal_dtors)
+        // On Windows, the thread_locals are unsequenced between DLLs, so this
+        // could run after QThreadPrivate::finish().
+        // On Unix, QThread doesn't use thread_local if support is broken.
+        static thread_local
+#endif
+                ThreadLocalContent d(&obj, &threadLocalSemaphore);
+    }, Qt::BlockingQueuedConnection);
+
     // test that the ED has really been used
     QVERIFY(ed->visited.loadRelaxed());
+    // and it's ours
+    QCOMPARE(ThreadLocalContent::atStart->className(), "DummyEventDispatcher");
 
-    QPointer<DummyEventDispatcher> weak_ed(ed);
     QVERIFY(!weak_ed.isNull());
     thr.quit();
+
     // wait for thread to be stopped
     QVERIFY(thr.wait(30000));
+    QVERIFY(threadLocalSemaphore.tryAcquire(1, 30s));
+
     // test that ED has been deleted
     QVERIFY(weak_ed.isNull());
+    // test that ED was ours
+    QCOMPARE(ThreadLocalContent::atEnd->className(), "DummyEventDispatcher");
 }
 
 class Job : public QObject
 {
     Q_OBJECT
 public:
-    Job(QThread *thread, int deleteDelay, bool *flag, QObject *parent = 0)
+    Job(QThread *thread, int deleteDelay, bool *flag, QObject *parent = nullptr)
       : QObject(parent), quitLocker(thread), exitThreadCalled(*flag)
     {
         exitThreadCalled = false;
@@ -1342,9 +1569,6 @@ void tst_QThread::quitLock()
 
 void tst_QThread::create()
 {
-#if !QT_CONFIG(cxx11_future)
-    QSKIP("This test requires QThread::create");
-#else
     {
         const auto &function = [](){};
         QScopedPointer<QThread> thread(QThread::create(function));
@@ -1451,7 +1675,6 @@ void tst_QThread::create()
             QCOMPARE(i, 42);
         }
 
-#if defined(__cpp_init_captures) && __cpp_init_captures >= 201304
         {
             int i = 0;
             MoveOnlyValue mo(123);
@@ -1463,9 +1686,7 @@ void tst_QThread::create()
             QVERIFY(thread->wait());
             QCOMPARE(i, 123);
         }
-#endif // __cpp_init_captures
 
-#ifdef QTHREAD_HAS_VARIADIC_CREATE
         {
             int i = 0;
             const auto &function = [&i](MoveOnlyValue &&mo) { i = mo.v; };
@@ -1488,10 +1709,8 @@ void tst_QThread::create()
             QVERIFY(thread->wait());
             QCOMPARE(i, -1);
         }
-#endif // QTHREAD_HAS_VARIADIC_CREATE
     }
 
-#ifdef QTHREAD_HAS_VARIADIC_CREATE
     {
         // simple parameter passing
         int i = 0;
@@ -1585,12 +1804,70 @@ void tst_QThread::create()
         const auto &function = [](const ThrowWhenCopying &){};
         QScopedPointer<QThread> thread;
         ThrowWhenCopying t;
-        QVERIFY_EXCEPTION_THROWN(thread.reset(QThread::create(function, t)), ThreadException);
+        QVERIFY_THROWS_EXCEPTION(ThreadException, thread.reset(QThread::create(function, t)));
         QVERIFY(!thread);
     }
 #endif // QT_NO_EXCEPTIONS
-#endif // QTHREAD_HAS_VARIADIC_CREATE
-#endif // QT_CONFIG(cxx11_future)
+}
+
+void tst_QThread::createDestruction()
+{
+    for (int delay : {0, 10, 20}) {
+        auto checkForInterruptions = []() {
+            for (;;) {
+                if (QThread::currentThread()->isInterruptionRequested())
+                    return;
+                QThread::sleep(1ms);
+            }
+        };
+
+        QScopedPointer<QThread> thread(QThread::create(checkForInterruptions));
+        QSignalSpy finishedSpy(thread.get(), &QThread::finished);
+        QVERIFY(finishedSpy.isValid());
+
+        thread->start();
+        if (delay)
+            QThread::msleep(delay);
+        thread.reset();
+
+        QCOMPARE(finishedSpy.size(), 1);
+    }
+
+    for (int delay : {0, 10, 20}) {
+        auto runEventLoop = []() {
+            QEventLoop loop;
+            loop.exec();
+        };
+
+        QScopedPointer<QThread> thread(QThread::create(runEventLoop));
+        QSignalSpy finishedSpy(thread.get(), &QThread::finished);
+        QVERIFY(finishedSpy.isValid());
+
+        thread->start();
+        if (delay)
+            QThread::msleep(delay);
+        thread.reset();
+
+        QCOMPARE(finishedSpy.size(), 1);
+    }
+
+    for (int delay : {0, 10, 20}) {
+        auto runEventLoop = [delay]() {
+            if (delay)
+                QThread::msleep(delay);
+            QEventLoop loop;
+            loop.exec();
+        };
+
+        QScopedPointer<QThread> thread(QThread::create(runEventLoop));
+        QSignalSpy finishedSpy(thread.get(), &QThread::finished);
+        QVERIFY(finishedSpy.isValid());
+
+        thread->start();
+        thread.reset();
+
+        QCOMPARE(finishedSpy.size(), 1);
+    }
 }
 
 class StopableJob : public QObject
@@ -1629,6 +1906,202 @@ void tst_QThread::requestTermination()
     sem.acquire();
     QVERIFY(thread.wait(1000));
     QVERIFY(!thread.isInterruptionRequested());
+}
+
+/*
+    This is a regression test for QTBUG-96846.
+
+    Incorrect system thread ID cleanup can cause QThread::wait() to report that
+    a thread is trying to wait for itself.
+*/
+void tst_QThread::threadIdReuse()
+{
+    // It's important that those thread ID's are not accessed concurrently
+    Qt::HANDLE threadId1;
+
+    auto thread1Fn = [&threadId1]() -> void { threadId1 = QThread::currentThreadId(); };
+    QScopedPointer<QThread> thread1(QThread::create(thread1Fn));
+    thread1->start();
+    QVERIFY(thread1->wait());
+
+    // If the system thread allocated for thread1 is destroyed before thread2 is started,
+    // at least on some versions of Linux the system thread ID for thread2 would be the
+    // same as one that was used for thread1.
+
+    // The system thread may be alive for some time after returning from QThread::wait()
+    // because the implementation is using detachable threads, so some additional time is
+    // required for the system thread to terminate. Not waiting long enough here would result
+    // in a new system thread ID being allocated for thread2 and this test passing even without
+    // a fix for QTBUG-96846.
+    bool threadIdReused = false;
+
+    for (int i = 0; i < 42; i++) {
+        QThread::sleep(1ms);
+
+        Qt::HANDLE threadId2;
+        bool waitOk = false;
+
+        auto waitForThread1 = [&thread1, &threadId2, &waitOk]() -> void {
+            threadId2 = QThread::currentThreadId();
+            waitOk = thread1->wait();
+        };
+
+        QScopedPointer<QThread> thread2(QThread::create(waitForThread1));
+        thread2->start();
+        QVERIFY(thread2->wait());
+        QVERIFY(waitOk);
+
+        if (threadId1 == threadId2) {
+            qDebug("Thread ID reused at iteration %d", i);
+            threadIdReused = true;
+            break;
+        }
+    }
+
+    if (!threadIdReused) {
+        QSKIP("Thread ID was not reused");
+    }
+}
+
+class WaitToRun_Thread : public QThread
+{
+    Q_OBJECT
+public:
+    void run() override
+    {
+        emit running();
+        QThread::exec();
+    }
+
+Q_SIGNALS:
+    void running();
+};
+
+
+void tst_QThread::terminateAndPrematureDestruction()
+{
+#if defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)
+    QSKIP("Thread termination might result in stack underflow address sanitizer errors.");
+#endif
+
+    WaitToRun_Thread thread;
+    QSignalSpy spy(&thread, &WaitToRun_Thread::running);
+    thread.start();
+    QVERIFY(spy.wait(500));
+
+    QScopedPointer<QObject> obj(new QObject);
+    QPointer<QObject> pObj(obj.data());
+    obj->deleteLater();
+
+    thread.terminate();
+    QVERIFY2(pObj, "object was deleted prematurely!");
+    thread.wait(500);
+}
+
+void tst_QThread::terminateAndDoubleDestruction()
+{
+#if defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)
+    QSKIP("Thread termination might result in stack underflow address sanitizer errors.");
+#endif
+
+    class ChildObject : public QObject
+    {
+    public:
+        ChildObject(QObject *parent)
+            : QObject(parent)
+        {
+            QSignalSpy spy(&thread, &WaitToRun_Thread::running);
+            thread.start();
+            spy.wait(500);
+        }
+
+        ~ChildObject()
+        {
+            QVERIFY2(!inDestruction, "Double object destruction!");
+            inDestruction = true;
+            thread.terminate();
+            thread.wait(500);
+        }
+
+        bool inDestruction = false;
+        WaitToRun_Thread thread;
+    };
+
+    class TestObject : public QObject
+    {
+    public:
+        TestObject()
+            : child(new ChildObject(this))
+        {
+        }
+
+        ~TestObject()
+        {
+            child->deleteLater();
+        }
+
+        ChildObject *child = nullptr;
+    };
+
+    TestObject obj;
+}
+
+void tst_QThread::terminateSelfStressTest()
+{
+    // This simply tests that QThread::terminate() doesn't crash or causes
+    // sanitizer reports when a thread cancels itself.
+#ifdef Q_OS_ANDROID
+    QSKIP("Android cannot cancel threads");
+#endif
+
+#ifdef Q_OS_WIN
+    QSKIP("QTBUG-127050");
+#endif
+
+    struct Thread : QThread {
+        void run() override {
+            terminate();
+        }
+    };
+
+    {
+        // first, try with one:
+        Thread t;
+        t.start();
+        QVERIFY(t.wait(10s));
+    }
+
+    constexpr QThread::Priority priorities[] = {
+        QThread::IdlePriority,
+        QThread::LowestPriority,
+        QThread::LowPriority,
+        QThread::NormalPriority,
+        QThread::HighPriority,
+        QThread::HighestPriority,
+        QThread::TimeCriticalPriority,
+        QThread::InheritPriority,
+    };
+
+    QVarLengthArray<Thread, 1024> threads(3 * QThread::idealThreadCount());
+
+    size_t i = 0;
+    for (Thread &t : threads)
+        t.start(priorities[i++ % std::size(priorities)]);
+
+    for (Thread &t : threads)
+        QVERIFY2(t.wait(60s), QByteArray::number(&t - threads.data()).constData());
+}
+
+void tst_QThread::bindingListCleanupAfterDelete()
+{
+    QThread t;
+    auto optr = std::make_unique<QObject>();
+    optr->moveToThread(&t);
+    auto threadPriv =  static_cast<QThreadPrivate *>(QObjectPrivate::get(&t));
+    auto list = threadPriv->m_statusOrPendingObjects.list();
+    QVERIFY(list);
+    optr.reset();
+    QVERIFY(list->empty());
 }
 
 QTEST_MAIN(tst_QThread)

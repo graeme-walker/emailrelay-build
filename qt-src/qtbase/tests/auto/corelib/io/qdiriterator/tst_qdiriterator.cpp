@@ -1,49 +1,29 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <qcoreapplication.h>
 #include <qdebug.h>
 #include <qdiriterator.h>
 #include <qfileinfo.h>
 #include <qstringlist.h>
+#include <QSet>
+#include <QString>
 
 #include <QtCore/private/qfsfileengine_p.h>
 
-#if defined(Q_OS_VXWORKS) || defined(Q_OS_WINRT)
+#if defined(Q_OS_VXWORKS)
 #define Q_NO_SYMLINKS
 #endif
 
-#if defined(Q_OS_WIN)
-#  include "../../../network-settings.h"
+#include "../../../../shared/filesystem.h"
+
+#ifdef Q_OS_ANDROID
+#include <QStandardPaths>
 #endif
+
+using namespace Qt::StringLiterals;
 
 Q_DECLARE_METATYPE(QDirIterator::IteratorFlags)
 Q_DECLARE_METATYPE(QDir::Filters)
@@ -66,16 +46,10 @@ private: // convenience functions
         return false;
     }
 
-    enum Cleanup { DoDelete, DontDelete };
-    bool createFile(const QString &fileName, Cleanup cleanup = DoDelete)
+    bool createFile(const QString &fileName)
     {
         QFile file(fileName);
-        if (file.open(QIODevice::WriteOnly)) {
-            if (cleanup == DoDelete)
-                createdFiles << fileName;
-            return true;
-        }
-        return false;
+        return file.open(QIODevice::WriteOnly);
     }
 
     bool createLink(const QString &destination, const QString &linkName)
@@ -89,7 +63,6 @@ private: // convenience functions
 
 private slots:
     void initTestCase();
-    void cleanupTestCase();
     void iterateRelativeDirectory_data();
     void iterateRelativeDirectory();
     void iterateResource_data();
@@ -97,6 +70,8 @@ private slots:
     void stopLinkLoop();
 #ifdef QT_BUILD_INTERNAL
     void engineWithNoIterator();
+    void testQFsFileEngineIterator_data() { iterateRelativeDirectory_data(); }
+    void testQFsFileEngineIterator();
 #endif
     void absoluteFilePathsFromRelativeIteratorPath();
     void recurseWithFilters() const;
@@ -110,25 +85,26 @@ private slots:
 #ifndef Q_OS_WIN
     void hiddenDirs_hiddenFiles();
 #endif
-#ifdef BUILTIN_TESTDATA
+
+    void hasNextFalseNoCrash();
+
 private:
     QSharedPointer<QTemporaryDir> m_dataDir;
-#endif
 };
 
 void tst_QDirIterator::initTestCase()
 {
-#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
-    QString testdata_dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    QString testdata_dir;
+#ifdef Q_OS_ANDROID
+    testdata_dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
     QString resourceSourcePath = QStringLiteral(":/testdata");
     QDirIterator it(resourceSourcePath, QDirIterator::Subdirectories);
     while (it.hasNext()) {
-        it.next();
-
-        QFileInfo fileInfo = it.fileInfo();
+        QFileInfo fileInfo = it.nextFileInfo();
 
         if (!fileInfo.isDir()) {
-            QString destination = testdata_dir + QLatin1Char('/') + fileInfo.filePath().mid(resourceSourcePath.length());
+            QString destination = testdata_dir + QLatin1Char('/')
+                                  + fileInfo.filePath().mid(resourceSourcePath.length());
             QFileInfo destinationFileInfo(destination);
             if (!destinationFileInfo.exists()) {
                 QDir().mkpath(destinationFileInfo.path());
@@ -143,29 +119,22 @@ void tst_QDirIterator::initTestCase()
 #elif defined(BUILTIN_TESTDATA)
     m_dataDir = QEXTRACTTESTDATA("/testdata");
     QVERIFY2(!m_dataDir.isNull(), qPrintable("Could not extract test data"));
-    QString testdata_dir = m_dataDir->path();
+    testdata_dir = m_dataDir->path();
 #else
-
-    // chdir into testdata directory, then find testdata by relative paths.
-    QString testdata_dir = QFileInfo(QFINDTESTDATA("entrylist")).absolutePath();
+    m_dataDir.reset(new QTemporaryDir);
+    testdata_dir = m_dataDir->path();
 #endif
 
+    QVERIFY(!testdata_dir.isEmpty());
+    // Must call QDir::setCurrent() here because all the tests that use relative
+    // paths depend on that.
     QVERIFY2(QDir::setCurrent(testdata_dir), qPrintable("Could not chdir to " + testdata_dir));
-
-    QFile::remove("entrylist/entrylist1.lnk");
-    QFile::remove("entrylist/entrylist2.lnk");
-    QFile::remove("entrylist/entrylist3.lnk");
-    QFile::remove("entrylist/entrylist4.lnk");
-    QFile::remove("entrylist/directory/entrylist1.lnk");
-    QFile::remove("entrylist/directory/entrylist2.lnk");
-    QFile::remove("entrylist/directory/entrylist3.lnk");
-    QFile::remove("entrylist/directory/entrylist4.lnk");
 
     createDirectory("entrylist");
     createDirectory("entrylist/directory");
-    createFile("entrylist/file", DontDelete);
+    createFile("entrylist/file");
     createFile("entrylist/writable");
-    createFile("entrylist/directory/dummy", DontDelete);
+    createFile("entrylist/directory/dummy");
 
     createDirectory("recursiveDirs");
     createDirectory("recursiveDirs/dir1");
@@ -211,20 +180,6 @@ void tst_QDirIterator::initTestCase()
     createDirectory("hiddenDirs_hiddenFiles/.hiddenDirectory/normalDirectory");
     createDirectory("hiddenDirs_hiddenFiles/.hiddenDirectory/.hiddenDirectory");
 #endif
-}
-
-void tst_QDirIterator::cleanupTestCase()
-{
-    Q_FOREACH(QString fileName, createdFiles)
-        QFile::remove(fileName);
-
-    Q_FOREACH(QString dirName, createdDirectories)
-        currentDir.rmdir(dirName);
-
-#ifdef Q_OS_WINRT
-    QDir::setCurrent(QCoreApplication::applicationDirPath());
-#endif // Q_OS_WINRT
-
 }
 
 void tst_QDirIterator::iterateRelativeDirectory_data()
@@ -351,7 +306,7 @@ void tst_QDirIterator::iterateRelativeDirectory()
     QFETCH(QDirIterator::IteratorFlags, flags);
     QFETCH(QDir::Filters, filters);
     QFETCH(QStringList, nameFilters);
-    QFETCH(QStringList, entries);
+    QFETCH(const QStringList, entries);
 
     QDirIterator it(dirName, nameFilters, filters, flags);
     QStringList list;
@@ -379,13 +334,13 @@ void tst_QDirIterator::iterateRelativeDirectory()
     list.sort();
 
     QStringList sortedEntries;
-    foreach(QString item, entries)
+    for (const QString &item : entries)
         sortedEntries.append(QFileInfo(item).canonicalFilePath());
     sortedEntries.sort();
 
     if (sortedEntries != list) {
-        qDebug() << "EXPECTED:" << sortedEntries;
         qDebug() << "ACTUAL:  " << list;
+        qDebug() << "EXPECTED:" << sortedEntries;
     }
 
     QCOMPARE(list, sortedEntries);
@@ -402,13 +357,14 @@ void tst_QDirIterator::iterateResource_data()
     QTest::newRow("invalid") << QString::fromLatin1(":/testdata/burpaburpa") << QDirIterator::IteratorFlags{}
                              << QDir::Filters(QDir::NoFilter) << QStringList(QLatin1String("*"))
                              << QStringList();
-    QTest::newRow(":/testdata") << QString::fromLatin1(":/testdata/") << QDirIterator::IteratorFlags{}
+    QTest::newRow("qrc:/testdata") << u":/testdata/"_s << QDirIterator::IteratorFlags{}
                                << QDir::Filters(QDir::NoFilter) << QStringList(QLatin1String("*"))
                                << QString::fromLatin1(":/testdata/entrylist").split(QLatin1String(","));
-    QTest::newRow(":/testdata/entrylist") << QString::fromLatin1(":/testdata/entrylist") << QDirIterator::IteratorFlags{}
+    QTest::newRow("qrc:/testdata/entrylist") << u":/testdata/entrylist"_s << QDirIterator::IteratorFlags{}
                                << QDir::Filters(QDir::NoFilter) << QStringList(QLatin1String("*"))
                                << QString::fromLatin1(":/testdata/entrylist/directory,:/testdata/entrylist/file").split(QLatin1String(","));
-    QTest::newRow(":/testdata recursive") << QString::fromLatin1(":/testdata") << QDirIterator::IteratorFlags(QDirIterator::Subdirectories)
+    QTest::newRow("qrc:/testdata recursive") << u":/testdata"_s
+                                         << QDirIterator::IteratorFlags(QDirIterator::Subdirectories)
                                          << QDir::Filters(QDir::NoFilter) << QStringList(QLatin1String("*"))
                                          << QString::fromLatin1(":/testdata/entrylist,:/testdata/entrylist/directory,:/testdata/entrylist/directory/dummy,:/testdata/entrylist/file").split(QLatin1String(","));
 }
@@ -434,8 +390,8 @@ void tst_QDirIterator::iterateResource()
     sortedEntries.sort();
 
     if (sortedEntries != list) {
-        qDebug() << "EXPECTED:" << sortedEntries;
         qDebug() << "ACTUAL:" << list;
+        qDebug() << "EXPECTED:" << sortedEntries;
     }
 
     QCOMPARE(list, sortedEntries);
@@ -468,7 +424,7 @@ void tst_QDirIterator::stopLinkLoop()
     QStringList list;
     int max = 200;
     while (--max && it.hasNext())
-        it.next();
+        it.nextFileInfo();
     QVERIFY(max);
 
     // The goal of this test is only to ensure that the test above don't malfunction
@@ -482,16 +438,20 @@ public:
         : QFSFileEngine(fileName)
     { }
 
-    QAbstractFileEngineIterator *beginEntryList(QDir::Filters, const QStringList &)
-    { return 0; }
+    IteratorUniquePtr
+    beginEntryList(const QString &, QDirListing::IteratorFlags, const QStringList &) override
+    { return nullptr; }
 };
 
 class EngineWithNoIteratorHandler : public QAbstractFileEngineHandler
 {
+    Q_DISABLE_COPY_MOVE(EngineWithNoIteratorHandler)
 public:
-    QAbstractFileEngine *create(const QString &fileName) const
+    EngineWithNoIteratorHandler() = default;
+
+    std::unique_ptr<QAbstractFileEngine> create(const QString &fileName) const override
     {
-        return new EngineWithNoIterator(fileName);
+        return std::make_unique<EngineWithNoIterator>(fileName);
     }
 };
 #endif
@@ -504,15 +464,48 @@ void tst_QDirIterator::engineWithNoIterator()
     QDir("entrylist").entryList();
     QVERIFY(true); // test that the above line doesn't crash
 }
+
+class CustomEngineHandler : public QAbstractFileEngineHandler
+{
+    Q_DISABLE_COPY_MOVE(CustomEngineHandler)
+public:
+    CustomEngineHandler() = default;
+
+    std::unique_ptr<QAbstractFileEngine> create(const QString &fileName) const override
+    {
+        // We want to test QFSFileEngine specifically, so force QDirIterator to use it
+        // over the default QFileSystemEngine
+        return std::make_unique<QFSFileEngine>(fileName);
+    }
+};
+
+void tst_QDirIterator::testQFsFileEngineIterator()
+{
+    QFETCH(QString, dirName);
+    QFETCH(QStringList, nameFilters);
+    QFETCH(QDir::Filters, filters);
+    QFETCH(QDirIterator::IteratorFlags, flags);
+
+    if (dirName == u"empty")
+        return; // This row isn't useful in this test
+
+    CustomEngineHandler handler;
+    bool isEmpty = true;
+    QDirIterator iter(dirName, nameFilters, filters, flags);
+    while (iter.hasNext()) {
+        const QFileInfo &fi = iter.nextFileInfo();
+        if (fi.filePath().contains(u"entrylist"))
+            isEmpty = false;  // At least one entry in `entrylist` dir
+    }
+    QVERIFY(!isEmpty);
+}
 #endif
 
 void tst_QDirIterator::absoluteFilePathsFromRelativeIteratorPath()
 {
     QDirIterator it("entrylist/", QDir::NoDotAndDotDot);
-    while (it.hasNext()) {
-        it.next();
-        QVERIFY(QFileInfo(it.filePath()).absoluteFilePath().contains("entrylist"));
-    }
+    while (it.hasNext())
+        QVERIFY(it.nextFileInfo().absoluteFilePath().contains("entrylist"));
 }
 
 void tst_QDirIterator::recurseWithFilters() const
@@ -529,11 +522,9 @@ void tst_QDirIterator::recurseWithFilters() const
     expectedEntries.insert(QString::fromLatin1("recursiveDirs/textFileA.txt"));
 
     QVERIFY(it.hasNext());
-    it.next();
-    actualEntries.insert(it.fileInfo().filePath());
+    actualEntries.insert(it.next());
     QVERIFY(it.hasNext());
-    it.next();
-    actualEntries.insert(it.fileInfo().filePath());
+    actualEntries.insert(it.next());
     QCOMPARE(actualEntries, expectedEntries);
 
     QVERIFY(!it.hasNext());
@@ -550,23 +541,31 @@ void tst_QDirIterator::longPath()
     while (dir.exists(dirName) || dir.mkdir(dirName)) {
         ++n;
         dirName.append('x');
+        if (n >= 20480)
+        {
+            break;
+        }
     }
-
+    if (n >= 20480)
+    {
+        qWarning("No maximum length on directory names");
+    }
     QDirIterator it(dir.absolutePath(), QDir::NoDotAndDotDot|QDir::Dirs, QDirIterator::Subdirectories);
     int m = 0;
     while (it.hasNext()) {
         ++m;
-        it.next();
+        it.nextFileInfo();
     }
 
     QCOMPARE(n, m);
-
     dirName.chop(1);
-    while (dirName.length() > 0 && dir.exists(dirName) && dir.rmdir(dirName)) {
+    while (dirName.size() > 0 && dir.exists(dirName) && dir.rmdir(dirName)) {
+        --n;
         dirName.chop(1);
     }
-    dir.cdUp();
-    dir.rmdir("longpaths");
+    QCOMPARE(n, 0);
+    QVERIFY(dir.cdUp());
+    QVERIFY(dir.rmdir("longpaths"));
 }
 
 void tst_QDirIterator::dirorder()
@@ -592,11 +591,11 @@ void tst_QDirIterator::uncPaths_data()
 {
     QTest::addColumn<QString>("dirName");
     QTest::newRow("uncserver")
-            <<QString("//" + QtNetworkSettings::winServerName());
+            <<QString("//" + QTest::uncServerName());
     QTest::newRow("uncserver/testshare")
-            <<QString("//" + QtNetworkSettings::winServerName() + "/testshare");
+            <<QString("//" + QTest::uncServerName() + "/testshare");
     QTest::newRow("uncserver/testshare/tmp")
-            <<QString("//" + QtNetworkSettings::winServerName() + "/testshare/tmp");
+            <<QString("//" + QTest::uncServerName() + "/testshare/tmp");
 }
 void tst_QDirIterator::uncPaths()
 {
@@ -623,8 +622,7 @@ void tst_QDirIterator::hiddenDirs_hiddenFiles()
         QDirIterator di("hiddenDirs_hiddenFiles", QDir::Files | QDir::Hidden | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
         while (di.hasNext()) {
             ++matches;
-            QString filename = di.next();
-            if (QFileInfo(filename).isDir())
+            if (di.nextFileInfo().isDir())
                 ++failures;    // search was only supposed to find files
         }
         QCOMPARE(matches, 6);
@@ -637,8 +635,7 @@ void tst_QDirIterator::hiddenDirs_hiddenFiles()
         QDirIterator di("hiddenDirs_hiddenFiles", QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
         while (di.hasNext()) {
             ++matches;
-            QString filename = di.next();
-            if (!QFileInfo(filename).isDir())
+            if (!di.nextFileInfo().isDir())
                 ++failures;    // search was only supposed to find files
         }
         QCOMPARE(matches, 6);
@@ -646,6 +643,15 @@ void tst_QDirIterator::hiddenDirs_hiddenFiles()
     }
 }
 #endif // Q_OS_WIN
+
+void tst_QDirIterator::hasNextFalseNoCrash()
+{
+    QDirIterator iter(u"empty"_s, QDir::NoDotAndDotDot);
+    // QTBUG-130142
+    // No crash if you call next() after hasNext() returned false
+    QVERIFY(!iter.hasNext());
+    QVERIFY(iter.next().isEmpty());
+}
 
 QTEST_MAIN(tst_QDirIterator)
 

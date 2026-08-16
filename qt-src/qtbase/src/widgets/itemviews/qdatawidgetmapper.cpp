@@ -1,51 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdatawidgetmapper.h"
 
 #include "qabstractitemmodel.h"
-#include "qitemdelegate.h"
 #include "qmetaobject.h"
 #include "qwidget.h"
+#include "qstyleditemdelegate.h"
+
 #include "private/qobject_p.h"
 #include "private/qabstractitemmodel_p.h"
+#include <QtCore/qpointer.h>
 
+#include <array>
 #include <iterator>
 
 QT_BEGIN_NAMESPACE
@@ -102,10 +69,22 @@ public:
     void populate();
 
     // private slots
-    void _q_dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight, const QVector<int> &);
-    void _q_commitData(QWidget *);
-    void _q_closeEditor(QWidget *, QAbstractItemDelegate::EndEditHint);
-    void _q_modelDestroyed();
+    void dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight,
+                     const QList<int> &);
+    void commitData(QWidget *);
+    void closeEditor(QWidget *, QAbstractItemDelegate::EndEditHint);
+    void modelDestroyed();
+
+    void disconnectModel()
+    {
+        for (const QMetaObject::Connection &connection : modelConnections)
+            QObject::disconnect(connection);
+    }
+    void disconnectDelegate()
+    {
+        for (const QMetaObject::Connection &connection : delegateConnections)
+            QObject::disconnect(connection);
+    }
 
     struct WidgetMapper
     {
@@ -121,8 +100,10 @@ public:
     bool commit(const WidgetMapper &m);
 
     std::vector<WidgetMapper> widgetMap;
+    std::array<QMetaObject::Connection, 2> modelConnections;
+    std::array<QMetaObject::Connection, 2> delegateConnections;
 };
-Q_DECLARE_TYPEINFO(QDataWidgetMapperPrivate::WidgetMapper, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QDataWidgetMapperPrivate::WidgetMapper, Q_RELOCATABLE_TYPE);
 
 int QDataWidgetMapperPrivate::findWidget(QWidget *w) const
 {
@@ -176,7 +157,8 @@ static bool qContainsIndex(const QModelIndex &idx, const QModelIndex &topLeft,
            && idx.column() >= topLeft.column() && idx.column() <= bottomRight.column();
 }
 
-void QDataWidgetMapperPrivate::_q_dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight, const QVector<int> &)
+void QDataWidgetMapperPrivate::dataChanged(const QModelIndex &topLeft,
+                                           const QModelIndex &bottomRight, const QList<int> &)
 {
     if (topLeft.parent() != rootIndex)
         return; // not in our hierarchy
@@ -187,7 +169,7 @@ void QDataWidgetMapperPrivate::_q_dataChanged(const QModelIndex &topLeft, const 
     }
 }
 
-void QDataWidgetMapperPrivate::_q_commitData(QWidget *w)
+void QDataWidgetMapperPrivate::commitData(QWidget *w)
 {
     if (submitPolicy == QDataWidgetMapper::ManualSubmit)
         return;
@@ -199,7 +181,7 @@ void QDataWidgetMapperPrivate::_q_commitData(QWidget *w)
     commit(widgetMap[idx]);
 }
 
-void QDataWidgetMapperPrivate::_q_closeEditor(QWidget *w, QAbstractItemDelegate::EndEditHint hint)
+void QDataWidgetMapperPrivate::closeEditor(QWidget *w, QAbstractItemDelegate::EndEditHint hint)
 {
     int idx = findWidget(w);
     if (idx == -1)
@@ -222,7 +204,7 @@ void QDataWidgetMapperPrivate::_q_closeEditor(QWidget *w, QAbstractItemDelegate:
     }
 }
 
-void QDataWidgetMapperPrivate::_q_modelDestroyed()
+void QDataWidgetMapperPrivate::modelDestroyed()
 {
     Q_Q(QDataWidgetMapper);
 
@@ -253,7 +235,7 @@ void QDataWidgetMapperPrivate::_q_modelDestroyed()
     instead of the default user property.
 
     It is possible to set an item delegate to support custom widgets. By default,
-    a QItemDelegate is used to synchronize the model with the widgets.
+    a QStyledItemDelegate is used to synchronize the model with the widgets.
 
     Let us assume that we have an item model named \c{model} with the following contents:
 
@@ -324,8 +306,7 @@ void QDataWidgetMapperPrivate::_q_modelDestroyed()
 QDataWidgetMapper::QDataWidgetMapper(QObject *parent)
     : QObject(*new QDataWidgetMapperPrivate, parent)
 {
-    // ### Qt6: QStyledItemDelegate
-    setItemDelegate(new QItemDelegate(this));
+    setItemDelegate(new QStyledItemDelegate(this));
 }
 
 /*!
@@ -333,6 +314,9 @@ QDataWidgetMapper::QDataWidgetMapper(QObject *parent)
  */
 QDataWidgetMapper::~QDataWidgetMapper()
 {
+    Q_D(QDataWidgetMapper);
+    d->disconnectModel();
+    d->disconnectDelegate();
 }
 
 /*!
@@ -348,21 +332,19 @@ void QDataWidgetMapper::setModel(QAbstractItemModel *model)
     if (d->model == model)
         return;
 
-    if (d->model) {
-        disconnect(d->model, SIGNAL(dataChanged(QModelIndex,QModelIndex,QVector<int>)), this,
-                   SLOT(_q_dataChanged(QModelIndex,QModelIndex,QVector<int>)));
-        disconnect(d->model, SIGNAL(destroyed()), this,
-                   SLOT(_q_modelDestroyed()));
-    }
+    d->disconnectModel();
     clearMapping();
     d->rootIndex = QModelIndex();
     d->currentTopLeft = QModelIndex();
 
     d->model = model;
 
-    connect(model, SIGNAL(dataChanged(QModelIndex,QModelIndex,QVector<int>)),
-            SLOT(_q_dataChanged(QModelIndex,QModelIndex,QVector<int>)));
-    connect(model, SIGNAL(destroyed()), SLOT(_q_modelDestroyed()));
+    d->modelConnections = {
+        QObjectPrivate::connect(model, &QAbstractItemModel::dataChanged,
+                                d, &QDataWidgetMapperPrivate::dataChanged),
+        QObjectPrivate::connect(model, &QAbstractItemModel::destroyed,
+                                d, &QDataWidgetMapperPrivate::modelDestroyed)
+    };
 }
 
 /*!
@@ -383,6 +365,9 @@ QAbstractItemModel *QDataWidgetMapper::model() const
     data from the model into the widget and from the widget to the model,
     using QAbstractItemDelegate::setEditorData() and QAbstractItemDelegate::setModelData().
 
+    Any existing delegate will be removed, but not deleted. QDataWidgetMapper
+    does not take ownership of \a delegate.
+
     The delegate also decides when to apply data and when to change the editor,
     using QAbstractItemDelegate::commitData() and QAbstractItemDelegate::closeEditor().
 
@@ -395,18 +380,17 @@ void QDataWidgetMapper::setItemDelegate(QAbstractItemDelegate *delegate)
 {
     Q_D(QDataWidgetMapper);
     QAbstractItemDelegate *oldDelegate = d->delegate;
-    if (oldDelegate) {
-        disconnect(oldDelegate, SIGNAL(commitData(QWidget*)), this, SLOT(_q_commitData(QWidget*)));
-        disconnect(oldDelegate, SIGNAL(closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)),
-                   this, SLOT(_q_closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)));
-    }
+    d->disconnectDelegate();
 
     d->delegate = delegate;
 
     if (delegate) {
-        connect(delegate, SIGNAL(commitData(QWidget*)), SLOT(_q_commitData(QWidget*)));
-        connect(delegate, SIGNAL(closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)),
-                SLOT(_q_closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)));
+        d->delegateConnections = {
+            QObjectPrivate::connect(delegate, &QAbstractItemDelegate::commitData,
+                                    d, &QDataWidgetMapperPrivate::commitData),
+            QObjectPrivate::connect(delegate, &QAbstractItemDelegate::closeEditor,
+                                    d, &QDataWidgetMapperPrivate::closeEditor)
+        };
     }
 
     d->flipEventFilters(oldDelegate, delegate);

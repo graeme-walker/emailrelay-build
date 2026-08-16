@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTABLEVIEW_P_H
 #define QTABLEVIEW_P_H
@@ -52,13 +16,18 @@
 //
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
+#include "qtableview.h"
+#include "qheaderview.h"
+
 #include <QtCore/QList>
 #include <QtCore/QMap>
 #include <QtCore/QSet>
 #include <QtCore/QDebug>
 #include "private/qabstractitemview_p.h"
 
+#include <array>
 #include <list>
+#include <vector>
 
 QT_REQUIRE_CONFIG(tableview);
 
@@ -127,16 +96,17 @@ private:
     bool cleanSpanSubIndex(SubIndex &subindex, int end, bool update = false);
 };
 
-Q_DECLARE_TYPEINFO ( QSpanCollection::Span, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO ( QSpanCollection::Span, Q_RELOCATABLE_TYPE);
 
-
-class QTableViewPrivate : public QAbstractItemViewPrivate
+#if QT_CONFIG(abstractbutton)
+class QTableCornerButton;
+#endif
+class Q_AUTOTEST_EXPORT QTableViewPrivate : public QAbstractItemViewPrivate
 {
     Q_DECLARE_PUBLIC(QTableView)
 public:
     QTableViewPrivate()
         : showGrid(true), gridStyle(Qt::SolidLine),
-          rowSectionAnchor(-1), columnSectionAnchor(-1),
           columnResizeTimerID(0), rowResizeTimerID(0),
           horizontalHeader(nullptr), verticalHeader(nullptr),
           sortingEnabled(false), geometryRecursionBlock(false),
@@ -148,7 +118,9 @@ public:
 #endif
  }
     void init();
+    void clearConnections();
     void trimHiddenSelections(QItemSelectionRange *range) const;
+    QRect intersectedRect(const QRect rect, const QModelIndex &topLeft, const QModelIndex &bottomRight) const override;
 
     inline bool isHidden(int row, int col) const {
         return verticalHeader->isSectionHidden(row)
@@ -185,17 +157,22 @@ public:
 
     bool showGrid;
     Qt::PenStyle gridStyle;
-    int rowSectionAnchor;
-    int columnSectionAnchor;
     int columnResizeTimerID;
     int rowResizeTimerID;
-    QVector<int> columnsToUpdate;
-    QVector<int> rowsToUpdate;
+    QList<int> columnsToUpdate;
+    QList<int> rowsToUpdate;
     QHeaderView *horizontalHeader;
     QHeaderView *verticalHeader;
 #if QT_CONFIG(abstractbutton)
-    QWidget *cornerWidget;
+    QTableCornerButton *cornerWidget;
+    QMetaObject::Connection cornerWidgetConnection;
 #endif
+    QMetaObject::Connection selectionmodelConnection;
+    std::array<QMetaObject::Connection, 4> modelConnections;
+    std::array<QMetaObject::Connection, 7> verHeaderConnections;
+    std::array<QMetaObject::Connection, 5> horHeaderConnections;
+    std::vector<QMetaObject::Connection> dynHorHeaderConnections;
+
     bool sortingEnabled;
     bool geometryRecursionBlock;
     QPoint visualCursor;  // (Row,column) cell coordinates to track through span navigation.
@@ -248,17 +225,14 @@ public:
 
     QRect visualSpanRect(const QSpanCollection::Span &span) const;
 
-    void _q_selectRow(int row);
-    void _q_selectColumn(int column);
-
     void selectRow(int row, bool anchor);
     void selectColumn(int column, bool anchor);
 
-    void _q_updateSpanInsertedRows(const QModelIndex &parent, int start, int end);
-    void _q_updateSpanInsertedColumns(const QModelIndex &parent, int start, int end);
-    void _q_updateSpanRemovedRows(const QModelIndex &parent, int start, int end);
-    void _q_updateSpanRemovedColumns(const QModelIndex &parent, int start, int end);
-    void _q_sortIndicatorChanged(int column, Qt::SortOrder order);
+    void updateSpanInsertedRows(const QModelIndex &parent, int start, int end);
+    void updateSpanInsertedColumns(const QModelIndex &parent, int start, int end);
+    void updateSpanRemovedRows(const QModelIndex &parent, int start, int end);
+    void updateSpanRemovedColumns(const QModelIndex &parent, int start, int end);
+    void sortIndicatorChanged(int column, Qt::SortOrder order);
 };
 
 QT_END_NAMESPACE

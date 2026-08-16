@@ -186,6 +186,9 @@
 /* Define true if setpgrp has two parameters */
 #undef GCONFIG_HAVE_SETPGRP_BSD
 
+/* Define true if ShellScalingApi.h is available */
+#undef GCONFIG_HAVE_SHELLSCALINGAPI_H
+
 /* Define true if sigprocmask() is available */
 #undef GCONFIG_HAVE_SIGPROCMASK
 

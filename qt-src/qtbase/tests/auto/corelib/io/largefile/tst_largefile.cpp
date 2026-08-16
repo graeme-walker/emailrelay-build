@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 
@@ -48,7 +23,7 @@
 #  endif
 #endif // Q_OS_WIN
 
-#include "emulationdetector.h"
+#include <QtTest/private/qemulationdetector_p.h>
 
 class tst_LargeFile
     : public QObject
@@ -62,18 +37,29 @@ public:
         , fd_(-1)
         , stream_(0)
     {
-    #if defined(QT_LARGEFILE_SUPPORT) && !defined(Q_OS_MAC) && !defined(Q_OS_WINRT)
-        maxSizeBits = 36; // 64 GiB
-    #elif defined(Q_OS_MAC)
+    #if defined(Q_OS_DARWIN)
         // HFS+ does not support sparse files, so we limit file size for the test
         // on Mac OS.
         maxSizeBits = 24; // 16 MiB
+    #elif defined(Q_OS_QNX)
+        // Many of the filesystems that QNX supports use a 32-bit format.
+        // This means that files are limited to 2 GB − 1 bytes.
+        // Limit max size to 256MB
+        maxSizeBits = 28; // 256 MiB
+    #elif defined(Q_OS_VXWORKS)
+        // VxWorks doesn't support sparse files, also, default /tmp directory is a RAM-disk which
+        // limits its capacity.
+        maxSizeBits = 28; // 256 MiB
+    #elif defined (Q_OS_WASM)
+        maxSizeBits = 28; // 256 MiB
+    #elif defined(QT_LARGEFILE_SUPPORT)
+        maxSizeBits = 36; // 64 GiB
     #else
         maxSizeBits = 24; // 16 MiB
     #endif
 
         // QEMU only supports < 4GB files
-        if (EmulationDetector::isRunningArmOnX86())
+        if (QTestPrivate::isRunningArmOnX86())
             maxSizeBits = qMin(maxSizeBits, 28);
     }
 
@@ -127,7 +113,7 @@ private:
 
     QFile largeFile;
 
-    QVector<QByteArray> generatedBlocks;
+    QByteArrayList generatedBlocks;
 
     int fd_;
     FILE *stream_;
@@ -299,7 +285,7 @@ void tst_LargeFile::createSparseFile()
     DWORD bytes;
     if (!::DeviceIoControl(handle, FSCTL_SET_SPARSE, NULL, 0, NULL, 0,
             &bytes, NULL)) {
-        QWARN("Unable to set test file as sparse. "
+        qWarning("Unable to set test file as sparse. "
             "Limiting test file to 16MiB.");
         maxSizeBits = 24;
     }
@@ -347,11 +333,10 @@ void tst_LargeFile::fillFileSparsely()
         {
             if (failed) {
                 this_->maxSizeBits = lastKnownGoodIndex;
-                QWARN( qPrintable(
-                    QString("QFile::error %1: '%2'. Maximum size bits reset to %3.")
-                        .arg(this_->largeFile.error())
-                        .arg(this_->largeFile.errorString())
-                        .arg(this_->maxSizeBits)) );
+                qWarning("QFile::error %d: '%s'. Maximum size bits reset to %d.",
+                        this_->largeFile.error(),
+                        qPrintable(this_->largeFile.errorString()),
+                        this_->maxSizeBits);
             } else
                 lastKnownGoodIndex = qMax<int>(index_, lastKnownGoodIndex);
         }
@@ -512,19 +497,26 @@ void tst_LargeFile::mapFile()
 //Linux: memory-mapping beyond EOF usually succeeds, but depends on the filesystem
 //  32-bit: limited to 44-bit offsets (when sizeof(off_t) == 8)
 //Windows: memory-mapping beyond EOF is not allowed
+//wasm: as for linux
+//VxWorks: memory-mapping beyond EOF is not allowed
 void tst_LargeFile::mapOffsetOverflow()
 {
     enum {
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN)
         Succeeds = false,
         MaxOffset = 63
+#elif defined(Q_OS_WASM)
+        Succeeds = true,
+        MaxOffset = sizeof(QT_OFF_T) > 4 ? 43 : 30
+#elif (defined(Q_OS_LINUX) || defined(Q_OS_ANDROID)) && (Q_PROCESSOR_WORDSIZE == 4)
+        Succeeds = true,
+        MaxOffset = sizeof(QT_OFF_T) > 4 ? 43 : 30
+#elif defined(Q_OS_VXWORKS)
+        Succeeds = false,
+        MaxOffset = 8 * sizeof(QT_OFF_T) - 1
 #else
         Succeeds = true,
-#  if (defined(Q_OS_LINUX) || defined(Q_OS_ANDROID)) && Q_PROCESSOR_WORDSIZE == 4
-        MaxOffset = sizeof(QT_OFF_T) > 4 ? 43 : 30
-#  else
         MaxOffset = 8 * sizeof(QT_OFF_T) - 1
-#  endif
 #endif
     };
 

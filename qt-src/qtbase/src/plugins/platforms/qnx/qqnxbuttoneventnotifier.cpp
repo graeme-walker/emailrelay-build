@@ -1,62 +1,24 @@
-/***************************************************************************
-**
-** Copyright (C) 2012 Research In Motion
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2012 Research In Motion
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqnxbuttoneventnotifier.h"
 
 #include <QtGui/QGuiApplication>
 #include <qpa/qwindowsysteminterface.h>
 
+#include <QtCore/qhash.h>
+#include <QtCore/qbytearray.h>
 #include <QtCore/QDebug>
 #include <QtCore/QMetaEnum>
 #include <QtCore/QSocketNotifier>
 #include <QtCore/private/qcore_unix_p.h>
 
-#if defined(QQNXBUTTON_DEBUG)
-#define qButtonDebug qDebug
-#else
-#define qButtonDebug QT_NO_QDEBUG_MACRO
-#endif
-
 QT_BEGIN_NAMESPACE
 
-static const char *ppsPath = "/pps/system/buttons/status";
-static const int ppsBufferSize = 256;
+Q_LOGGING_CATEGORY(lcQpaInputHwButton, "qt.qpa.input.hwbutton");
+
+const char *QQnxButtonEventNotifier::ppsPath = "/pps/system/buttons/status";
+const size_t QQnxButtonEventNotifier::ppsBufferSize = 256;
 
 QQnxButtonEventNotifier::QQnxButtonEventNotifier(QObject *parent)
     : QObject(parent),
@@ -81,7 +43,7 @@ QQnxButtonEventNotifier::~QQnxButtonEventNotifier()
 
 void QQnxButtonEventNotifier::start()
 {
-    qButtonDebug("starting hardware button event processing");
+    qCDebug(lcQpaInputHwButton) << "Starting hardware button event processing";
     if (m_fd != -1)
         return;
 
@@ -98,7 +60,7 @@ void QQnxButtonEventNotifier::start()
     m_readNotifier = new QSocketNotifier(m_fd, QSocketNotifier::Read);
     QObject::connect(m_readNotifier, SIGNAL(activated(QSocketDescriptor)), this, SLOT(updateButtonStates()));
 
-    qButtonDebug("successfully connected to Navigator. fd = %d", m_fd);
+    qCDebug(lcQpaInputHwButton, "successfully connected to Navigator. fd = %d", m_fd);
 }
 
 void QQnxButtonEventNotifier::updateButtonStates()
@@ -109,7 +71,8 @@ void QQnxButtonEventNotifier::updateButtonStates()
     // Attempt to read pps data
     errno = 0;
     int bytes = qt_safe_read(m_fd, buffer, ppsBufferSize - 1);
-    qButtonDebug() << "Read" << bytes << "bytes of data";
+    qCDebug(lcQpaInputHwButton) << "Read" << bytes << "bytes of data";
+
     if (bytes == -1) {
         qWarning("QQNX: failed to read hardware buttons pps object, errno=%d", errno);
         return;
@@ -122,7 +85,7 @@ void QQnxButtonEventNotifier::updateButtonStates()
     // Ensure data is null terminated
     buffer[bytes] = '\0';
 
-    qButtonDebug("received PPS message:\n%s", buffer);
+    qCDebug(lcQpaInputHwButton, "Received PPS message:\n%s", buffer);
 
     // Process received message
     QByteArray ppsData = QByteArray::fromRawData(buffer, bytes);
@@ -138,7 +101,8 @@ void QQnxButtonEventNotifier::updateButtonStates()
 
         // If state has changed, update our state and inject a keypress event
         if (m_state[buttonId] != newState) {
-            qButtonDebug() << "Hardware button event: button =" << key << "state =" << fields.value(key);
+            qCDebug(lcQpaInputHwButton) << "Hardware button event: button =" << key << "state =" << fields.value(key);
+
             m_state[buttonId] = newState;
 
             // Is it a key press or key release event?
@@ -163,7 +127,7 @@ void QQnxButtonEventNotifier::updateButtonStates()
                     break;
 
                 default:
-                    qButtonDebug("Unknown hardware button");
+                    qCDebug(lcQpaInputHwButton) << "Unknown hardware button";
                     continue;
             }
 
@@ -204,7 +168,7 @@ bool QQnxButtonEventNotifier::parsePPS(const QByteArray &ppsData, QHash<QByteArr
         // tokenize current attribute
         const QByteArray &attr = lines.at(i);
 
-        qButtonDebug() << "attr=" << attr;
+        qCDebug(lcQpaInputHwButton) << Q_FUNC_INFO << "attr =" << attr;
 
         int doubleColon = attr.indexOf(QByteArrayLiteral("::"));
         if (doubleColon == -1) {

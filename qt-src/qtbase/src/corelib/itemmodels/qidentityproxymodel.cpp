@@ -1,83 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2011 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Stephen Kelly <stephen.kelly@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2011 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Stephen Kelly <stephen.kelly@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qidentityproxymodel.h"
+#include "qidentityproxymodel_p.h"
 #include "qitemselectionmodel.h"
 #include <private/qabstractproxymodel_p.h>
 
 QT_BEGIN_NAMESPACE
 
-class QIdentityProxyModelPrivate : public QAbstractProxyModelPrivate
-{
-    QIdentityProxyModelPrivate()
-    {
-
-    }
-
-    Q_DECLARE_PUBLIC(QIdentityProxyModel)
-
-    QList<QPersistentModelIndex> layoutChangePersistentIndexes;
-    QModelIndexList proxyIndexes;
-
-    void _q_sourceRowsAboutToBeInserted(const QModelIndex &parent, int start, int end);
-    void _q_sourceRowsInserted(const QModelIndex &parent, int start, int end);
-    void _q_sourceRowsAboutToBeRemoved(const QModelIndex &parent, int start, int end);
-    void _q_sourceRowsRemoved(const QModelIndex &parent, int start, int end);
-    void _q_sourceRowsAboutToBeMoved(const QModelIndex &sourceParent, int sourceStart, int sourceEnd, const QModelIndex &destParent, int dest);
-    void _q_sourceRowsMoved(const QModelIndex &sourceParent, int sourceStart, int sourceEnd, const QModelIndex &destParent, int dest);
-
-    void _q_sourceColumnsAboutToBeInserted(const QModelIndex &parent, int start, int end);
-    void _q_sourceColumnsInserted(const QModelIndex &parent, int start, int end);
-    void _q_sourceColumnsAboutToBeRemoved(const QModelIndex &parent, int start, int end);
-    void _q_sourceColumnsRemoved(const QModelIndex &parent, int start, int end);
-    void _q_sourceColumnsAboutToBeMoved(const QModelIndex &sourceParent, int sourceStart, int sourceEnd, const QModelIndex &destParent, int dest);
-    void _q_sourceColumnsMoved(const QModelIndex &sourceParent, int sourceStart, int sourceEnd, const QModelIndex &destParent, int dest);
-
-    void _q_sourceDataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight, const QVector<int> &roles);
-    void _q_sourceHeaderDataChanged(Qt::Orientation orientation, int first, int last);
-
-    void _q_sourceLayoutAboutToBeChanged(const QList<QPersistentModelIndex> &sourceParents, QAbstractItemModel::LayoutChangeHint hint);
-    void _q_sourceLayoutChanged(const QList<QPersistentModelIndex> &sourceParents, QAbstractItemModel::LayoutChangeHint hint);
-    void _q_sourceModelAboutToBeReset();
-    void _q_sourceModelReset();
-
-};
+QIdentityProxyModelPrivate::~QIdentityProxyModelPrivate()
+    = default;
 
 /*!
     \since 4.8
@@ -215,7 +147,7 @@ QItemSelection QIdentityProxyModel::mapSelectionFromSource(const QItemSelection&
 
     QItemSelection::const_iterator it = selection.constBegin();
     const QItemSelection::const_iterator end = selection.constEnd();
-    proxySelection.reserve(selection.count());
+    proxySelection.reserve(selection.size());
     for ( ; it != end; ++it) {
         Q_ASSERT(it->model() == d->model);
         const QItemSelectionRange range(mapFromSource(it->topLeft()), mapFromSource(it->bottomRight()));
@@ -238,7 +170,7 @@ QItemSelection QIdentityProxyModel::mapSelectionToSource(const QItemSelection& s
 
     QItemSelection::const_iterator it = selection.constBegin();
     const QItemSelection::const_iterator end = selection.constEnd();
-    sourceSelection.reserve(selection.count());
+    sourceSelection.reserve(selection.size());
     for ( ; it != end; ++it) {
         Q_ASSERT(it->model() == this);
         const QItemSelectionRange range(mapToSource(it->topLeft()), mapToSource(it->bottomRight()));
@@ -257,7 +189,7 @@ QModelIndex QIdentityProxyModel::mapToSource(const QModelIndex& proxyIndex) cons
     if (!d->model || !proxyIndex.isValid())
         return QModelIndex();
     Q_ASSERT(proxyIndex.model() == this);
-    return d->model->createIndex(proxyIndex.row(), proxyIndex.column(), proxyIndex.internalPointer());
+    return createSourceIndex(proxyIndex.row(), proxyIndex.column(), proxyIndex.internalPointer());
 }
 
 /*!
@@ -274,7 +206,7 @@ QModelIndexList QIdentityProxyModel::match(const QModelIndex& start, int role, c
     QModelIndexList::const_iterator it = sourceList.constBegin();
     const QModelIndexList::const_iterator end = sourceList.constEnd();
     QModelIndexList proxyList;
-    proxyList.reserve(sourceList.count());
+    proxyList.reserve(sourceList.size());
     for ( ; it != end; ++it)
         proxyList.append(mapFromSource(*it));
     return proxyList;
@@ -361,97 +293,141 @@ void QIdentityProxyModel::setSourceModel(QAbstractItemModel* newSourceModel)
 {
     beginResetModel();
 
-    if (sourceModel()) {
-        disconnect(sourceModel(), SIGNAL(rowsAboutToBeInserted(QModelIndex,int,int)),
-                   this, SLOT(_q_sourceRowsAboutToBeInserted(QModelIndex,int,int)));
-        disconnect(sourceModel(), SIGNAL(rowsInserted(QModelIndex,int,int)),
-                   this, SLOT(_q_sourceRowsInserted(QModelIndex,int,int)));
-        disconnect(sourceModel(), SIGNAL(rowsAboutToBeRemoved(QModelIndex,int,int)),
-                   this, SLOT(_q_sourceRowsAboutToBeRemoved(QModelIndex,int,int)));
-        disconnect(sourceModel(), SIGNAL(rowsRemoved(QModelIndex,int,int)),
-                   this, SLOT(_q_sourceRowsRemoved(QModelIndex,int,int)));
-        disconnect(sourceModel(), SIGNAL(rowsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)),
-                   this, SLOT(_q_sourceRowsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)));
-        disconnect(sourceModel(), SIGNAL(rowsMoved(QModelIndex,int,int,QModelIndex,int)),
-                   this, SLOT(_q_sourceRowsMoved(QModelIndex,int,int,QModelIndex,int)));
-        disconnect(sourceModel(), SIGNAL(columnsAboutToBeInserted(QModelIndex,int,int)),
-                   this, SLOT(_q_sourceColumnsAboutToBeInserted(QModelIndex,int,int)));
-        disconnect(sourceModel(), SIGNAL(columnsInserted(QModelIndex,int,int)),
-                   this, SLOT(_q_sourceColumnsInserted(QModelIndex,int,int)));
-        disconnect(sourceModel(), SIGNAL(columnsAboutToBeRemoved(QModelIndex,int,int)),
-                   this, SLOT(_q_sourceColumnsAboutToBeRemoved(QModelIndex,int,int)));
-        disconnect(sourceModel(), SIGNAL(columnsRemoved(QModelIndex,int,int)),
-                   this, SLOT(_q_sourceColumnsRemoved(QModelIndex,int,int)));
-        disconnect(sourceModel(), SIGNAL(columnsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)),
-                   this, SLOT(_q_sourceColumnsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)));
-        disconnect(sourceModel(), SIGNAL(columnsMoved(QModelIndex,int,int,QModelIndex,int)),
-                   this, SLOT(_q_sourceColumnsMoved(QModelIndex,int,int,QModelIndex,int)));
-        disconnect(sourceModel(), SIGNAL(modelAboutToBeReset()),
-                   this, SLOT(_q_sourceModelAboutToBeReset()));
-        disconnect(sourceModel(), SIGNAL(modelReset()),
-                   this, SLOT(_q_sourceModelReset()));
-        disconnect(sourceModel(), SIGNAL(dataChanged(QModelIndex,QModelIndex,QVector<int>)),
-                   this, SLOT(_q_sourceDataChanged(QModelIndex,QModelIndex,QVector<int>)));
-        disconnect(sourceModel(), SIGNAL(headerDataChanged(Qt::Orientation,int,int)),
-                   this, SLOT(_q_sourceHeaderDataChanged(Qt::Orientation,int,int)));
-        disconnect(sourceModel(), SIGNAL(layoutAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
-                   this, SLOT(_q_sourceLayoutAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)));
-        disconnect(sourceModel(), SIGNAL(layoutChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
-                   this, SLOT(_q_sourceLayoutChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)));
-    }
+    Q_D(QIdentityProxyModel);
+
+    // Call QObject::disconnect() unconditionally, if there is an existing source
+    // model, it's disconnected, and if there isn't, then calling disconnect() on
+    // a default-constructed Connection does nothing
+    for (const auto &c : d->m_sourceModelConnections)
+        QObject::disconnect(c);
 
     QAbstractProxyModel::setSourceModel(newSourceModel);
 
     if (sourceModel()) {
-        connect(sourceModel(), SIGNAL(rowsAboutToBeInserted(QModelIndex,int,int)),
-                SLOT(_q_sourceRowsAboutToBeInserted(QModelIndex,int,int)));
-        connect(sourceModel(), SIGNAL(rowsInserted(QModelIndex,int,int)),
-                SLOT(_q_sourceRowsInserted(QModelIndex,int,int)));
-        connect(sourceModel(), SIGNAL(rowsAboutToBeRemoved(QModelIndex,int,int)),
-                SLOT(_q_sourceRowsAboutToBeRemoved(QModelIndex,int,int)));
-        connect(sourceModel(), SIGNAL(rowsRemoved(QModelIndex,int,int)),
-                SLOT(_q_sourceRowsRemoved(QModelIndex,int,int)));
-        connect(sourceModel(), SIGNAL(rowsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)),
-                SLOT(_q_sourceRowsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)));
-        connect(sourceModel(), SIGNAL(rowsMoved(QModelIndex,int,int,QModelIndex,int)),
-                SLOT(_q_sourceRowsMoved(QModelIndex,int,int,QModelIndex,int)));
-        connect(sourceModel(), SIGNAL(columnsAboutToBeInserted(QModelIndex,int,int)),
-                SLOT(_q_sourceColumnsAboutToBeInserted(QModelIndex,int,int)));
-        connect(sourceModel(), SIGNAL(columnsInserted(QModelIndex,int,int)),
-                SLOT(_q_sourceColumnsInserted(QModelIndex,int,int)));
-        connect(sourceModel(), SIGNAL(columnsAboutToBeRemoved(QModelIndex,int,int)),
-                SLOT(_q_sourceColumnsAboutToBeRemoved(QModelIndex,int,int)));
-        connect(sourceModel(), SIGNAL(columnsRemoved(QModelIndex,int,int)),
-                SLOT(_q_sourceColumnsRemoved(QModelIndex,int,int)));
-        connect(sourceModel(), SIGNAL(columnsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)),
-                SLOT(_q_sourceColumnsAboutToBeMoved(QModelIndex,int,int,QModelIndex,int)));
-        connect(sourceModel(), SIGNAL(columnsMoved(QModelIndex,int,int,QModelIndex,int)),
-                SLOT(_q_sourceColumnsMoved(QModelIndex,int,int,QModelIndex,int)));
-        connect(sourceModel(), SIGNAL(modelAboutToBeReset()),
-                SLOT(_q_sourceModelAboutToBeReset()));
-        connect(sourceModel(), SIGNAL(modelReset()),
-                SLOT(_q_sourceModelReset()));
-        connect(sourceModel(), SIGNAL(dataChanged(QModelIndex,QModelIndex,QVector<int>)),
-                SLOT(_q_sourceDataChanged(QModelIndex,QModelIndex,QVector<int>)));
-        connect(sourceModel(), SIGNAL(headerDataChanged(Qt::Orientation,int,int)),
-                SLOT(_q_sourceHeaderDataChanged(Qt::Orientation,int,int)));
-        connect(sourceModel(), SIGNAL(layoutAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
-                SLOT(_q_sourceLayoutAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)));
-        connect(sourceModel(), SIGNAL(layoutChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
-                SLOT(_q_sourceLayoutChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)));
+        auto *m = sourceModel();
+        d->m_sourceModelConnections = {
+            QObjectPrivate::connect(m, &QAbstractItemModel::rowsAboutToBeInserted, d,
+                                    &QIdentityProxyModelPrivate::sourceRowsAboutToBeInserted),
+            QObjectPrivate::connect(m, &QAbstractItemModel::rowsInserted, d,
+                                    &QIdentityProxyModelPrivate::sourceRowsInserted),
+            QObjectPrivate::connect(m, &QAbstractItemModel::rowsAboutToBeRemoved, d,
+                                    &QIdentityProxyModelPrivate::sourceRowsAboutToBeRemoved),
+            QObjectPrivate::connect(m, &QAbstractItemModel::rowsRemoved, d,
+                                    &QIdentityProxyModelPrivate::sourceRowsRemoved),
+            QObjectPrivate::connect(m, &QAbstractItemModel::rowsAboutToBeMoved, d,
+                                    &QIdentityProxyModelPrivate::sourceRowsAboutToBeMoved),
+            QObjectPrivate::connect(m, &QAbstractItemModel::rowsMoved, d,
+                                    &QIdentityProxyModelPrivate::sourceRowsMoved),
+            QObjectPrivate::connect(m, &QAbstractItemModel::columnsAboutToBeInserted, d,
+                                    &QIdentityProxyModelPrivate::sourceColumnsAboutToBeInserted),
+            QObjectPrivate::connect(m, &QAbstractItemModel::columnsInserted, d,
+                                    &QIdentityProxyModelPrivate::sourceColumnsInserted),
+            QObjectPrivate::connect(m, &QAbstractItemModel::columnsAboutToBeRemoved, d,
+                                    &QIdentityProxyModelPrivate::sourceColumnsAboutToBeRemoved),
+            QObjectPrivate::connect(m, &QAbstractItemModel::columnsRemoved, d,
+                                    &QIdentityProxyModelPrivate::sourceColumnsRemoved),
+            QObjectPrivate::connect(m, &QAbstractItemModel::columnsAboutToBeMoved, d,
+                                    &QIdentityProxyModelPrivate::sourceColumnsAboutToBeMoved),
+            QObjectPrivate::connect(m, &QAbstractItemModel::columnsMoved, d,
+                                    &QIdentityProxyModelPrivate::sourceColumnsMoved),
+            QObjectPrivate::connect(m, &QAbstractItemModel::modelAboutToBeReset, d,
+                                    &QIdentityProxyModelPrivate::sourceModelAboutToBeReset),
+            QObjectPrivate::connect(m, &QAbstractItemModel::modelReset, d,
+                                    &QIdentityProxyModelPrivate::sourceModelReset),
+            QObjectPrivate::connect(m, &QAbstractItemModel::headerDataChanged, d,
+                                    &QIdentityProxyModelPrivate::sourceHeaderDataChanged),
+        };
+
+        if (d->m_handleDataChanges) {
+            d->m_sourceModelConnections.emplace_back(
+                QObjectPrivate::connect(m, &QAbstractItemModel::dataChanged, d,
+                                        &QIdentityProxyModelPrivate::sourceDataChanged));
+        }
+        if (d->m_handleLayoutChanges) {
+            d->m_sourceModelConnections.emplace_back(
+                QObjectPrivate::connect(m, &QAbstractItemModel::layoutAboutToBeChanged, d,
+                                        &QIdentityProxyModelPrivate::sourceLayoutAboutToBeChanged));
+            d->m_sourceModelConnections.emplace_back(
+                QObjectPrivate::connect(m, &QAbstractItemModel::layoutChanged, d,
+                                        &QIdentityProxyModelPrivate::sourceLayoutChanged));
+        }
     }
 
     endResetModel();
 }
 
-void QIdentityProxyModelPrivate::_q_sourceColumnsAboutToBeInserted(const QModelIndex &parent, int start, int end)
+/*!
+    \since 6.8
+
+    If \a b is \c true, this proxy model will handle the source model layout
+    changes (by connecting to \c QAbstractItemModel::layoutAboutToBeChanged
+    and \c QAbstractItemModel::layoutChanged signals).
+
+    The default is for this proxy model to handle the source model layout
+    changes.
+
+    In sub-classes of QIdentityProxyModel, it may be useful to set this to
+    \c false if you need to specially handle the source model layout changes.
+
+    \note Calling this method will only have an effect after calling setSourceModel().
+*/
+void QIdentityProxyModel::setHandleSourceLayoutChanges(bool b)
+{
+    d_func()->m_handleLayoutChanges = b;
+}
+
+/*!
+    \since 6.8
+
+    Returns \c true if this proxy model handles the source model layout
+    changes, otherwise returns \c false.
+*/
+bool QIdentityProxyModel::handleSourceLayoutChanges() const
+{
+    return d_func()->m_handleLayoutChanges;
+}
+
+/*!
+    \since 6.8
+
+    If \a b is \c true, this proxy model will handle the source model data
+    changes (by connecting to \c QAbstractItemModel::dataChanged signal).
+
+    The default is for this proxy model to handle the source model data
+    changes.
+
+    In sub-classes of QIdentityProxyModel, it may be useful to set this to
+    \c false if you need to specially handle the source model data changes.
+
+    \note Calling this method will only have an effect after calling setSourceModel().
+*/
+void QIdentityProxyModel::setHandleSourceDataChanges(bool b)
+{
+    d_func()->m_handleDataChanges = b;
+}
+
+/*!
+    \since 6.8
+
+    Returns \c true if this proxy model handles the source model data
+    changes, otherwise returns \c false.
+*/
+bool QIdentityProxyModel::handleSourceDataChanges() const
+{
+    return d_func()->m_handleDataChanges;
+}
+
+void QIdentityProxyModelPrivate::sourceColumnsAboutToBeInserted(const QModelIndex &parent, int start, int end)
 {
     Q_ASSERT(parent.isValid() ? parent.model() == model : true);
     Q_Q(QIdentityProxyModel);
     q->beginInsertColumns(q->mapFromSource(parent), start, end);
 }
 
-void QIdentityProxyModelPrivate::_q_sourceColumnsAboutToBeMoved(const QModelIndex &sourceParent, int sourceStart, int sourceEnd, const QModelIndex &destParent, int dest)
+void QIdentityProxyModelPrivate::sourceColumnsAboutToBeMoved(const QModelIndex &sourceParent,
+                                                             int sourceStart, int sourceEnd,
+                                                             const QModelIndex &destParent,
+                                                             int dest)
 {
     Q_ASSERT(sourceParent.isValid() ? sourceParent.model() == model : true);
     Q_ASSERT(destParent.isValid() ? destParent.model() == model : true);
@@ -459,47 +435,51 @@ void QIdentityProxyModelPrivate::_q_sourceColumnsAboutToBeMoved(const QModelInde
     q->beginMoveColumns(q->mapFromSource(sourceParent), sourceStart, sourceEnd, q->mapFromSource(destParent), dest);
 }
 
-void QIdentityProxyModelPrivate::_q_sourceColumnsAboutToBeRemoved(const QModelIndex &parent, int start, int end)
+void QIdentityProxyModelPrivate::sourceColumnsAboutToBeRemoved(const QModelIndex &parent, int start, int end)
 {
     Q_ASSERT(parent.isValid() ? parent.model() == model : true);
     Q_Q(QIdentityProxyModel);
     q->beginRemoveColumns(q->mapFromSource(parent), start, end);
 }
 
-void QIdentityProxyModelPrivate::_q_sourceColumnsInserted(const QModelIndex &parent, int start, int end)
+void QIdentityProxyModelPrivate::sourceColumnsInserted(const QModelIndex &parent, int start, int end)
 {
     Q_ASSERT(parent.isValid() ? parent.model() == model : true);
     Q_Q(QIdentityProxyModel);
-    Q_UNUSED(parent)
-    Q_UNUSED(start)
-    Q_UNUSED(end)
+    Q_UNUSED(parent);
+    Q_UNUSED(start);
+    Q_UNUSED(end);
     q->endInsertColumns();
 }
 
-void QIdentityProxyModelPrivate::_q_sourceColumnsMoved(const QModelIndex &sourceParent, int sourceStart, int sourceEnd, const QModelIndex &destParent, int dest)
+void QIdentityProxyModelPrivate::sourceColumnsMoved(const QModelIndex &sourceParent,
+                                                    int sourceStart, int sourceEnd,
+                                                    const QModelIndex &destParent, int dest)
 {
     Q_ASSERT(sourceParent.isValid() ? sourceParent.model() == model : true);
     Q_ASSERT(destParent.isValid() ? destParent.model() == model : true);
     Q_Q(QIdentityProxyModel);
-    Q_UNUSED(sourceParent)
-    Q_UNUSED(sourceStart)
-    Q_UNUSED(sourceEnd)
-    Q_UNUSED(destParent)
-    Q_UNUSED(dest)
+    Q_UNUSED(sourceParent);
+    Q_UNUSED(sourceStart);
+    Q_UNUSED(sourceEnd);
+    Q_UNUSED(destParent);
+    Q_UNUSED(dest);
     q->endMoveColumns();
 }
 
-void QIdentityProxyModelPrivate::_q_sourceColumnsRemoved(const QModelIndex &parent, int start, int end)
+void QIdentityProxyModelPrivate::sourceColumnsRemoved(const QModelIndex &parent, int start, int end)
 {
     Q_ASSERT(parent.isValid() ? parent.model() == model : true);
     Q_Q(QIdentityProxyModel);
-    Q_UNUSED(parent)
-    Q_UNUSED(start)
-    Q_UNUSED(end)
+    Q_UNUSED(parent);
+    Q_UNUSED(start);
+    Q_UNUSED(end);
     q->endRemoveColumns();
 }
 
-void QIdentityProxyModelPrivate::_q_sourceDataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight, const QVector<int> &roles)
+void QIdentityProxyModelPrivate::sourceDataChanged(const QModelIndex &topLeft,
+                                                   const QModelIndex &bottomRight,
+                                                   const QList<int> &roles)
 {
     Q_ASSERT(topLeft.isValid() ? topLeft.model() == model : true);
     Q_ASSERT(bottomRight.isValid() ? bottomRight.model() == model : true);
@@ -507,13 +487,15 @@ void QIdentityProxyModelPrivate::_q_sourceDataChanged(const QModelIndex &topLeft
     emit q->dataChanged(q->mapFromSource(topLeft), q->mapFromSource(bottomRight), roles);
 }
 
-void QIdentityProxyModelPrivate::_q_sourceHeaderDataChanged(Qt::Orientation orientation, int first, int last)
+void QIdentityProxyModelPrivate::sourceHeaderDataChanged(Qt::Orientation orientation, int first,
+                                                         int last)
 {
     Q_Q(QIdentityProxyModel);
     emit q->headerDataChanged(orientation, first, last);
 }
 
-void QIdentityProxyModelPrivate::_q_sourceLayoutAboutToBeChanged(const QList<QPersistentModelIndex> &sourceParents, QAbstractItemModel::LayoutChangeHint hint)
+void QIdentityProxyModelPrivate::sourceLayoutAboutToBeChanged(
+    const QList<QPersistentModelIndex> &sourceParents, QAbstractItemModel::LayoutChangeHint hint)
 {
     Q_Q(QIdentityProxyModel);
 
@@ -541,7 +523,8 @@ void QIdentityProxyModelPrivate::_q_sourceLayoutAboutToBeChanged(const QList<QPe
     }
 }
 
-void QIdentityProxyModelPrivate::_q_sourceLayoutChanged(const QList<QPersistentModelIndex> &sourceParents, QAbstractItemModel::LayoutChangeHint hint)
+void QIdentityProxyModelPrivate::sourceLayoutChanged(
+    const QList<QPersistentModelIndex> &sourceParents, QAbstractItemModel::LayoutChangeHint hint)
 {
     Q_Q(QIdentityProxyModel);
 
@@ -567,26 +550,29 @@ void QIdentityProxyModelPrivate::_q_sourceLayoutChanged(const QList<QPersistentM
     emit q->layoutChanged(parents, hint);
 }
 
-void QIdentityProxyModelPrivate::_q_sourceModelAboutToBeReset()
+void QIdentityProxyModelPrivate::sourceModelAboutToBeReset()
 {
     Q_Q(QIdentityProxyModel);
     q->beginResetModel();
 }
 
-void QIdentityProxyModelPrivate::_q_sourceModelReset()
+void QIdentityProxyModelPrivate::sourceModelReset()
 {
     Q_Q(QIdentityProxyModel);
     q->endResetModel();
 }
 
-void QIdentityProxyModelPrivate::_q_sourceRowsAboutToBeInserted(const QModelIndex &parent, int start, int end)
+void QIdentityProxyModelPrivate::sourceRowsAboutToBeInserted(const QModelIndex &parent, int start,
+                                                             int end)
 {
     Q_ASSERT(parent.isValid() ? parent.model() == model : true);
     Q_Q(QIdentityProxyModel);
     q->beginInsertRows(q->mapFromSource(parent), start, end);
 }
 
-void QIdentityProxyModelPrivate::_q_sourceRowsAboutToBeMoved(const QModelIndex &sourceParent, int sourceStart, int sourceEnd, const QModelIndex &destParent, int dest)
+void QIdentityProxyModelPrivate::sourceRowsAboutToBeMoved(const QModelIndex &sourceParent,
+                                                          int sourceStart, int sourceEnd,
+                                                          const QModelIndex &destParent, int dest)
 {
     Q_ASSERT(sourceParent.isValid() ? sourceParent.model() == model : true);
     Q_ASSERT(destParent.isValid() ? destParent.model() == model : true);
@@ -594,43 +580,46 @@ void QIdentityProxyModelPrivate::_q_sourceRowsAboutToBeMoved(const QModelIndex &
     q->beginMoveRows(q->mapFromSource(sourceParent), sourceStart, sourceEnd, q->mapFromSource(destParent), dest);
 }
 
-void QIdentityProxyModelPrivate::_q_sourceRowsAboutToBeRemoved(const QModelIndex &parent, int start, int end)
+void QIdentityProxyModelPrivate::sourceRowsAboutToBeRemoved(const QModelIndex &parent, int start,
+                                                            int end)
 {
     Q_ASSERT(parent.isValid() ? parent.model() == model : true);
     Q_Q(QIdentityProxyModel);
     q->beginRemoveRows(q->mapFromSource(parent), start, end);
 }
 
-void QIdentityProxyModelPrivate::_q_sourceRowsInserted(const QModelIndex &parent, int start, int end)
+void QIdentityProxyModelPrivate::sourceRowsInserted(const QModelIndex &parent, int start, int end)
 {
     Q_ASSERT(parent.isValid() ? parent.model() == model : true);
     Q_Q(QIdentityProxyModel);
-    Q_UNUSED(parent)
-    Q_UNUSED(start)
-    Q_UNUSED(end)
+    Q_UNUSED(parent);
+    Q_UNUSED(start);
+    Q_UNUSED(end);
     q->endInsertRows();
 }
 
-void QIdentityProxyModelPrivate::_q_sourceRowsMoved(const QModelIndex &sourceParent, int sourceStart, int sourceEnd, const QModelIndex &destParent, int dest)
+void QIdentityProxyModelPrivate::sourceRowsMoved(const QModelIndex &sourceParent, int sourceStart,
+                                                 int sourceEnd, const QModelIndex &destParent,
+                                                 int dest)
 {
     Q_ASSERT(sourceParent.isValid() ? sourceParent.model() == model : true);
     Q_ASSERT(destParent.isValid() ? destParent.model() == model : true);
     Q_Q(QIdentityProxyModel);
-    Q_UNUSED(sourceParent)
-    Q_UNUSED(sourceStart)
-    Q_UNUSED(sourceEnd)
-    Q_UNUSED(destParent)
-    Q_UNUSED(dest)
+    Q_UNUSED(sourceParent);
+    Q_UNUSED(sourceStart);
+    Q_UNUSED(sourceEnd);
+    Q_UNUSED(destParent);
+    Q_UNUSED(dest);
     q->endMoveRows();
 }
 
-void QIdentityProxyModelPrivate::_q_sourceRowsRemoved(const QModelIndex &parent, int start, int end)
+void QIdentityProxyModelPrivate::sourceRowsRemoved(const QModelIndex &parent, int start, int end)
 {
     Q_ASSERT(parent.isValid() ? parent.model() == model : true);
     Q_Q(QIdentityProxyModel);
-    Q_UNUSED(parent)
-    Q_UNUSED(start)
-    Q_UNUSED(end)
+    Q_UNUSED(parent);
+    Q_UNUSED(start);
+    Q_UNUSED(end);
     q->endRemoveRows();
 }
 

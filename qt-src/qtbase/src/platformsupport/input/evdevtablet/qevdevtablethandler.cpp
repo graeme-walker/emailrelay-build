@@ -1,57 +1,35 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qevdevtablethandler_p.h"
 
 #include <QStringList>
 #include <QSocketNotifier>
 #include <QGuiApplication>
+#include <QPointingDevice>
 #include <QLoggingCategory>
 #include <QtCore/private/qcore_unix_p.h>
 #include <qpa/qwindowsysteminterface.h>
 #ifdef Q_OS_FREEBSD
 #include <dev/evdev/input.h>
+#elif defined(Q_OS_VXWORKS)
+#include <qpa/qplatformscreen.h>
+#include <evdevLib.h>
+#define SYN_REPORT      0
+#define EV_SYN          EV_DEV_SYN
+#define EV_KEY          EV_DEV_KEY
+#define EV_ABS          EV_DEV_ABS
+#define ABS_X           EV_DEV_PTR_ABS_X
+#define ABS_Y           EV_DEV_PTR_ABS_Y
+#define BTN_TOUCH       EV_DEV_PTR_BTN_TOUCH
+typedef EV_DEV_EVENT input_event;
 #else
 #include <linux/input.h>
 #endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 Q_LOGGING_CATEGORY(qLcEvdevTablet, "qt.qpa.input")
 
@@ -95,12 +73,14 @@ void QEvdevTabletData::processInputEvent(input_event *ev)
         case ABS_Y:
             state.y = ev->value;
             break;
+#if !defined(Q_OS_VXWORKS)
         case ABS_PRESSURE:
             state.p = ev->value;
             break;
         case ABS_DISTANCE:
             state.d = ev->value;
             break;
+#endif
         default:
             break;
         }
@@ -113,12 +93,14 @@ void QEvdevTabletData::processInputEvent(input_event *ev)
         case BTN_TOUCH:
             state.down = ev->value != 0;
             break;
+#if !defined(Q_OS_VXWORKS)
         case BTN_TOOL_PEN:
-            state.tool = ev->value ? QTabletEvent::Pen : 0;
+            state.tool = ev->value ? int(QPointingDevice::PointerType::Pen) : 0;
             break;
         case BTN_TOOL_RUBBER:
-            state.tool = ev->value ? QTabletEvent::Eraser : 0;
+            state.tool = ev->value ? int(QPointingDevice::PointerType::Eraser) : 0;
             break;
+#endif
         default:
             break;
         }
@@ -131,7 +113,7 @@ void QEvdevTabletData::processInputEvent(input_event *ev)
 void QEvdevTabletData::report()
 {
     if (!state.lastReportTool && state.tool)
-        QWindowSystemInterface::handleTabletEnterProximityEvent(QTabletEvent::Stylus, state.tool, q->deviceId());
+        QWindowSystemInterface::handleTabletEnterProximityEvent(int(QInputDevice::DeviceType::Stylus), state.tool, q->deviceId());
 
     qreal nx = (state.x - minValues.x) / qreal(maxValues.x - minValues.x);
     qreal ny = (state.y - minValues.y) / qreal(maxValues.y - minValues.y);
@@ -150,14 +132,14 @@ void QEvdevTabletData::report()
 
     if (state.down || state.lastReportDown) {
         QWindowSystemInterface::handleTabletEvent(0, QPointF(), globalPos,
-                                                  QTabletEvent::Stylus, pointer,
+                                                  int(QInputDevice::DeviceType::Stylus), pointer,
                                                   state.down ? Qt::LeftButton : Qt::NoButton,
                                                   pressure, 0, 0, 0, 0, 0, q->deviceId(),
                                                   qGuiApp->keyboardModifiers());
     }
 
     if (state.lastReportTool && !state.tool)
-        QWindowSystemInterface::handleTabletLeaveProximityEvent(QTabletEvent::Stylus, state.tool, q->deviceId());
+        QWindowSystemInterface::handleTabletLeaveProximityEvent(int(QInputDevice::DeviceType::Stylus), state.tool, q->deviceId());
 
     state.lastReportDown = state.down;
     state.lastReportTool = state.tool;
@@ -168,9 +150,9 @@ void QEvdevTabletData::report()
 QEvdevTabletHandler::QEvdevTabletHandler(const QString &device, const QString &spec, QObject *parent)
     : QObject(parent), m_fd(-1), m_device(device), m_notifier(0), d(0)
 {
-    Q_UNUSED(spec)
+    Q_UNUSED(spec);
 
-    setObjectName(QLatin1String("Evdev Tablet Handler"));
+    setObjectName("Evdev Tablet Handler"_L1);
 
     qCDebug(qLcEvdevTablet, "evdevtablet: using %ls", qUtf16Printable(device));
 
@@ -180,6 +162,7 @@ QEvdevTabletHandler::QEvdevTabletHandler(const QString &device, const QString &s
         return;
     }
 
+#if !defined(Q_OS_VXWORKS)
     bool grabSuccess = !ioctl(m_fd, EVIOCGRAB, (void *) 1);
     if (grabSuccess)
         ioctl(m_fd, EVIOCGRAB, (void *) 0);
@@ -189,6 +172,7 @@ QEvdevTabletHandler::QEvdevTabletHandler(const QString &device, const QString &s
     d = new QEvdevTabletData(this);
     if (!queryLimits())
         qWarning("evdevtablet: %ls: Unset or invalid ABS limits. Behavior will be unspecified.", qUtf16Printable(device));
+#endif
 
     m_notifier = new QSocketNotifier(m_fd, QSocketNotifier::Read, this);
     connect(m_notifier, &QSocketNotifier::activated, this, &QEvdevTabletHandler::readData);
@@ -209,6 +193,7 @@ qint64 QEvdevTabletHandler::deviceId() const
 
 bool QEvdevTabletHandler::queryLimits()
 {
+#if !defined(Q_OS_VXWORKS)
     bool ok = true;
     input_absinfo absInfo;
     memset(&absInfo, 0, sizeof(input_absinfo));
@@ -244,10 +229,14 @@ bool QEvdevTabletHandler::queryLimits()
         qCDebug(qLcEvdevTablet, "evdevtablet: %ls: device name: %s", qUtf16Printable(m_device), name);
     }
     return ok;
+#else
+    return false;
+#endif
 }
 
 void QEvdevTabletHandler::readData()
 {
+#if !defined(Q_OS_VXWORKS)
     input_event buffer[32];
     int n = 0;
     for (; ;) {
@@ -277,6 +266,7 @@ void QEvdevTabletHandler::readData()
 
     for (int i = 0; i < n; ++i)
         d->processInputEvent(&buffer[i]);
+#endif
 }
 
 

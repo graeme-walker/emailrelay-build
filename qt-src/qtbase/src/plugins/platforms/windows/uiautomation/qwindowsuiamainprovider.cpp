@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtGui/qtguiglobal.h>
 #if QT_CONFIG(accessibility)
@@ -54,15 +18,17 @@
 #include "qwindowsuiagriditemprovider.h"
 #include "qwindowsuiawindowprovider.h"
 #include "qwindowsuiaexpandcollapseprovider.h"
-#include "qwindowscombase.h"
 #include "qwindowscontext.h"
 #include "qwindowsuiautils.h"
 #include "qwindowsuiaprovidercache.h"
 
 #include <QtCore/qloggingcategory.h>
+#include <QtGui/private/qaccessiblebridgeutils_p.h>
 #include <QtGui/qaccessible.h>
 #include <QtGui/qguiapplication.h>
 #include <QtGui/qwindow.h>
+#include <qpa/qplatforminputcontextfactory_p.h>
+#include <QtCore/private/qcomvariant_p.h>
 
 #if !defined(Q_CC_BOR) && !defined (Q_CC_GNU)
 #include <comdef.h>
@@ -74,29 +40,25 @@ QT_BEGIN_NAMESPACE
 
 using namespace QWindowsUiAutomation;
 
-
-// Returns a cached instance of the provider for a specific acessible interface.
-QWindowsUiaMainProvider *QWindowsUiaMainProvider::providerForAccessible(QAccessibleInterface *accessible)
+// Returns a cached instance of the provider for a specific accessible interface.
+ComPtr<QWindowsUiaMainProvider> QWindowsUiaMainProvider::providerForAccessible(QAccessibleInterface *accessible)
 {
     if (!accessible)
         return nullptr;
 
     QAccessible::Id id = QAccessible::uniqueId(accessible);
     QWindowsUiaProviderCache *providerCache = QWindowsUiaProviderCache::instance();
-    auto *provider = qobject_cast<QWindowsUiaMainProvider *>(providerCache->providerForId(id));
+    ComPtr<QWindowsUiaMainProvider> provider = providerCache->providerForId(id);
 
-    if (provider) {
-        provider->AddRef();
-    } else {
-        provider = new QWindowsUiaMainProvider(accessible);
-        providerCache->insert(id, provider);
+    if (!provider) {
+        provider = makeComObject<QWindowsUiaMainProvider>(accessible);
+        providerCache->insert(id, provider.Get()); // Cache holds weak references
     }
     return provider;
 }
 
-QWindowsUiaMainProvider::QWindowsUiaMainProvider(QAccessibleInterface *a, int initialRefCount)
-    : QWindowsUiaBaseProvider(QAccessible::uniqueId(a)),
-      m_ref(initialRefCount)
+QWindowsUiaMainProvider::QWindowsUiaMainProvider(QAccessibleInterface *a)
+    : QWindowsUiaBaseProvider(QAccessible::uniqueId(a))
 {
 }
 
@@ -107,9 +69,13 @@ QWindowsUiaMainProvider::~QWindowsUiaMainProvider()
 void QWindowsUiaMainProvider::notifyFocusChange(QAccessibleEvent *event)
 {
     if (QAccessibleInterface *accessible = event->accessibleInterface()) {
-        if (QWindowsUiaMainProvider *provider = providerForAccessible(accessible)) {
-            QWindowsUiaWrapper::instance()->raiseAutomationEvent(provider, UIA_AutomationFocusChangedEventId);
+        // If this is a complex element, raise event for the focused child instead.
+        if (accessible->childCount()) {
+            if (QAccessibleInterface *child = accessible->focusChild())
+                accessible = child;
         }
+        if (auto provider = providerForAccessible(accessible))
+            UiaRaiseAutomationEvent(provider.Get(), UIA_AutomationFocusChangedEventId);
     }
 }
 
@@ -119,25 +85,32 @@ void QWindowsUiaMainProvider::notifyStateChange(QAccessibleStateChangeEvent *eve
         if (event->changedStates().checked || event->changedStates().checkStateMixed) {
            // Notifies states changes in checkboxes.
            if (accessible->role() == QAccessible::CheckBox) {
-                if (QWindowsUiaMainProvider *provider = providerForAccessible(accessible)) {
-                    VARIANT oldVal, newVal;
-                    clearVariant(&oldVal);
-                    int toggleState = ToggleState_Off;
+                if (auto provider = providerForAccessible(accessible)) {
+                    long toggleState = ToggleState_Off;
                     if (accessible->state().checked)
                         toggleState = accessible->state().checkStateMixed ? ToggleState_Indeterminate : ToggleState_On;
-                    setVariantI4(toggleState, &newVal);
-                    QWindowsUiaWrapper::instance()->raiseAutomationPropertyChangedEvent(provider, UIA_ToggleToggleStatePropertyId, oldVal, newVal);
+
+                    QComVariant oldVal;
+                    QComVariant newVal{toggleState};
+                    UiaRaiseAutomationPropertyChangedEvent(
+                            provider.Get(), UIA_ToggleToggleStatePropertyId, oldVal.get(), newVal.get());
                 }
             }
         }
         if (event->changedStates().active) {
             if (accessible->role() == QAccessible::Window) {
                 // Notifies window opened/closed.
-                if (QWindowsUiaMainProvider *provider = providerForAccessible(accessible)) {
+                if (auto provider = providerForAccessible(accessible)) {
                     if (accessible->state().active) {
-                        QWindowsUiaWrapper::instance()->raiseAutomationEvent(provider, UIA_Window_WindowOpenedEventId);
+                        UiaRaiseAutomationEvent(provider.Get(), UIA_Window_WindowOpenedEventId);
+                        if (QAccessibleInterface *focused = accessible->focusChild()) {
+                            if (auto focusedProvider = providerForAccessible(focused)) {
+                                UiaRaiseAutomationEvent(focusedProvider.Get(),
+                                                        UIA_AutomationFocusChangedEventId);
+                            }
+                        }
                     } else {
-                        QWindowsUiaWrapper::instance()->raiseAutomationEvent(provider, UIA_Window_WindowClosedEventId);
+                        UiaRaiseAutomationEvent(provider.Get(), UIA_Window_WindowClosedEventId);
                     }
                 }
             }
@@ -164,37 +137,21 @@ void QWindowsUiaMainProvider::notifyValueChange(QAccessibleValueChangeEvent *eve
                 }
             }
         }
-        if (event->value().type() == QVariant::String) {
-            if (QWindowsUiaMainProvider *provider = providerForAccessible(accessible)) {
-
-                // Tries to notify the change using UiaRaiseNotificationEvent(), which is only available on
-                // Windows 10 version 1709 or newer. Otherwise uses UiaRaiseAutomationPropertyChangedEvent().
-
-                BSTR displayString = bStrFromQString(event->value().toString());
-                BSTR activityId = bStrFromQString(QString());
-
-                HRESULT hr = QWindowsUiaWrapper::instance()->raiseNotificationEvent(provider, NotificationKind_Other,
-                                                                                    NotificationProcessing_ImportantMostRecent,
-                                                                                    displayString, activityId);
-
-                ::SysFreeString(displayString);
-                ::SysFreeString(activityId);
-
-                if (hr == static_cast<HRESULT>(UIA_E_NOTSUPPORTED)) {
-                    VARIANT oldVal, newVal;
-                    clearVariant(&oldVal);
-                    setVariantString(event->value().toString(), &newVal);
-                    QWindowsUiaWrapper::instance()->raiseAutomationPropertyChangedEvent(provider, UIA_ValueValuePropertyId, oldVal, newVal);
-                    ::SysFreeString(newVal.bstrVal);
-                }
+        if (event->value().typeId() == QMetaType::QString) {
+            if (auto provider = providerForAccessible(accessible)) {
+                // Notifies changes in string values.
+                const QComVariant oldVal;
+                const QComVariant newVal{ event->value().toString() };
+                UiaRaiseAutomationPropertyChangedEvent(provider.Get(), UIA_ValueValuePropertyId,
+                                                       oldVal.get(), newVal.get());
             }
         } else if (QAccessibleValueInterface *valueInterface = accessible->valueInterface()) {
-            if (QWindowsUiaMainProvider *provider = providerForAccessible(accessible)) {
+            if (auto provider = providerForAccessible(accessible)) {
                 // Notifies changes in values of controls supporting the value interface.
-                VARIANT oldVal, newVal;
-                clearVariant(&oldVal);
-                setVariantDouble(valueInterface->currentValue().toDouble(), &newVal);
-                QWindowsUiaWrapper::instance()->raiseAutomationPropertyChangedEvent(provider, UIA_RangeValueValuePropertyId, oldVal, newVal);
+                const QComVariant oldVal;
+                const QComVariant newVal{ valueInterface->currentValue().toDouble() };
+                UiaRaiseAutomationPropertyChangedEvent(
+                        provider.Get(), UIA_RangeValueValuePropertyId, oldVal.get(), newVal.get());
             }
         }
     }
@@ -203,12 +160,15 @@ void QWindowsUiaMainProvider::notifyValueChange(QAccessibleValueChangeEvent *eve
 void QWindowsUiaMainProvider::notifyNameChange(QAccessibleEvent *event)
 {
     if (QAccessibleInterface *accessible = event->accessibleInterface()) {
-        if (QWindowsUiaMainProvider *provider = providerForAccessible(accessible)) {
-            VARIANT oldVal, newVal;
-            clearVariant(&oldVal);
-            setVariantString(accessible->text(QAccessible::Name), &newVal);
-            QWindowsUiaWrapper::instance()->raiseAutomationPropertyChangedEvent(provider, UIA_NamePropertyId, oldVal, newVal);
-            ::SysFreeString(newVal.bstrVal);
+        // Restrict notification to combo boxes, which need it for accessibility,
+        // in order to avoid slowdowns with unnecessary notifications.
+        if (accessible->role() == QAccessible::ComboBox) {
+            if (auto provider = providerForAccessible(accessible)) {
+                QComVariant oldVal;
+                QComVariant newVal{ accessible->text(QAccessible::Name) };
+                UiaRaiseAutomationPropertyChangedEvent(provider.Get(), UIA_NamePropertyId,
+                                                       oldVal.get(), newVal.get());
+            }
         }
     }
 }
@@ -216,9 +176,8 @@ void QWindowsUiaMainProvider::notifyNameChange(QAccessibleEvent *event)
 void QWindowsUiaMainProvider::notifySelectionChange(QAccessibleEvent *event)
 {
     if (QAccessibleInterface *accessible = event->accessibleInterface()) {
-        if (QWindowsUiaMainProvider *provider = providerForAccessible(accessible)) {
-            QWindowsUiaWrapper::instance()->raiseAutomationEvent(provider, UIA_SelectionItem_ElementSelectedEventId);
-        }
+        if (auto provider = providerForAccessible(accessible))
+            UiaRaiseAutomationEvent(provider.Get(), UIA_SelectionItem_ElementSelectedEventId);
     }
 }
 
@@ -227,48 +186,55 @@ void QWindowsUiaMainProvider::notifyTextChange(QAccessibleEvent *event)
 {
     if (QAccessibleInterface *accessible = event->accessibleInterface()) {
         if (accessible->textInterface()) {
-            if (QWindowsUiaMainProvider *provider = providerForAccessible(accessible)) {
+            if (auto provider = providerForAccessible(accessible)) {
                 if (event->type() == QAccessible::TextSelectionChanged) {
-                    QWindowsUiaWrapper::instance()->raiseAutomationEvent(provider, UIA_Text_TextSelectionChangedEventId);
+                    UiaRaiseAutomationEvent(provider.Get(), UIA_Text_TextSelectionChangedEventId);
                 } else if (event->type() == QAccessible::TextCaretMoved) {
                     if (!accessible->state().readOnly) {
-                        QWindowsUiaWrapper::instance()->raiseAutomationEvent(provider, UIA_Text_TextSelectionChangedEventId);
+                        UiaRaiseAutomationEvent(provider.Get(),
+                                                UIA_Text_TextSelectionChangedEventId);
                     }
                 } else {
-                    QWindowsUiaWrapper::instance()->raiseAutomationEvent(provider, UIA_Text_TextChangedEventId);
+                    UiaRaiseAutomationEvent(provider.Get(), UIA_Text_TextChangedEventId);
                 }
             }
         }
     }
 }
 
+void QWindowsUiaMainProvider::raiseNotification(QAccessibleAnnouncementEvent *event)
+{
+    if (QAccessibleInterface *accessible = event->accessibleInterface()) {
+        if (auto provider = providerForAccessible(accessible)) {
+            QBStr message{ event->message() };
+            QAccessible::AnnouncementPoliteness prio = event->politeness();
+            NotificationProcessing processing = (prio == QAccessible::AnnouncementPoliteness::Assertive)
+                    ? NotificationProcessing_ImportantAll
+                    : NotificationProcessing_All;
+            QBStr activityId{ QString::fromLatin1("") };
+            UiaRaiseNotificationEvent(provider.Get(), NotificationKind_Other, processing, message.bstr(),
+                                      activityId.bstr());
+
+        }
+    }
+}
+
 HRESULT STDMETHODCALLTYPE QWindowsUiaMainProvider::QueryInterface(REFIID iid, LPVOID *iface)
 {
-    if (!iface)
-        return E_INVALIDARG;
-    *iface = nullptr;
+    HRESULT result = QComObject::QueryInterface(iid, iface);
 
-    QAccessibleInterface *accessible = accessibleInterface();
-
-    const bool result = qWindowsComQueryUnknownInterfaceMulti<IRawElementProviderSimple>(this, iid, iface)
-        || qWindowsComQueryInterface<IRawElementProviderSimple>(this, iid, iface)
-        || qWindowsComQueryInterface<IRawElementProviderFragment>(this, iid, iface)
-        || (accessible && hwndForAccessible(accessible) && qWindowsComQueryInterface<IRawElementProviderFragmentRoot>(this, iid, iface));
-    return result ? S_OK : E_NOINTERFACE;
-}
-
-ULONG QWindowsUiaMainProvider::AddRef()
-{
-    return ++m_ref;
-}
-
-ULONG STDMETHODCALLTYPE QWindowsUiaMainProvider::Release()
-{
-    if (!--m_ref) {
-        delete this;
-        return 0;
+    if (SUCCEEDED(result) && iid == __uuidof(IRawElementProviderFragmentRoot)) {
+        QAccessibleInterface *accessible = accessibleInterface();
+        if (accessible && hwndForAccessible(accessible)) {
+            result = S_OK;
+        } else {
+            Release();
+            result = E_NOINTERFACE;
+            *iface = nullptr;
+        }
     }
-    return m_ref;
+
+    return result;
 }
 
 HRESULT QWindowsUiaMainProvider::get_ProviderOptions(ProviderOptions *pRetVal)
@@ -296,85 +262,92 @@ HRESULT QWindowsUiaMainProvider::GetPatternProvider(PATTERNID idPattern, IUnknow
     switch (idPattern) {
     case UIA_WindowPatternId:
         if (accessible->parent() && (accessible->parent()->role() == QAccessible::Application)) {
-            *pRetVal = new QWindowsUiaWindowProvider(id());
+            *pRetVal = makeComObject<QWindowsUiaWindowProvider>(id()).Detach();
         }
         break;
     case UIA_TextPatternId:
     case UIA_TextPattern2Id:
         // All text controls.
         if (accessible->textInterface()) {
-            *pRetVal = new QWindowsUiaTextProvider(id());
+            *pRetVal = makeComObject<QWindowsUiaTextProvider>(id()).Detach();
         }
         break;
     case UIA_ValuePatternId:
         // All non-static controls support the Value pattern.
         if (accessible->role() != QAccessible::StaticText)
-            *pRetVal = new QWindowsUiaValueProvider(id());
+            *pRetVal = makeComObject<QWindowsUiaValueProvider>(id()).Detach();
         break;
     case UIA_RangeValuePatternId:
         // Controls providing a numeric value within a range (e.g., sliders, scroll bars, dials).
         if (accessible->valueInterface()) {
-            *pRetVal = new QWindowsUiaRangeValueProvider(id());
+            *pRetVal = makeComObject<QWindowsUiaRangeValueProvider>(id()).Detach();
         }
         break;
     case UIA_TogglePatternId:
         // Checkboxes and other checkable controls.
         if (accessible->state().checkable)
-            *pRetVal = new QWindowsUiaToggleProvider(id());
+            *pRetVal = makeComObject<QWindowsUiaToggleProvider>(id()).Detach();
         break;
     case UIA_SelectionPatternId:
-        // Lists of items.
-        if (accessible->role() == QAccessible::List) {
-            *pRetVal = new QWindowsUiaSelectionProvider(id());
+    case UIA_SelectionPattern2Id:
+        // Selections via QAccessibleSelectionInterface or lists of items.
+        if (accessible->selectionInterface()
+                || accessible->role() == QAccessible::List
+                || accessible->role() == QAccessible::PageTabList) {
+            *pRetVal = makeComObject<QWindowsUiaSelectionProvider>(id()).Detach();
         }
         break;
     case UIA_SelectionItemPatternId:
-        // Items within a list and radio buttons.
-        if ((accessible->role() == QAccessible::RadioButton)
-                || (accessible->role() == QAccessible::ListItem)) {
-            *pRetVal = new QWindowsUiaSelectionItemProvider(id());
+        // Parent supports selection interface or items within a list and radio buttons.
+        if ((accessible->parent() && accessible->parent()->selectionInterface())
+                || (accessible->role() == QAccessible::RadioButton)
+                || (accessible->role() == QAccessible::ListItem)
+                || (accessible->role() == QAccessible::PageTab)) {
+            *pRetVal = makeComObject<QWindowsUiaSelectionItemProvider>(id()).Detach();
         }
         break;
     case UIA_TablePatternId:
         // Table/tree.
         if (accessible->tableInterface()
                 && ((accessible->role() == QAccessible::Table) || (accessible->role() == QAccessible::Tree))) {
-            *pRetVal = new QWindowsUiaTableProvider(id());
+            *pRetVal = makeComObject<QWindowsUiaTableProvider>(id()).Detach();
         }
         break;
     case UIA_TableItemPatternId:
         // Item within a table/tree.
         if (accessible->tableCellInterface()
                 && ((accessible->role() == QAccessible::Cell) || (accessible->role() == QAccessible::TreeItem))) {
-            *pRetVal = new QWindowsUiaTableItemProvider(id());
+            *pRetVal = makeComObject<QWindowsUiaTableItemProvider>(id()).Detach();
         }
         break;
     case UIA_GridPatternId:
         // Table/tree.
         if (accessible->tableInterface()
                 && ((accessible->role() == QAccessible::Table) || (accessible->role() == QAccessible::Tree))) {
-            *pRetVal = new QWindowsUiaGridProvider(id());
+            *pRetVal = makeComObject<QWindowsUiaGridProvider>(id()).Detach();
         }
         break;
     case UIA_GridItemPatternId:
         // Item within a table/tree.
         if (accessible->tableCellInterface()
                 && ((accessible->role() == QAccessible::Cell) || (accessible->role() == QAccessible::TreeItem))) {
-            *pRetVal = new QWindowsUiaGridItemProvider(id());
+            *pRetVal = makeComObject<QWindowsUiaGridItemProvider>(id()).Detach();
         }
         break;
     case UIA_InvokePatternId:
         // Things that have an invokable action (e.g., simple buttons).
         if (accessible->actionInterface()) {
-            *pRetVal = new QWindowsUiaInvokeProvider(id());
+            *pRetVal = makeComObject<QWindowsUiaInvokeProvider>(id()).Detach();
         }
         break;
     case UIA_ExpandCollapsePatternId:
         // Menu items with submenus.
-        if (accessible->role() == QAccessible::MenuItem
+        if ((accessible->role() == QAccessible::MenuItem
                 && accessible->childCount() > 0
-                && accessible->child(0)->role() == QAccessible::PopupMenu) {
-            *pRetVal = new QWindowsUiaExpandCollapseProvider(id());
+                && accessible->child(0)->role() == QAccessible::PopupMenu)
+            || accessible->role() == QAccessible::ComboBox
+            || (accessible->role() == QAccessible::TreeItem && accessible->state().expandable)) {
+            *pRetVal = makeComObject<QWindowsUiaExpandCollapseProvider>(id()).Detach();
         }
         break;
     default:
@@ -382,6 +355,115 @@ HRESULT QWindowsUiaMainProvider::GetPatternProvider(PATTERNID idPattern, IUnknow
     }
 
     return S_OK;
+}
+
+void QWindowsUiaMainProvider::fillVariantArrayForRelation(QAccessibleInterface* accessible,
+                                                          QAccessible::Relation relation, VARIANT *pRetVal)
+{
+    Q_ASSERT(accessible);
+
+    typedef std::pair<QAccessibleInterface*, QAccessible::Relation> RelationPair;
+    const QList<RelationPair> relationInterfaces = accessible->relations(relation);
+    if (relationInterfaces.empty())
+        return;
+
+    SAFEARRAY *elements = SafeArrayCreateVector(VT_UNKNOWN, 0, relationInterfaces.size());
+    for (LONG i = 0; i < relationInterfaces.size(); ++i) {
+        if (ComPtr<IRawElementProviderSimple> provider =
+                    providerForAccessible(relationInterfaces.at(i).first)) {
+            SafeArrayPutElement(elements, &i, provider.Get());
+        }
+    }
+
+    pRetVal->vt = VT_UNKNOWN | VT_ARRAY;
+    pRetVal->parray = elements;
+}
+
+void QWindowsUiaMainProvider::setAriaProperties(QAccessibleInterface *accessible, VARIANT *pRetVal)
+{
+    Q_ASSERT(accessible);
+
+    QAccessibleAttributesInterface *attributesIface = accessible->attributesInterface();
+    if (!attributesIface)
+        return;
+
+    QString ariaString;
+    const QList<QAccessible::Attribute> attrKeys = attributesIface->attributeKeys();
+    for (qsizetype i = 0; i < attrKeys.size(); ++i) {
+        if (i != 0)
+            ariaString += QStringLiteral(";");
+        const QAccessible::Attribute key = attrKeys.at(i);
+        const QVariant value = attributesIface->attributeValue(key);
+        // see "Core Accessibility API Mappings" spec: https://www.w3.org/TR/core-aam-1.2/
+        switch (key) {
+        case QAccessible::Attribute::Custom:
+        {
+            // forward custom attributes as-is
+            Q_ASSERT((value.canConvert<QHash<QString, QString>>()));
+            const QHash<QString, QString> attrMap = value.value<QHash<QString, QString>>();
+            for (auto [name, val] : attrMap.asKeyValueRange()) {
+                if (name != *attrMap.keyBegin())
+                    ariaString += QStringLiteral(";");
+                ariaString += name + QStringLiteral("=") + val;
+            }
+            break;
+        }
+        case QAccessible::Attribute::Level:
+            Q_ASSERT(value.canConvert<int>());
+            ariaString += QStringLiteral("level=") + QString::number(value.toInt());
+            break;
+        default:
+            break;
+        }
+    }
+
+    *pRetVal = QComVariant{ ariaString }.release();
+}
+
+void QWindowsUiaMainProvider::setStyle(QAccessibleInterface *accessible, VARIANT *pRetVal)
+{
+    Q_ASSERT(accessible);
+
+    QAccessibleAttributesInterface *attributesIface = accessible->attributesInterface();
+    if (!attributesIface)
+        return;
+
+    // currently, only heading styles are implemented here
+    if (accessible->role() != QAccessible::Role::Heading)
+        return;
+
+    const QVariant levelVariant = attributesIface->attributeValue(QAccessible::Attribute::Level);
+    if (!levelVariant.isValid())
+        return;
+
+    Q_ASSERT(levelVariant.canConvert<int>());
+    // UIA only has styles for heading levels 1-9
+    const int level = levelVariant.toInt();
+    if (level < 1 || level > 9)
+        return;
+
+    const long styleId = styleIdForHeadingLevel(level);
+    *pRetVal = QComVariant{ styleId }.release();
+}
+
+int QWindowsUiaMainProvider::styleIdForHeadingLevel(int headingLevel)
+{
+    // only heading levels 1-9 have a corresponding UIA style ID
+    Q_ASSERT(headingLevel > 0 && headingLevel <= 9);
+
+    static constexpr int styles[] = {
+        StyleId_Heading1,
+        StyleId_Heading2,
+        StyleId_Heading3,
+        StyleId_Heading4,
+        StyleId_Heading5,
+        StyleId_Heading6,
+        StyleId_Heading7,
+        StyleId_Heading8,
+        StyleId_Heading9,
+    };
+
+    return styles[headingLevel - 1];
 }
 
 HRESULT QWindowsUiaMainProvider::GetPropertyValue(PROPERTYID idProp, VARIANT *pRetVal)
@@ -401,37 +483,49 @@ HRESULT QWindowsUiaMainProvider::GetPropertyValue(PROPERTYID idProp, VARIANT *pR
     switch (idProp) {
     case UIA_ProcessIdPropertyId:
         // PID
-        setVariantI4(int(GetCurrentProcessId()), pRetVal);
+        *pRetVal = QComVariant{ static_cast<long>(GetCurrentProcessId()) }.release();
         break;
     case UIA_AccessKeyPropertyId:
         // Accelerator key.
-        setVariantString(accessible->text(QAccessible::Accelerator), pRetVal);
+        *pRetVal = QComVariant{ accessible->text(QAccessible::Accelerator) }.release();
+        break;
+    case UIA_AriaPropertiesPropertyId:
+        setAriaProperties(accessible, pRetVal);
         break;
     case UIA_AutomationIdPropertyId:
         // Automation ID, which can be used by tools to select a specific control in the UI.
-        setVariantString(automationIdForAccessible(accessible), pRetVal);
+        *pRetVal = QComVariant{ QAccessibleBridgeUtils::accessibleId(accessible) }.release();
         break;
     case UIA_ClassNamePropertyId:
         // Class name.
         if (QObject *o = accessible->object()) {
-            QString className = QLatin1String(o->metaObject()->className());
-            setVariantString(className, pRetVal);
+            QString className = QLatin1StringView(o->metaObject()->className());
+            *pRetVal = QComVariant{ className }.release();
         }
         break;
+    case UIA_DescribedByPropertyId:
+        fillVariantArrayForRelation(accessible, QAccessible::DescriptionFor, pRetVal);
+        break;
+    case UIA_FlowsFromPropertyId:
+        fillVariantArrayForRelation(accessible, QAccessible::FlowsTo, pRetVal);
+        break;
+    case UIA_FlowsToPropertyId:
+        fillVariantArrayForRelation(accessible, QAccessible::FlowsFrom, pRetVal);
+        break;
     case UIA_FrameworkIdPropertyId:
-        setVariantString(QStringLiteral("Qt"), pRetVal);
+        *pRetVal = QComVariant{ QStringLiteral("Qt") }.release();
         break;
     case UIA_ControlTypePropertyId:
         if (topLevelWindow) {
             // Reports a top-level widget as a window, instead of "custom".
-            setVariantI4(UIA_WindowControlTypeId, pRetVal);
+            *pRetVal = QComVariant{ UIA_WindowControlTypeId }.release();
         } else {
             // Control type converted from role.
             auto controlType = roleToControlTypeId(accessible->role());
 
-            // The native OSK should be disbled if the Qt OSK is in use,
+            // The native OSK should be disabled if the Qt OSK is in use,
             // or if disabled via application attribute.
-            static bool imModuleEmpty = qEnvironmentVariableIsEmpty("QT_IM_MODULE");
+            static bool imModuleEmpty = QPlatformInputContextFactory::requested().isEmpty();
             bool nativeVKDisabled = QCoreApplication::testAttribute(Qt::AA_DisableNativeVirtualKeyboard);
 
             // If we want to disable the native OSK auto-showing
@@ -439,88 +533,75 @@ HRESULT QWindowsUiaMainProvider::GetPropertyValue(PROPERTYID idProp, VARIANT *pR
             if (controlType == UIA_EditControlTypeId && (!imModuleEmpty || nativeVKDisabled))
                 controlType = UIA_TextControlTypeId;
 
-            setVariantI4(controlType, pRetVal);
+            *pRetVal = QComVariant{ controlType }.release();
         }
         break;
     case UIA_HelpTextPropertyId:
-        setVariantString(accessible->text(QAccessible::Help), pRetVal);
+        *pRetVal = QComVariant{ accessible->text(QAccessible::Help) }.release();
         break;
     case UIA_HasKeyboardFocusPropertyId:
         if (topLevelWindow) {
             // Windows set the active state to true when they are focused
-            setVariantBool(accessible->state().active, pRetVal);
+            *pRetVal = QComVariant{ accessible->state().active ? true : false }.release();
         } else {
-            setVariantBool(accessible->state().focused, pRetVal);
+            *pRetVal = QComVariant{ accessible->state().focused ? true : false }.release();
         }
         break;
     case UIA_IsKeyboardFocusablePropertyId:
         if (topLevelWindow) {
             // Windows should always be focusable
-            setVariantBool(true, pRetVal);
+            *pRetVal = QComVariant{ true }.release();
         } else {
-            setVariantBool(accessible->state().focusable, pRetVal);
+            *pRetVal = QComVariant{ accessible->state().focusable ? true : false }.release();
         }
         break;
     case UIA_IsOffscreenPropertyId:
-        setVariantBool(accessible->state().offscreen, pRetVal);
+        *pRetVal = QComVariant{ accessible->state().offscreen ? true : false }.release();
         break;
     case UIA_IsContentElementPropertyId:
-        setVariantBool(true, pRetVal);
+        *pRetVal = QComVariant{ true }.release();
         break;
     case UIA_IsControlElementPropertyId:
-        setVariantBool(true, pRetVal);
+        *pRetVal = QComVariant{ true }.release();
         break;
     case UIA_IsEnabledPropertyId:
-        setVariantBool(!accessible->state().disabled, pRetVal);
+        *pRetVal = QComVariant{ !accessible->state().disabled }.release();
         break;
     case UIA_IsPasswordPropertyId:
-        setVariantBool(accessible->role() == QAccessible::EditableText
-                       && accessible->state().passwordEdit, pRetVal);
+        *pRetVal = QComVariant{ accessible->role() == QAccessible::EditableText
+                                && accessible->state().passwordEdit }
+                           .release();
         break;
     case UIA_IsPeripheralPropertyId:
         // True for peripheral UIs.
         if (QWindow *window = windowForAccessible(accessible)) {
             const Qt::WindowType wt = window->type();
-            setVariantBool(wt == Qt::Popup || wt == Qt::ToolTip || wt == Qt::SplashScreen, pRetVal);
+            *pRetVal = QComVariant{ wt == Qt::Popup || wt == Qt::ToolTip || wt == Qt::SplashScreen }
+                               .release();
         }
         break;
     case UIA_IsDialogPropertyId:
-        setVariantBool(accessible->role() == QAccessible::Dialog
-                       || accessible->role() == QAccessible::AlertMessage, pRetVal);
+        *pRetVal = QComVariant{ accessible->role() == QAccessible::Dialog
+                                || accessible->role() == QAccessible::AlertMessage }
+                           .release();
         break;
     case UIA_FullDescriptionPropertyId:
-        setVariantString(accessible->text(QAccessible::Description), pRetVal);
+        *pRetVal = QComVariant{ accessible->text(QAccessible::Description) }.release();
         break;
     case UIA_NamePropertyId: {
         QString name = accessible->text(QAccessible::Name);
         if (name.isEmpty() && topLevelWindow)
            name = QCoreApplication::applicationName();
-        setVariantString(name, pRetVal);
+        *pRetVal = QComVariant{ name }.release();
         break;
     }
+    case UIA_StyleIdAttributeId:
+        setStyle(accessible, pRetVal);
+        break;
     default:
         break;
     }
     return S_OK;
-}
-
-// Generates an ID based on the name of the controls and their parents.
-QString QWindowsUiaMainProvider::automationIdForAccessible(const QAccessibleInterface *accessible)
-{
-    QString result;
-    if (accessible) {
-        QObject *obj = accessible->object();
-        while (obj) {
-            QString name = obj->objectName();
-            if (name.isEmpty())
-                return QString();
-            if (!result.isEmpty())
-                result.prepend(u'.');
-            result.prepend(name);
-            obj = obj->parent();
-        }
-    }
-    return result;
 }
 
 HRESULT QWindowsUiaMainProvider::get_HostRawElementProvider(IRawElementProviderSimple **pRetVal)
@@ -534,7 +615,7 @@ HRESULT QWindowsUiaMainProvider::get_HostRawElementProvider(IRawElementProviderS
     // Returns a host provider only for controls associated with a native window handle. Others should return NULL.
     if (QAccessibleInterface *accessible = accessibleInterface()) {
         if (HWND hwnd = hwndForAccessible(accessible)) {
-            return QWindowsUiaWrapper::instance()->hostProviderFromHwnd(hwnd, pRetVal);
+            return UiaHostProviderFromHwnd(hwnd, pRetVal);
         }
     }
     return S_OK;
@@ -605,7 +686,7 @@ HRESULT QWindowsUiaMainProvider::Navigate(NavigateDirection direction, IRawEleme
     }
 
     if (targetacc)
-        *pRetVal = providerForAccessible(targetacc);
+        *pRetVal = providerForAccessible(targetacc).Detach();
     return S_OK;
 }
 
@@ -693,9 +774,8 @@ HRESULT QWindowsUiaMainProvider::get_FragmentRoot(IRawElementProviderFragmentRoo
     // non-native controls/fragments.
     if (QAccessibleInterface *accessible = accessibleInterface()) {
         if (QWindow *window = windowForAccessible(accessible)) {
-            if (QAccessibleInterface *rootacc = window->accessibleRoot()) {
-                *pRetVal = providerForAccessible(rootacc);
-            }
+            if (QAccessibleInterface *rootacc = window->accessibleRoot())
+                *pRetVal = providerForAccessible(rootacc).Detach();
         }
     }
     return S_OK;
@@ -724,26 +804,18 @@ HRESULT QWindowsUiaMainProvider::ElementProviderFromPoint(double x, double y, IR
     QPoint point;
     nativeUiaPointToPoint(uiaPoint, window, &point);
 
-    if (auto targetacc = accessible->childAt(point.x(), point.y())) {
-        auto acc = accessible->childAt(point.x(), point.y());
-        // Reject the cases where childAt() returns a different instance in each call for the same
-        // element (e.g., QAccessibleTree), as it causes an endless loop with Youdao Dictionary installed.
-        if (targetacc == acc) {
-            // Controls can be embedded within grouping elements. By default returns the innermost control.
-            while (acc) {
-                targetacc = acc;
-                // For accessibility tools it may be better to return the text element instead of its subcomponents.
-                if (targetacc->textInterface()) break;
-                acc = targetacc->childAt(point.x(), point.y());
-                if (acc != targetacc->childAt(point.x(), point.y())) {
-                    qCDebug(lcQpaUiAutomation) << "Non-unique childAt() for" << targetacc;
-                    break;
-                }
-            }
-            *pRetVal = providerForAccessible(targetacc);
-        } else {
-            qCDebug(lcQpaUiAutomation) << "Non-unique childAt() for" << accessible;
+    QAccessibleInterface *targetacc = accessible->childAt(point.x(), point.y());
+
+    if (targetacc) {
+        QAccessibleInterface *acc = targetacc;
+        // Controls can be embedded within grouping elements. By default returns the innermost control.
+        while (acc) {
+            targetacc = acc;
+            // For accessibility tools it may be better to return the text element instead of its subcomponents.
+            if (targetacc->textInterface()) break;
+            acc = acc->childAt(point.x(), point.y());
         }
+        *pRetVal = providerForAccessible(targetacc).Detach();
     }
     return S_OK;
 }
@@ -759,7 +831,7 @@ HRESULT QWindowsUiaMainProvider::GetFocus(IRawElementProviderFragment **pRetVal)
 
     if (QAccessibleInterface *accessible = accessibleInterface()) {
         if (QAccessibleInterface *focusacc = accessible->focusChild()) {
-            *pRetVal = providerForAccessible(focusacc);
+            *pRetVal = providerForAccessible(focusacc).Detach();
         }
     }
     return S_OK;

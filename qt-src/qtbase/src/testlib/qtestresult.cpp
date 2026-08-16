@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtTest module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtTest/private/qtestresult_p.h>
 #include <QtCore/qglobal.h>
@@ -46,6 +10,11 @@
 #include <QtTest/qtestdata.h>
 #include <QtTest/qtestcase.h>
 #include <QtTest/qtestassert.h>
+#include <QtTest/qtesteventloop.h>
+
+#include <climits>
+#include <cwchar>
+#include <QtCore/q26numeric.h>
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -57,11 +26,41 @@ QT_BEGIN_NAMESPACE
 
 namespace QTest
 {
+    namespace Internal {
+        static bool failed = false;
+    }
+
+    static void setFailed(bool failed)
+    {
+        static const bool fatalFailure = []() {
+            static const char * const environmentVar = "QTEST_FATAL_FAIL";
+            if (!qEnvironmentVariableIsSet(environmentVar))
+                return false;
+
+            bool ok;
+            const int fatal = qEnvironmentVariableIntValue(environmentVar, &ok);
+            return ok && fatal;
+        }();
+
+        if (failed && fatalFailure)
+            qTerminate();
+        Internal::failed = failed;
+    }
+
+    static void resetFailed()
+    {
+        setFailed(false);
+    }
+
+    static bool hasFailed()
+    {
+        return Internal::failed;
+    }
+
     static QTestData *currentTestData = nullptr;
     static QTestData *currentGlobalTestData = nullptr;
     static const char *currentTestFunc = nullptr;
     static const char *currentTestObjectName = nullptr;
-    static bool failed = false;
     static bool skipCurrentTest = false;
     static bool blacklistCurrentTest = false;
 
@@ -75,7 +74,7 @@ void QTestResult::reset()
     QTest::currentGlobalTestData = nullptr;
     QTest::currentTestFunc = nullptr;
     QTest::currentTestObjectName = nullptr;
-    QTest::failed = false;
+    QTest::resetFailed();
 
     QTest::expectFailComment = nullptr;
     QTest::expectFailMode = 0;
@@ -91,7 +90,7 @@ void QTestResult::setBlacklistCurrentTest(bool b)
 
 bool QTestResult::currentTestFailed()
 {
-    return QTest::failed;
+    return QTest::hasFailed();
 }
 
 QTestData *QTestResult::currentGlobalTestData()
@@ -112,7 +111,7 @@ void QTestResult::setCurrentGlobalTestData(QTestData *data)
 void QTestResult::setCurrentTestData(QTestData *data)
 {
     QTest::currentTestData = data;
-    QTest::failed = false;
+    QTest::resetFailed();
     if (data)
         QTestLog::enterTestData(data);
 }
@@ -120,7 +119,7 @@ void QTestResult::setCurrentTestData(QTestData *data)
 void QTestResult::setCurrentTestFunction(const char *func)
 {
     QTest::currentTestFunc = func;
-    QTest::failed = false;
+    QTest::resetFailed();
     if (func)
         QTestLog::enterTestFunction(func);
 }
@@ -132,38 +131,79 @@ static void clearExpectFail()
     QTest::expectFailComment = nullptr;
 }
 
+/*!
+    This function is called after completing each test function,
+    including test functions that are not data-driven.
+
+    For data-driven functions, this is called after each call to the test
+    function, with distinct data. Otherwise, this function is called once,
+    with currentTestData() and currentGlobalTestData() set to \nullptr.
+
+    The function is called before the test's cleanup(), if it has one.
+
+    For benchmarks, this will be called after each repeat of a function
+    (with the same data row), when the benchmarking code decides to
+    re-run one to get sufficient data.
+
+    \sa finishedCurrentTestDataCleanup()
+*/
 void QTestResult::finishedCurrentTestData()
 {
     if (QTest::expectFailMode)
-        addFailure("QEXPECT_FAIL was called without any subsequent verification statements", nullptr, 0);
-    clearExpectFail();
+        addFailure("QEXPECT_FAIL was called without any subsequent verification statements");
 
-    if (!QTest::failed && QTestLog::unhandledIgnoreMessages()) {
-        QTestLog::printUnhandledIgnoreMessages();
-        addFailure("Not all expected messages were received", nullptr, 0);
-    }
-    QTestLog::clearIgnoreMessages();
+    clearExpectFail();
 }
 
+/*!
+    This function is called after completing each test function,
+    including test functions that are not data-driven.
+
+    For data-driven functions, this is called after each call to the test
+    function, with distinct data. Otherwise, this function is called once,
+    with currentTestData() and currentGlobalTestData() set to \nullptr.
+
+    The function is called after the test's cleanup(), if it has one.
+
+    For benchmarks, this is called after all repeat calls to the function
+    (with a given data row).
+
+    \sa finishedCurrentTestData()
+*/
 void QTestResult::finishedCurrentTestDataCleanup()
 {
+    if (!QTest::hasFailed() && QTestLog::unhandledIgnoreMessages()) {
+        QTestLog::printUnhandledIgnoreMessages();
+        addFailure("Not all expected messages were received");
+    }
+
     // If the current test hasn't failed or been skipped, then it passes.
-    if (!QTest::failed && !QTest::skipCurrentTest) {
+    if (!QTest::hasFailed() && !QTest::skipCurrentTest) {
         if (QTest::blacklistCurrentTest)
             QTestLog::addBPass("");
         else
             QTestLog::addPass("");
     }
 
-    QTest::failed = false;
+    QTestLog::clearCurrentTestState();
+    QTest::resetFailed();
 }
 
+/*!
+    This function is called after completing each test function,
+    including test functions that are data-driven.
+
+    For data-driven functions, this is called after after all data rows
+    have been tested, and the data table has been cleared, so both
+    currentTestData() and currentGlobalTestData() will be \nullptr.
+*/
 void QTestResult::finishedCurrentTestFunction()
 {
-    QTest::currentTestFunc = nullptr;
-    QTest::failed = false;
-
+    QTestLog::clearCurrentTestState(); // Needed if _data() skipped.
     QTestLog::leaveTestFunction();
+
+    QTest::currentTestFunc = nullptr;
+    QTest::resetFailed();
 }
 
 const char *QTestResult::currentTestFunction()
@@ -205,7 +245,6 @@ bool QTestResult::expectFail(const char *dataIndex, const char *comment,
 
     if (QTest::expectFailMode) {
         delete[] comment;
-        clearExpectFail();
         addFailure("Already expecting a fail", file, line);
         return false;
     }
@@ -224,7 +263,8 @@ static bool checkStatement(bool statement, const char *msg, const char *file, in
             else
                 QTestLog::addXPass(msg, file, line);
 
-            QTest::failed = true;
+            QTest::setFailed(true);
+            // Should B?XPass always (a) continue or (b) abort, regardless of mode ?
             bool doContinue = (QTest::expectFailMode == QTest::Continue);
             clearExpectFail();
             return doContinue;
@@ -246,59 +286,116 @@ static bool checkStatement(bool statement, const char *msg, const char *file, in
     return false;
 }
 
+void QTestResult::fail(const char *msg, const char *file, int line)
+{
+    checkStatement(false, msg, file, line);
+}
+
+// QPalette's << operator produces 1363 characters. A comparison failure
+// involving two palettes can therefore require 2726 characters, not including
+// the other output produced by QTest. Users might also have their own types
+// with large amounts of output, so use a sufficiently high value here.
+static constexpr size_t maxMsgLen = 4096;
+
 bool QTestResult::verify(bool statement, const char *statementStr,
                          const char *description, const char *file, int line)
 {
     QTEST_ASSERT(statementStr);
 
-    char msg[1024] = {'\0'};
+    Q_DECL_UNINITIALIZED char msg[maxMsgLen];
+    msg[0] = '\0';
 
     if (QTestLog::verboseLevel() >= 2) {
-        qsnprintf(msg, 1024, "QVERIFY(%s)", statementStr);
+        std::snprintf(msg, maxMsgLen, "QVERIFY(%s)", statementStr);
         QTestLog::info(msg, file, line);
     }
 
-    if (!statement && !QTest::expectFailMode)
-        qsnprintf(msg, 1024, "'%s' returned FALSE. (%s)", statementStr, description ? description : "");
-    else if (statement && QTest::expectFailMode)
-        qsnprintf(msg, 1024, "'%s' returned TRUE unexpectedly. (%s)", statementStr, description ? description : "");
+    if (statement == !!QTest::expectFailMode) {
+        std::snprintf(msg, maxMsgLen,
+                      statement ? "'%s' returned TRUE unexpectedly. (%s)" : "'%s' returned FALSE. (%s)",
+                      statementStr, description ? description : "");
+    }
 
     return checkStatement(statement, msg, file, line);
 }
 
-// Format failures using the toString() template
-template <class Actual, class Expected>
-void formatFailMessage(char *msg, size_t maxMsgLen,
-                       const char *failureMsg,
-                       const Actual &val1, const Expected &val2,
-                       const char *actual, const char *expected)
+static const char *leftArgNameForOp(QTest::ComparisonOperation op)
 {
-    auto val1S = QTest::toString(val1);
-    auto val2S = QTest::toString(val2);
+    return op == QTest::ComparisonOperation::CustomCompare ? "Actual   " : "Computed ";
+}
 
-    size_t len1 = mbstowcs(nullptr, actual, maxMsgLen);    // Last parameter is not ignored on QNX
-    size_t len2 = mbstowcs(nullptr, expected, maxMsgLen);  // (result is never larger than this).
-    qsnprintf(msg, maxMsgLen, "%s\n   Actual   (%s)%*s %s\n   Expected (%s)%*s %s",
-              failureMsg,
-              actual, qMax(len1, len2) - len1 + 1, ":", val1S ? val1S : "<null>",
-              expected, qMax(len1, len2) - len2 + 1, ":", val2S ? val2S : "<null>");
+static const char *rightArgNameForOp(QTest::ComparisonOperation op)
+{
+    return op == QTest::ComparisonOperation::CustomCompare ? "Expected " : "Baseline ";
+}
 
-    delete [] val1S;
-    delete [] val2S;
+static int approx_wide_len(const char *s)
+{
+    std::mbstate_t state = {};
+    // QNX might stop at max when dst == nullptr, so pass INT_MAX,
+    // being the largest value this function will return:
+    auto r = std::mbsrtowcs(nullptr, &s, INT_MAX, &state);
+    if (r == size_t(-1)) // encoding error, fall back to strlen()
+        r = strlen(s); // `s` was not advanced since `dst == nullptr`
+    return q26::saturate_cast<int>(r);
 }
 
 // Overload to format failures for "const char *" - no need to strdup().
+static Q_DECL_COLD_FUNCTION
 void formatFailMessage(char *msg, size_t maxMsgLen,
                        const char *failureMsg,
                        const char *val1, const char *val2,
-                       const char *actual, const char *expected)
+                       const char *actual, const char *expected,
+                       QTest::ComparisonOperation op)
 {
-    size_t len1 = mbstowcs(nullptr, actual, maxMsgLen);    // Last parameter is not ignored on QNX
-    size_t len2 = mbstowcs(nullptr, expected, maxMsgLen);  // (result is never larger than this).
-    qsnprintf(msg, maxMsgLen, "%s\n   Actual   (%s)%*s %s\n   Expected (%s)%*s %s",
-              failureMsg,
-              actual, qMax(len1, len2) - len1 + 1, ":", val1 ? val1 : "<null>",
-              expected, qMax(len1, len2) - len2 + 1, ":", val2 ? val2 : "<null>");
+    const auto len1 = approx_wide_len(actual);
+    const auto len2 = approx_wide_len(expected);
+    const int written = std::snprintf(msg, maxMsgLen, "%s\n", failureMsg);
+    msg += written;
+    maxMsgLen -= written;
+
+    const auto protect = [](const char *s) { return s ? s : "<null>"; };
+
+    if (val1 || val2) {
+        std::snprintf(msg, maxMsgLen, "   %s(%s)%*s %s\n   %s(%s)%*s %s",
+                      leftArgNameForOp(op), actual, qMax(len1, len2) - len1 + 1, ":",
+                      protect(val1),
+                      rightArgNameForOp(op), expected, qMax(len1, len2) - len2 + 1, ":",
+                      protect(val2));
+    } else {
+        // only print variable names if neither value can be represented as a string
+        std::snprintf(msg, maxMsgLen, "   %s: %s\n   %s: %s",
+                      leftArgNameForOp(op), actual, rightArgNameForOp(op), expected);
+    }
+}
+
+const char *
+QTest::Internal::formatPropertyTestHelperFailure(char *msg, size_t maxMsgLen,
+                                                 const char *actual, const char *expected,
+                                                 const char *actualExpr, const char *expectedExpr)
+{
+    formatFailMessage(msg, maxMsgLen, "Comparison failed!",
+                      actual, expected, actualExpr, expectedExpr,
+                      QTest::ComparisonOperation::CustomCompare);
+    return msg;
+}
+
+// Format failures using the toString() template
+template <class Actual, class Expected>
+static Q_DECL_COLD_FUNCTION
+void formatFailMessage(char *msg, size_t maxMsgLen,
+                       const char *failureMsg,
+                       const Actual &val1, const Expected &val2,
+                       const char *actual, const char *expected,
+                       QTest::ComparisonOperation op)
+{
+    const char *val1S = QTest::toString(val1);
+    const char *val2S = QTest::toString(val2);
+
+    formatFailMessage(msg, maxMsgLen, failureMsg, val1S, val2S, actual, expected, op);
+
+    delete [] val1S;
+    delete [] val2S;
 }
 
 template <class Actual, class Expected>
@@ -308,14 +405,14 @@ static bool compareHelper(bool success, const char *failureMsg,
                           const char *file, int line,
                           bool hasValues = true)
 {
-    const size_t maxMsgLen = 1024;
-    char msg[maxMsgLen] = {'\0'};
+    Q_DECL_UNINITIALIZED char msg[maxMsgLen];
+    msg[0] = '\0';
 
     QTEST_ASSERT(expected);
     QTEST_ASSERT(actual);
 
     if (QTestLog::verboseLevel() >= 2) {
-        qsnprintf(msg, maxMsgLen, "QCOMPARE(%s, %s)", actual, expected);
+        std::snprintf(msg, maxMsgLen, "QCOMPARE(%s, %s)", actual, expected);
         QTestLog::info(msg, file, line);
     }
 
@@ -324,21 +421,54 @@ static bool compareHelper(bool success, const char *failureMsg,
 
     if (success) {
         if (QTest::expectFailMode) {
-            qsnprintf(msg, maxMsgLen,
-                      "QCOMPARE(%s, %s) returned TRUE unexpectedly.", actual, expected);
+            std::snprintf(msg, maxMsgLen,
+                          "QCOMPARE(%s, %s) returned TRUE unexpectedly.", actual, expected);
         }
         return checkStatement(success, msg, file, line);
     }
 
 
     if (!hasValues) {
-        qsnprintf(msg, maxMsgLen, "%s", failureMsg);
+        std::snprintf(msg, maxMsgLen, "%s", failureMsg);
         return checkStatement(success, msg, file, line);
     }
 
-    formatFailMessage(msg, maxMsgLen, failureMsg, val1, val2, actual, expected);
+    formatFailMessage(msg, maxMsgLen, failureMsg, val1, val2, actual, expected,
+                      QTest::ComparisonOperation::CustomCompare);
 
     return checkStatement(success, msg, file, line);
+}
+
+// A simplified version of compareHelper that does not use string
+// representations of the values, and prints only failureMsg when the
+// comparison fails.
+static bool compareHelper(bool success, const char *failureMsg,
+                          const char *actual, const char *expected,
+                          const char *file, int line)
+{
+    const size_t maxMsgLen = 1024;
+    Q_DECL_UNINITIALIZED char msg[maxMsgLen];
+    msg[0] = '\0';
+
+    QTEST_ASSERT(expected);
+    QTEST_ASSERT(actual);
+    // failureMsg can be null, if we do not use it
+    QTEST_ASSERT(success || failureMsg);
+
+    if (QTestLog::verboseLevel() >= 2) {
+        std::snprintf(msg, maxMsgLen, "QCOMPARE(%s, %s)", actual, expected);
+        QTestLog::info(msg, file, line);
+    }
+
+    if (success) {
+        if (QTest::expectFailMode) {
+            std::snprintf(msg, maxMsgLen, "QCOMPARE(%s, %s) returned TRUE unexpectedly.",
+                          actual, expected);
+        }
+        return checkStatement(success, msg, file, line);
+    }
+
+    return checkStatement(success, failureMsg, file, line);
 }
 
 bool QTestResult::compare(bool success, const char *failureMsg,
@@ -383,6 +513,16 @@ bool QTestResult::compare(bool success, const char *failureMsg,
     return compareHelper(success, failureMsg, val1, val2, actual, expected, file, line);
 }
 
+#if QT_POINTER_SIZE == 8
+bool QTestResult::compare(bool success, const char *failureMsg,
+                          qsizetype val1, qsizetype val2,
+                          const char *actual, const char *expected,
+                          const char *file, int line)
+{
+    return compareHelper(success, failureMsg, val1, val2, actual, expected, file, line);
+}
+#endif // QT_POINTER_SIZE == 8
+
 bool QTestResult::compare(bool success, const char *failureMsg,
                           unsigned val1, unsigned val2,
                           const char *actual, const char *expected,
@@ -400,7 +540,7 @@ bool QTestResult::compare(bool success, const char *failureMsg,
 }
 
 bool QTestResult::compare(bool success, const char *failureMsg,
-                          QStringView val1, const QLatin1String &val2,
+                          QStringView val1, const QLatin1StringView &val2,
                           const char *actual, const char *expected,
                           const char *file, int line)
 {
@@ -408,22 +548,33 @@ bool QTestResult::compare(bool success, const char *failureMsg,
 }
 
 bool QTestResult::compare(bool success, const char *failureMsg,
-                          const QLatin1String & val1, QStringView val2,
+                          const QLatin1StringView & val1, QStringView val2,
                           const char *actual, const char *expected,
                           const char *file, int line)
 {
     return compareHelper(success, failureMsg, val1, val2, actual, expected, file, line);
 }
 
+// Simplified version of compare() that does not take the values, because they
+// can't be converted to strings (or the user didn't want to do that).
+bool QTestResult::compare(bool success, const char *failureMsg,
+                          const char *actual, const char *expeceted,
+                          const char *file, int line)
+{
+    return compareHelper(success, failureMsg, actual, expeceted, file, line);
+}
+
 void QTestResult::addFailure(const char *message, const char *file, int line)
 {
     clearExpectFail();
+    if (qApp && QThread::currentThread() == qApp->thread())
+        QTestEventLoop::instance().exitLoop();
 
     if (QTest::blacklistCurrentTest)
         QTestLog::addBFail(message, file, line);
     else
         QTestLog::addFail(message, file, line);
-    QTest::failed = true;
+    QTest::setFailed(true);
 }
 
 void QTestResult::addSkip(const char *message, const char *file, int line)
@@ -461,6 +612,88 @@ void QTestResult::setCurrentAppName(const char *appName)
 const char *QTestResult::currentAppName()
 {
     return ::currentAppName;
+}
+
+static const char *macroNameForOp(QTest::ComparisonOperation op)
+{
+    using namespace QTest;
+    switch (op) {
+    case ComparisonOperation::CustomCompare:
+        return "QCOMPARE"; /* not used */
+    case ComparisonOperation::Equal:
+        return "QCOMPARE_EQ";
+    case ComparisonOperation::NotEqual:
+        return "QCOMPARE_NE";
+    case ComparisonOperation::LessThan:
+        return "QCOMPARE_LT";
+    case ComparisonOperation::LessThanOrEqual:
+        return "QCOMPARE_LE";
+    case ComparisonOperation::GreaterThan:
+        return "QCOMPARE_GT";
+    case ComparisonOperation::GreaterThanOrEqual:
+        return "QCOMPARE_GE";
+    }
+    Q_UNREACHABLE_RETURN("");
+}
+
+static const char *failureMessageForOp(QTest::ComparisonOperation op)
+{
+    using namespace QTest;
+    switch (op) {
+    case ComparisonOperation::CustomCompare:
+        return "Compared values are not the same"; /* not used */
+    case ComparisonOperation::Equal:
+        return "The computed value is expected to be equal to the baseline, but is not";
+    case ComparisonOperation::NotEqual:
+        return "The computed value is expected to be different from the baseline, but is not";
+    case ComparisonOperation::LessThan:
+        return "The computed value is expected to be less than the baseline, but is not";
+    case ComparisonOperation::LessThanOrEqual:
+        return "The computed value is expected to be less than or equal to the baseline, but is not";
+    case ComparisonOperation::GreaterThan:
+        return "The computed value is expected to be greater than the baseline, but is not";
+    case ComparisonOperation::GreaterThanOrEqual:
+        return "The computed value is expected to be greater than or equal to the baseline, but is not";
+    }
+    Q_UNREACHABLE_RETURN("");
+}
+
+bool QTestResult::reportResult(bool success, const void *lhs, const void *rhs,
+                               const char *(*lhsFormatter)(const void*),
+                               const char *(*rhsFormatter)(const void*),
+                               const char *lhsExpr, const char *rhsExpr,
+                               QTest::ComparisonOperation op, const char *file, int line,
+                               const char *failureMessage)
+{
+    Q_DECL_UNINITIALIZED char msg[maxMsgLen];
+    msg[0] = '\0';
+
+    QTEST_ASSERT(lhsExpr);
+    QTEST_ASSERT(rhsExpr);
+
+    if (QTestLog::verboseLevel() >= 2) {
+        std::snprintf(msg, maxMsgLen, "%s(%s, %s)", macroNameForOp(op), lhsExpr, rhsExpr);
+        QTestLog::info(msg, file, line);
+    }
+
+    if (success) {
+        if (QTest::expectFailMode) {
+            std::snprintf(msg, maxMsgLen, "%s(%s, %s) returned TRUE unexpectedly.",
+                          macroNameForOp(op), lhsExpr, rhsExpr);
+        }
+        return checkStatement(success, msg, file, line);
+    }
+
+    const std::unique_ptr<const char[]> lhsPtr{ lhsFormatter(lhs) };
+    const std::unique_ptr<const char[]> rhsPtr{ rhsFormatter(rhs) };
+
+    if (!failureMessage)
+        failureMessage = failureMessageForOp(op);
+
+    formatFailMessage(msg, maxMsgLen, failureMessage, lhsPtr.get(), rhsPtr.get(),
+                      lhsExpr, rhsExpr, op);
+
+    return checkStatement(success, msg, file, line);
 }
 
 QT_END_NAMESPACE

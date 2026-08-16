@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <qpainterpath.h>
 #include <qpolygon.h>
 #include <qtransform.h>
@@ -46,8 +21,6 @@ private slots:
     void qhash();
     void translate();
     void scale();
-    void matrix();
-    void testOffset();
     void types();
     void types2_data();
     void types2();
@@ -61,6 +34,8 @@ private slots:
     void projectivePathMapping();
     void mapInt();
     void mapPathWithPoint();
+    void mapRectToPolygon(); // QTBUG-127723
+    void quadToQuad(); // QTBUG-21329
 
 private:
     void mapping_data();
@@ -372,67 +347,6 @@ void tst_QTransform::scale()
     QVERIFY( QTransform::fromScale( 1, 1 ) == QTransform());
 }
 
-#if QT_DEPRECATED_SINCE(5, 15)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-void tst_QTransform::matrix()
-{
-    QMatrix mat1;
-    mat1.scale(0.3, 0.7);
-    mat1.translate(53.3, 94.4);
-    mat1.rotate(45);
-
-    QMatrix mat2;
-    mat2.rotate(33);
-    mat2.scale(0.6, 0.6);
-    mat2.translate(13.333, 7.777);
-
-    QTransform tran1(mat1);
-    QTransform tran2(mat2);
-    QTransform dummy;
-    dummy.setMatrix(mat1.m11(), mat1.m12(), 0,
-                    mat1.m21(), mat1.m22(), 0,
-                    mat1.dx(), mat1.dy(), 1);
-
-    QCOMPARE(tran1, dummy);
-    QCOMPARE(tran1.inverted(), dummy.inverted());
-    QCOMPARE(tran1.inverted(), QTransform(mat1.inverted()));
-    QCOMPARE(tran2.inverted(), QTransform(mat2.inverted()));
-
-    QMatrix mat3 = mat1 * mat2;
-    QTransform tran3 = tran1 * tran2;
-    QCOMPARE(QTransform(mat3), tran3);
-
-    /* QMatrix::operator==() doesn't use qFuzzyCompare(), which
-     * on win32-g++ results in a failure. So we work around it by
-     * calling QTranform::operator==(), which performs a fuzzy compare. */
-    QCOMPARE(QTransform(mat3), QTransform(tran3.toAffine()));
-
-    QTransform tranInv = tran1.inverted();
-    QMatrix   matInv = mat1.inverted();
-
-    QRect rect(43, 70, 200, 200);
-    QPoint pt(43, 66);
-    QCOMPARE(tranInv.mapRect(rect), matInv.mapRect(rect));
-    QCOMPARE(tranInv.map(pt), matInv.map(pt));
-
-    QPainterPath path;
-    path.moveTo(55, 60);
-    path.lineTo(110, 110);
-    path.quadTo(220, 50, 10, 20);
-    path.closeSubpath();
-    QCOMPARE(tranInv.map(path), matInv.map(path));
-}
-
-void tst_QTransform::testOffset()
-{
-    QTransform trans;
-    const QMatrix &aff = trans.toAffine();
-    QCOMPARE((void*)(&aff), (void*)(&trans));
-}
-QT_WARNING_POP
-#endif
-
 void tst_QTransform::types()
 {
     QTransform m1;
@@ -447,8 +361,9 @@ void tst_QTransform::types()
     QCOMPARE(m1.inverted().type(), QTransform::TxScale);
 
     m1.rotate(45.0f);
-    QCOMPARE(m1.type(), QTransform::TxRotate);
-    QCOMPARE(m1.inverted().type(), QTransform::TxRotate);
+    // Rotation after non-uniform scaling -> shearing. Uniform scale + rotate tested below.
+    QCOMPARE(m1.type(), QTransform::TxShear);
+    QCOMPARE(m1.inverted().type(), QTransform::TxShear);
 
     m1.shear(0.5f, 0.25f);
     QCOMPARE(m1.type(), QTransform::TxShear);
@@ -785,6 +700,27 @@ void tst_QTransform::mapPathWithPoint()
     QPainterPath p(QPointF(10, 10));
     p = QTransform::fromTranslate(10, 10).map(p);
     QCOMPARE(p.currentPosition(), QPointF(20, 20));
+}
+
+void tst_QTransform::mapRectToPolygon()
+{
+    QRectF r(7, 7, 36, 36);
+    QTransform tx(2, 0, 0, 2, 0, 0);
+    QPolygonF polygon1 = tx.mapToPolygon(r.toRect()).toPolygonF();
+    QPolygonF polygon2 = tx.map(QPolygonF(r));
+    if (polygon1.size() > 4)
+        polygon1.removeLast();
+    if (polygon2.size() > 4)
+        polygon2.removeLast();
+    QCOMPARE(polygon1, polygon2);
+}
+
+void tst_QTransform::quadToQuad() // QTBUG-21329
+{
+    QTransform result;
+    QVERIFY(QTransform::quadToQuad(QRectF(0, 0, 1, 1), QRectF(0, 0, 1, 1), result));
+    QPolygonF trapezoid({{0, 0}, {10, 0}, {11, 11}, {0, 10}});
+    QVERIFY(QTransform::quadToQuad(trapezoid, trapezoid.boundingRect(), result));
 }
 
 QTEST_APPLESS_MAIN(tst_QTransform)

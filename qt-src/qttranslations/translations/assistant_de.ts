@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="de">
+<TS version="2.1" language="de_DE">
 <context>
     <name>AboutDialog</name>
     <message>
@@ -17,10 +17,6 @@
     <message>
         <source>Unable to launch external application.</source>
         <translation>Fehler beim Starten der externen Anwendung.</translation>
-    </message>
-    <message>
-        <source>OK</source>
-        <translation>OK</translation>
     </message>
 </context>
 <context>
@@ -520,9 +516,6 @@ Grund:
         <source>Remove</source>
         <translation>Entfernen</translation>
     </message>
-</context>
-<context>
-    <name>HelpDocSettingsWidgetPrivate</name>
     <message>
         <source>Add Documentation</source>
         <translation>Dokumentation hinzufügen</translation>
@@ -543,26 +536,6 @@ Grund:
         <translation>&lt;title&gt;Fehler 404...&lt;/title&gt;&lt;div align=&quot;center&quot;&gt;&lt;br&gt;&lt;br&gt;&lt;h1&gt;Die Seite kann nicht gefunden werden.&lt;/h1&gt;&lt;br&gt;&lt;h3&gt;&apos;%1&apos;&lt;/h3&gt;&lt;/div&gt;</translation>
     </message>
     <message>
-        <source>Open Link</source>
-        <translation>Link öffnen</translation>
-    </message>
-    <message>
-        <source>Copy &amp;Link Location</source>
-        <translation>&amp;Link-Adresse kopieren</translation>
-    </message>
-    <message>
-        <source>Copy</source>
-        <translation>Kopieren</translation>
-    </message>
-    <message>
-        <source>Reload</source>
-        <translation>Neu laden</translation>
-    </message>
-    <message>
-        <source>Open Link in New Tab	Ctrl+LMB</source>
-        <translation>Link in neuem Reiter öffnen (Strg + linke Maustaste)</translation>
-    </message>
-    <message>
         <source>Error 404...</source>
         <translation>Fehler 404...</translation>
     </message>
@@ -577,10 +550,6 @@ Grund:
     <message>
         <source>Error loading: %1</source>
         <translation>Fehler beim Laden von %1</translation>
-    </message>
-    <message>
-        <source>Open Link in New Page</source>
-        <translation>Link in neuer Seite öffnen</translation>
     </message>
 </context>
 <context>
@@ -701,10 +670,6 @@ Grund:
         <translation>Ctrl+Alt+Left</translation>
     </message>
     <message>
-        <source>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Version %2&lt;/p&gt;&lt;p&gt;Browser: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) %4 The Qt Company Ltd.&lt;/p&gt;</source>
-        <translation>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Version %2&lt;/p&gt;&lt;p&gt;Browser: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) %4 The Qt Company Ltd.&lt;/p&gt;</translation>
-    </message>
-    <message>
         <source>Unfiltered</source>
         <translation>Ungefiltert</translation>
     </message>
@@ -759,6 +724,10 @@ Grund:
     <message>
         <source>Could not find the associated content item.</source>
         <translation>Der zugehörige Inhaltseintrag konnte nicht gefunden werden.</translation>
+    </message>
+    <message>
+        <source>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Version %2&lt;/p&gt;&lt;p&gt;Browser: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) The Qt Company Ltd. and other contributors.&lt;/p&gt;</source>
+        <translation>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Version %2&lt;/p&gt;&lt;p&gt;Browser: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) The Qt Company Ltd. and other contributors.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>About %1</source>
@@ -988,6 +957,33 @@ Grund:
     <message>
         <source>&amp;Close</source>
         <translation>&amp;Schließen</translation>
+    </message>
+</context>
+<context>
+    <name>HelpViewerImpl</name>
+    <message>
+        <source>Open Link</source>
+        <translation>Link öffnen</translation>
+    </message>
+    <message>
+        <source>Open Link in New Tab	Ctrl+LMB</source>
+        <translation>Link in neuem Reiter öffnen (Strg + linke Maustaste)</translation>
+    </message>
+    <message>
+        <source>Copy &amp;Link Location</source>
+        <translation>&amp;Link-Adresse kopieren</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>Kopieren</translation>
+    </message>
+    <message>
+        <source>Reload</source>
+        <translation>Neu laden</translation>
+    </message>
+    <message>
+        <source>Open Link in New Page</source>
+        <translation>Link in neuer Seite öffnen</translation>
     </message>
 </context>
 </TS>

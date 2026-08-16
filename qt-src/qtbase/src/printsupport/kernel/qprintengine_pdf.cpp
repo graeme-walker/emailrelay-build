@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qprintengine_pdf_p.h"
 
@@ -140,7 +104,14 @@ void QPdfPrintEngine::setProperty(PrintEnginePropertyKey key, const QVariant &va
         d->collate = value.toBool();
         break;
     case PPK_ColorMode:
-        d->grayscale = (QPrinter::ColorMode(value.toInt()) == QPrinter::GrayScale);
+        switch (QPrinter::ColorMode(value.toInt())) {
+        case QPrinter::GrayScale:
+            d->colorModel = QPdfEngine::ColorModel::Grayscale;
+            break;
+        case QPrinter::Color:
+            d->colorModel = QPdfEngine::ColorModel::Auto;
+            break;
+        }
         break;
     case PPK_Creator:
         d->creator = value.toString();
@@ -213,7 +184,8 @@ void QPdfPrintEngine::setProperty(PrintEnginePropertyKey key, const QVariant &va
         Q_ASSERT(margins.size() == 4);
         d->m_pageLayout.setUnits(QPageLayout::Point);
         d->m_pageLayout.setMargins(QMarginsF(margins.at(0).toReal(), margins.at(1).toReal(),
-                                             margins.at(2).toReal(), margins.at(3).toReal()));
+                                             margins.at(2).toReal(), margins.at(3).toReal()),
+                                   QPageLayout::OutOfBoundsPolicy::Clamp);
         break;
     }
     case PPK_QPageSize: {
@@ -225,7 +197,7 @@ void QPdfPrintEngine::setProperty(PrintEnginePropertyKey key, const QVariant &va
     case PPK_QPageMargins: {
         QPair<QMarginsF, QPageLayout::Unit> pair = qvariant_cast<QPair<QMarginsF, QPageLayout::Unit> >(value);
         d->m_pageLayout.setUnits(pair.second);
-        d->m_pageLayout.setMargins(pair.first);
+        d->m_pageLayout.setMargins(pair.first, QPageLayout::OutOfBoundsPolicy::Clamp);
         break;
     }
     case PPK_QPageLayout: {
@@ -257,7 +229,7 @@ QVariant QPdfPrintEngine::property(PrintEnginePropertyKey key) const
         ret = d->collate;
         break;
     case PPK_ColorMode:
-        ret = d->grayscale ? QPrinter::GrayScale : QPrinter::Color;
+        ret = d->printerColorMode();
         break;
     case PPK_Creator:
         ret = d->creator;
@@ -402,6 +374,22 @@ QPdfPrintEnginePrivate::QPdfPrintEnginePrivate(QPrinter::PrinterMode m)
 QPdfPrintEnginePrivate::~QPdfPrintEnginePrivate()
 {
 }
+
+QPrinter::ColorMode QPdfPrintEnginePrivate::printerColorMode() const
+{
+    switch (colorModel) {
+    case QPdfEngine::ColorModel::RGB:
+    case QPdfEngine::ColorModel::CMYK:
+    case QPdfEngine::ColorModel::Auto:
+        return QPrinter::Color;
+    case QPdfEngine::ColorModel::Grayscale:
+        return QPrinter::GrayScale;
+    }
+
+    Q_UNREACHABLE();
+    return QPrinter::Color;
+}
+
 
 QT_END_NAMESPACE
 

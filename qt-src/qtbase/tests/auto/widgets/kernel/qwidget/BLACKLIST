@@ -1,47 +1,49 @@
-# OSX QTBUG-25300 QTBUG-45502
-[normalGeometry]
-ubuntu-16.04
-[saveRestoreGeometry]
-opensuse-leap
-ubuntu-16.04
-b2qt
-opensuse-42.3
-[restoreVersion1Geometry]
-ubuntu-16.04
-[focusProxyAndInputMethods]
-rhel-7.6
-opensuse-leap
-ubuntu
 [raise]
 opensuse-leap
-# QTBUG-68175
-opensuse-42.3
-[childEvents]
-macos
-[renderInvisible]
-macos
-[optimizedResizeMove]
-osx
 [optimizedResize_topLevel]
 osx
+[render_windowOpacity]
+macos arm
 [render_systemClip]
 osx
-[showMinimizedKeepsFocus]
-macos
-[maskedUpdate]
-opensuse
-opensuse-leap
-[moveInResizeEvent]
-ubuntu-16.04
 [multipleToplevelFocusCheck]
-rhel-7.6
+centos
 opensuse-leap
 ubuntu
-[windowState]
-# QTBUG-75270
-winrt
-
-[syntheticEnterLeave]
-macos # Can't move cursor (QTBUG-76312)
-[taskQTBUG_4055_sendSyntheticEnterLeave]
-macos # Can't move cursor (QTBUG-76312)
+sles-15
+# QTBUG-87668
+[showMinimizedKeepsFocus]
+android
+macos ci
+[normalGeometry]
+android
+[saveRestoreGeometry]
+android
+xcb ubuntu-24.04 # QTBUG-126495
+[optimizedResizeMove]
+android
+[update]
+android
+[scroll]
+android
+[moveChild]
+android
+[multipleToplevelFocusCheck]
+android
+[renderInvisible]
+android
+[updateWhileMinimized]
+android
+[doubleRepaint]
+android
+[setMaskInResizeEvent]
+android
+[activateWindow]
+android
+[optimizedResize_topLevel]
+android
+[hoverPosition]
+macos-14 x86
+# QTBUG-124291
+[setParentChangesFocus:make dialog parentless, after]
+android

@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/QTemporaryDir>
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtGui/qevent.h>
 
 class tst_qfileopenevent : public QObject
@@ -55,7 +30,7 @@ private:
     QByteArray readFileContent(QFileOpenEvent& event);
     bool appendFileContent(QFileOpenEvent& event, const QByteArray& writeContent);
 
-    bool event(QEvent *);
+    bool event(QEvent *) override;
 
     QTemporaryDir m_temporaryDir;
     QString m_originalCurrent;
@@ -79,7 +54,7 @@ void tst_qfileopenevent::cleanupTestCase()
 void tst_qfileopenevent::createFile(const QString &filename, const QByteArray &content)
 {
     QFile file(filename);
-    file.open(QFile::WriteOnly);
+    QVERIFY(file.open(QFile::WriteOnly));
     file.write(content);
     file.close();
 }
@@ -103,8 +78,9 @@ void tst_qfileopenevent::constructor()
 
 QByteArray tst_qfileopenevent::readFileContent(QFileOpenEvent& event)
 {
-    QFile file;
-    event.openFile(file, QFile::ReadOnly);
+    QFile file(event.file());
+    if (!file.open(QFile::ReadOnly))
+        qFatal("Cannot open file %s", qPrintable(event.file()));
     file.seek(0);
     QByteArray data = file.readAll();
     return data;
@@ -112,8 +88,8 @@ QByteArray tst_qfileopenevent::readFileContent(QFileOpenEvent& event)
 
 bool tst_qfileopenevent::appendFileContent(QFileOpenEvent& event, const QByteArray& writeContent)
 {
-    QFile file;
-    bool ok = event.openFile(file, QFile::Append | QFile::Unbuffered);
+    QFile file(event.file());
+    bool ok = file.open(QFile::Append | QFile::Unbuffered);
     if (ok)
         ok = file.write(writeContent) == writeContent.size();
     return ok;
@@ -152,8 +128,8 @@ void tst_qfileopenevent::handleLifetime()
     QScopedPointer<QFileOpenEvent> event(createFileAndEvent(QLatin1String("testHandleLifetime"), QByteArray("test content")));
 
     // open a QFile after the original RFile is closed
-    QFile qFile;
-    QCOMPARE(event->openFile(qFile, QFile::Append | QFile::Unbuffered), true);
+    QFile qFile(event->file());
+    QVERIFY(qFile.open(QFile::Append | QFile::Unbuffered));
     event.reset(0);
 
     // write to the QFile after the event is closed
@@ -163,7 +139,7 @@ void tst_qfileopenevent::handleLifetime()
 
     // check the content
     QFile checkContent("testHandleLifetime");
-    checkContent.open(QFile::ReadOnly);
+    QVERIFY(checkContent.open(QFile::ReadOnly));
     QString content(checkContent.readAll());
     QCOMPARE(content, QLatin1String("test content+closed original handles"));
     checkContent.close();
@@ -177,7 +153,8 @@ void tst_qfileopenevent::multiOpen()
 
     QFile files[5];
     for (int i=0; i<5; i++) {
-        QCOMPARE(event->openFile(files[i], QFile::ReadOnly), true);
+        files[i].setFileName(event->file());
+        QVERIFY(files[i].open(QFile::ReadOnly));
     }
     for (int i=0; i<5; i++)
         files[i].seek(i);
@@ -204,9 +181,9 @@ bool tst_qfileopenevent::event(QEvent *event)
 
 void tst_qfileopenevent::sendAndReceive()
 {
-    QScopedPointer<QFileOpenEvent> event(createFileAndEvent(QLatin1String("testSendAndReceive"), QByteArray("sending")));
+    std::unique_ptr<QFileOpenEvent> event(createFileAndEvent(QLatin1String("testSendAndReceive"), QByteArray("sending")));
 
-    QCoreApplication::instance()->postEvent(this, event.take());
+    QCoreApplication::instance()->postEvent(this, event.release());
     QCoreApplication::instance()->processEvents();
 
     // QTBUG-17468: On Mac, processEvents doesn't always process posted events

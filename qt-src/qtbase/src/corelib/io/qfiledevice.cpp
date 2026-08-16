@@ -1,48 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplatformdefs.h"
 #include "qfiledevice.h"
 #include "qfiledevice_p.h"
 #include "qfsfileengine_p.h"
-
-#include <private/qmemory_p.h>
 
 #ifdef QT_NO_QOBJECT
 #define tr(X) QString::fromLatin1(X)
@@ -61,13 +23,12 @@ QFileDevicePrivate::QFileDevicePrivate()
     writeBufferChunkSize = QFILE_WRITEBUFFER_SIZE;
 }
 
-QFileDevicePrivate::~QFileDevicePrivate()
-    = default;
+QFileDevicePrivate::~QFileDevicePrivate() = default;
 
-QAbstractFileEngine * QFileDevicePrivate::engine() const
+QAbstractFileEngine *QFileDevicePrivate::engine() const
 {
     if (!fileEngine)
-        fileEngine = qt_make_unique<QFSFileEngine>();
+        fileEngine = std::make_unique<QFSFileEngine>();
     return fileEngine.get();
 }
 
@@ -128,9 +89,9 @@ void QFileDevicePrivate::setError(QFileDevice::FileError err, int errNum)
     \value ReadGroup The file is readable by the group.
     \value WriteGroup The file is writable by the group.
     \value ExeGroup The file is executable by the group.
-    \value ReadOther The file is readable by anyone.
-    \value WriteOther The file is writable by anyone.
-    \value ExeOther The file is executable by anyone.
+    \value ReadOther The file is readable by others.
+    \value WriteOther The file is writable by others.
+    \value ExeOther The file is executable by others.
 
     \warning Because of differences in the platforms supported by Qt,
     the semantics of ReadUser, WriteUser and ExeUser are
@@ -148,6 +109,25 @@ void QFileDevicePrivate::setError(QFileDevice::FileError err, int errNum)
     decrementing \c qt_ntfs_permission_lookup by 1.
 
     \snippet ntfsp.cpp 1
+
+    \note Since this is a non-atomic global variable, it is only safe
+    to increment or decrement \c qt_ntfs_permission_lookup before any
+    threads other than the main thread have started or after every thread
+    other than the main thread has ended.
+
+    \note From Qt 6.6 the variable \c qt_ntfs_permission_lookup is
+    deprecated. Please use the following alternatives.
+
+    The safe and easy way to manage permission checks is to use the RAII class
+    \c QNtfsPermissionCheckGuard.
+
+    \snippet ntfsp.cpp raii
+
+    If you need more fine-grained control, it is possible to manage the permission
+    with the following functions instead:
+
+    \snippet ntfsp.cpp free-funcs
+
 */
 
 //************* QFileDevice
@@ -166,10 +146,10 @@ void QFileDevicePrivate::setError(QFileDevice::FileError err, int errNum)
     QFileDevice is the base class for I/O devices that can read and write text and binary files
     and \l{The Qt Resource System}{resources}. QFile offers the main functionality,
     QFileDevice serves as a base class for sharing functionality with other file devices such
-    as QTemporaryFile, by providing all the operations that can be done on files that have
-    been opened by QFile or QTemporaryFile.
+    as QSaveFile, by providing all the operations that can be done on files that have
+    been opened by QFile or QSaveFile.
 
-    \sa QFile, QTemporaryFile
+    \sa QFile, QSaveFile
 */
 
 /*!
@@ -187,6 +167,35 @@ void QFileDevicePrivate::setError(QFileDevice::FileError err, int errNum)
     \value DontCloseHandle If not explicitly closed, the underlying file
     handle is left open when the QFile object is destroyed.
  */
+
+/*!
+    \macro QT_USE_NODISCARD_FILE_OPEN
+    \macro QT_NO_USE_NODISCARD_FILE_OPEN
+    \relates QFileDevice
+    \since 6.8
+
+    File-related I/O classes (such as QFile, QSaveFile, QTemporaryFile)
+    have an \c{open()} method to open the file they act upon. It is
+    important to check the return value of the call to \c{open()}
+    before proceeding with reading or writing data into the file.
+
+    For this reason, starting with Qt 6.8, some overloads of \c{open()}
+    have been marked with the \c{[[nodiscard]]} attribute. Since this
+    change may raise warnings in existing codebases, user code can
+    opt-in or opt-out from having the attribute applied by defining
+    certain macros:
+
+    \list
+        \li If the \c{QT_USE_NODISCARD_FILE_OPEN} macro is defined,
+        overloads of \c{open()} are marked as \c{[[nodiscard]]}.
+        \li If the \c{QT_NO_USE_NODISCARD_FILE_OPEN} is defined, the
+        overloads of \c{open()} are \e{not} marked as \c{[[nodiscard]]}.
+        \li If neither macro is defined, then the default up to and
+        including Qt 6.9 is not to have the attribute. Starting from Qt 6.10,
+        the attribute is automatically applied.
+        \li If both macros are defined, the program is ill-formed.
+    \endlist
+*/
 
 #ifdef QT_NO_QOBJECT
 QFileDevice::QFileDevice()
@@ -329,7 +338,8 @@ void QFileDevice::close()
     // reset cached size
     d->cachedSize = 0;
 
-    // keep earlier error from flush
+    // If flush() succeeded but close() failed, copy its error condition;
+    // otherwise, keep the earlier flush() error.
     if (d->fileEngine->close() && flushed)
         unsetError();
     else if (flushed)
@@ -645,7 +655,7 @@ QFile::Permissions QFileDevice::permissions() const
 {
     Q_D(const QFileDevice);
     QAbstractFileEngine::FileFlags perms = d->engine()->fileFlags(QAbstractFileEngine::PermsMask) & QAbstractFileEngine::PermsMask;
-    return QFile::Permissions((int)perms); //ewww
+    return QFile::Permissions::fromInt(perms.toInt()); //ewww
 }
 
 /*!
@@ -661,7 +671,7 @@ QFile::Permissions QFileDevice::permissions() const
 bool QFileDevice::setPermissions(Permissions permissions)
 {
     Q_D(QFileDevice);
-    if (d->engine()->setPermissions(permissions)) {
+    if (d->engine()->setPermissions(permissions.toInt())) {
         unsetError();
         return true;
     }
@@ -670,7 +680,7 @@ bool QFileDevice::setPermissions(Permissions permissions)
 }
 
 /*!
-    \enum QFileDevice::MemoryMapFlags
+    \enum QFileDevice::MemoryMapFlag
     \since 4.4
 
     This enum describes special options that may be used by the map()
@@ -754,15 +764,6 @@ bool QFileDevice::unmap(uchar *address)
     \sa setFileTime(), fileTime(), QFileInfo::fileTime()
 */
 
-static inline QAbstractFileEngine::FileTime FileDeviceTimeToAbstractFileEngineTime(QFileDevice::FileTime time)
-{
-    Q_STATIC_ASSERT(int(QFileDevice::FileAccessTime) == int(QAbstractFileEngine::AccessTime));
-    Q_STATIC_ASSERT(int(QFileDevice::FileBirthTime) == int(QAbstractFileEngine::BirthTime));
-    Q_STATIC_ASSERT(int(QFileDevice::FileMetadataChangeTime) == int(QAbstractFileEngine::MetadataChangeTime));
-    Q_STATIC_ASSERT(int(QFileDevice::FileModificationTime) == int(QAbstractFileEngine::ModificationTime));
-    return QAbstractFileEngine::FileTime(time);
-}
-
 /*!
     \since 5.10
     Returns the file time specified by \a time.
@@ -776,7 +777,7 @@ QDateTime QFileDevice::fileTime(QFileDevice::FileTime time) const
     Q_D(const QFileDevice);
 
     if (d->engine())
-        return d->engine()->fileTime(FileDeviceTimeToAbstractFileEngineTime(time));
+        return d->engine()->fileTime(time);
 
     return QDateTime();
 }
@@ -799,7 +800,7 @@ bool QFileDevice::setFileTime(const QDateTime &newDate, QFileDevice::FileTime fi
         return false;
     }
 
-    if (!d->fileEngine->setFileTime(newDate, FileDeviceTimeToAbstractFileEngineTime(fileTime))) {
+    if (!d->fileEngine->setFileTime(newDate, fileTime)) {
         d->setError(d->fileEngine->error(), d->fileEngine->errorString());
         return false;
     }

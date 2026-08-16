@@ -1,43 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qiconengine.h"
+#include "qiconengine_p.h"
 #include "qpainter.h"
 
 QT_BEGIN_NAMESPACE
@@ -77,6 +42,9 @@ QT_BEGIN_NAMESPACE
 /*!  Returns the actual size of the icon the engine provides for the
   requested \a size, \a mode and \a state. The default implementation
   returns the given \a size.
+
+  The returned size is in device-independent pixels (This
+  is relevant for high-dpi pixmaps).
  */
 QSize QIconEngine::actualSize(const QSize &size, QIcon::Mode /*mode*/, QIcon::State /*state*/)
 {
@@ -149,20 +117,9 @@ void QIconEngine::addFile(const QString &/*fileName*/, const QSize &/*size*/, QI
 
 /*!
     \enum QIconEngine::IconEngineHook
-    \since 4.5
 
     These enum values are used for virtual_hook() to allow additional
     queries to icon engine without breaking binary compatibility.
-
-    \value AvailableSizesHook Allows to query the sizes of the
-    contained pixmaps for pixmap-based engines. The \a data argument
-    of the virtual_hook() function is a AvailableSizesArgument pointer
-    that should be filled with icon sizes. Engines that work in terms
-    of a scalable, vectorial format normally return an empty list.
-
-    \value IconNameHook Allows to query the name used to create the
-    icon, for example when instantiating an icon using
-    QIcon::fromTheme().
 
     \value IsNullHook Allow to query if this engine represents a null
     icon. The \a data argument of the virtual_hook() is a pointer to a
@@ -170,48 +127,13 @@ void QIconEngine::addFile(const QString &/*fileName*/, const QSize &/*size*/, QI
     was added in Qt 5.7.
 
     \value ScaledPixmapHook Provides a way to get a pixmap that is scaled
-    according to the given scale (typically equal to the \l {Glossary Of High
-    DPI Terms}{device pixel ratio}). The \a data argument of the virtual_hook()
+    according to the given scale (typically equal to the \l {High
+    DPI}{device pixel ratio}). The \a data argument of the virtual_hook()
     function is a \l ScaledPixmapArgument pointer that contains both the input and
     output arguments. This enum value was added in Qt 5.9.
 
     \sa virtual_hook()
  */
-
-/*!
-    \class QIconEngine::AvailableSizesArgument
-    \since 4.5
-
-    \inmodule QtGui
-
-    This struct represents arguments to virtual_hook() function when
-    \a id parameter is QIconEngine::AvailableSizesHook.
-
-    \sa virtual_hook(), QIconEngine::IconEngineHook
- */
-
-/*!
-    \variable QIconEngine::AvailableSizesArgument::mode
-    \brief the requested mode of an image.
-
-    \sa QIcon::Mode
-*/
-
-/*!
-    \variable QIconEngine::AvailableSizesArgument::state
-    \brief the requested state of an image.
-
-    \sa QIcon::State
-*/
-
-/*!
-    \variable QIconEngine::AvailableSizesArgument::sizes
-
-    \brief image sizes that are available with specified \a mode and
-    \a state. This is an output parameter and is filled after call to
-    virtual_hook(). Engines that work in terms of a scalable,
-    vectorial format normally return an empty list.
-*/
 
 /*!
     \class QIconEngine::ScaledPixmapArgument
@@ -223,8 +145,8 @@ void QIconEngine::addFile(const QString &/*fileName*/, const QSize &/*size*/, QI
     the \a id parameter is QIconEngine::ScaledPixmapHook.
 
     The struct provides a way for icons created via \l QIcon::fromTheme()
-    to return pixmaps that are designed for the current \l {Glossary Of High
-    DPI Terms}{device pixel ratio}. The scale for such an icon is specified
+    to return pixmaps that are designed for the current \l {High
+    DPI}{device pixel ratio}. The scale for such an icon is specified
     using the \l {Icon Theme Specification - Directory Layout}{Scale directory key}
     in the appropriate \c index.theme file.
 
@@ -304,8 +226,6 @@ bool QIconEngine::write(QDataStream &) const
 }
 
 /*!
-    \since 4.5
-
     Additional method to allow extending QIconEngine without
     adding new virtual methods (and without breaking binary compatibility).
     The actual action and format of \a data depends on \a id argument
@@ -316,17 +236,11 @@ bool QIconEngine::write(QDataStream &) const
 void QIconEngine::virtual_hook(int id, void *data)
 {
     switch (id) {
-    case QIconEngine::AvailableSizesHook: {
-        QIconEngine::AvailableSizesArgument &arg =
-            *reinterpret_cast<QIconEngine::AvailableSizesArgument*>(data);
-        arg.sizes.clear();
-        break;
-    }
     case QIconEngine::ScaledPixmapHook: {
-        // We don't have any notion of scale besides "@nx", so just call pixmap() here.
         QIconEngine::ScaledPixmapArgument &arg =
             *reinterpret_cast<QIconEngine::ScaledPixmapArgument*>(data);
-        arg.pixmap = pixmap(arg.size, arg.mode, arg.state);
+        // try to get a pixmap with the correct size, the dpr is adjusted later on
+        arg.pixmap = pixmap(arg.size * arg.scale, arg.mode, arg.state);
         break;
     }
     default:
@@ -335,34 +249,20 @@ void QIconEngine::virtual_hook(int id, void *data)
 }
 
 /*!
-    \since 4.5
-
     Returns sizes of all images that are contained in the engine for the
     specific \a mode and \a state.
-
-    \include qiconengine-virtualhookhelper.qdocinc
  */
-QList<QSize> QIconEngine::availableSizes(QIcon::Mode mode, QIcon::State state) const
+QList<QSize> QIconEngine::availableSizes(QIcon::Mode /*mode*/, QIcon::State /*state*/)
 {
-    AvailableSizesArgument arg;
-    arg.mode = mode;
-    arg.state = state;
-    const_cast<QIconEngine *>(this)->virtual_hook(QIconEngine::AvailableSizesHook, reinterpret_cast<void*>(&arg));
-    return arg.sizes;
+    return {};
 }
 
 /*!
-    \since 4.7
-
     Returns the name used to create the engine, if available.
-
-    \include qiconengine-virtualhookhelper.qdocinc
  */
-QString QIconEngine::iconName() const
+QString QIconEngine::iconName()
 {
-    QString name;
-    const_cast<QIconEngine *>(this)->virtual_hook(QIconEngine::IconNameHook, reinterpret_cast<void*>(&name));
-    return name;
+    return QString();
 }
 
 /*!
@@ -372,10 +272,10 @@ QString QIconEngine::iconName() const
 
     \include qiconengine-virtualhookhelper.qdocinc
  */
-bool QIconEngine::isNull() const
+bool QIconEngine::isNull()
 {
     bool isNull = false;
-    const_cast<QIconEngine *>(this)->virtual_hook(QIconEngine::IsNullHook, &isNull);
+    virtual_hook(QIconEngine::IsNullHook, &isNull);
     return isNull;
 }
 
@@ -384,8 +284,8 @@ bool QIconEngine::isNull() const
 
     Returns a pixmap for the given \a size, \a mode, \a state and \a scale.
 
-    The \a scale argument is typically equal to the \l {Glossary Of High DPI
-    Terms}{device pixel ratio} of the display.
+    The \a scale argument is typically equal to the \l {High DPI}
+    {device pixel ratio} of the display. The size is given in device-independent pixels.
 
     \include qiconengine-virtualhookhelper.qdocinc
 
@@ -403,5 +303,79 @@ QPixmap QIconEngine::scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::St
     const_cast<QIconEngine *>(this)->virtual_hook(QIconEngine::ScaledPixmapHook, reinterpret_cast<void*>(&arg));
     return arg.pixmap;
 }
+
+
+// ------- QProxyIconEngine -----
+
+void QProxyIconEngine::paint(QPainter *painter, const QRect &rect, QIcon::Mode mode, QIcon::State state)
+{
+    proxiedEngine()->paint(painter, rect, mode, state);
+}
+
+QSize QProxyIconEngine::actualSize(const QSize &size, QIcon::Mode mode, QIcon::State state)
+{
+    return proxiedEngine()->actualSize(size, mode, state);
+}
+
+QPixmap QProxyIconEngine::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state)
+{
+    return proxiedEngine()->pixmap(size, mode, state);
+}
+
+void QProxyIconEngine::addPixmap(const QPixmap &pixmap, QIcon::Mode mode, QIcon::State state)
+{
+    proxiedEngine()->addPixmap(pixmap, mode, state);
+}
+
+void QProxyIconEngine::addFile(const QString &fileName, const QSize &size, QIcon::Mode mode, QIcon::State state)
+{
+    proxiedEngine()->addFile(fileName, size, mode, state);
+}
+
+QString QProxyIconEngine::key() const
+{
+    return proxiedEngine()->key();
+}
+
+QIconEngine *QProxyIconEngine::clone() const
+{
+    return proxiedEngine()->clone();
+}
+
+bool QProxyIconEngine::read(QDataStream &in)
+{
+    return proxiedEngine()->read(in);
+}
+
+bool QProxyIconEngine::write(QDataStream &out) const
+{
+    return proxiedEngine()->write(out);
+}
+
+QList<QSize> QProxyIconEngine::availableSizes(QIcon::Mode mode, QIcon::State state)
+{
+    return proxiedEngine()->availableSizes(mode, state);
+}
+
+QString QProxyIconEngine::iconName()
+{
+    return proxiedEngine()->iconName();
+}
+
+bool QProxyIconEngine::isNull()
+{
+    return proxiedEngine()->isNull();
+}
+
+QPixmap QProxyIconEngine::scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale)
+{
+    return proxiedEngine()->scaledPixmap(size, mode, state, scale);
+}
+
+void QProxyIconEngine::virtual_hook(int id, void *data)
+{
+    proxiedEngine()->virtual_hook(id, data);
+}
+
 
 QT_END_NAMESPACE

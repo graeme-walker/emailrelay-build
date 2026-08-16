@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtGui/qtguiglobal.h>
 #if QT_CONFIG(accessibility)
@@ -49,7 +13,6 @@
 #include <QtCore/qloggingcategory.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qlist.h>
-#include <QtCore/qvector.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -78,21 +41,33 @@ HRESULT STDMETHODCALLTYPE QWindowsUiaSelectionProvider::GetSelection(SAFEARRAY *
     if (!accessible)
         return UIA_E_ELEMENTNOTAVAILABLE;
 
-    // First put selected items in a list, then build a safe array with the right size.
-    QVector<QAccessibleInterface *> selectedList;
-    for (int i = 0; i < accessible->childCount(); ++i) {
-        if (QAccessibleInterface *child = accessible->child(i)) {
-            if (child->state().selected) {
-                selectedList.append(child);
+    // First get/create list of selected items, then build a safe array with the right size.
+    QList<QAccessibleInterface *> selectedList;
+    if (QAccessibleSelectionInterface *selectionInterface = accessible->selectionInterface()) {
+        selectedList = selectionInterface->selectedItems();
+    } else {
+        const int childCount = accessible->childCount();
+        selectedList.reserve(childCount);
+        for (int i = 0; i < childCount; ++i) {
+            if (QAccessibleInterface *child = accessible->child(i)) {
+                if (accessible->role() == QAccessible::PageTabList) {
+                    if (child->role() == QAccessible::PageTab && child->state().focused) {
+                        selectedList.append(child);
+                    }
+                } else {
+                    if (child->state().selected) {
+                        selectedList.append(child);
+                    }
+                }
             }
         }
     }
 
     if ((*pRetVal = SafeArrayCreateVector(VT_UNKNOWN, 0, selectedList.size()))) {
         for (LONG i = 0; i < selectedList.size(); ++i) {
-            if (QWindowsUiaMainProvider *childProvider = QWindowsUiaMainProvider::providerForAccessible(selectedList.at(i))) {
-                SafeArrayPutElement(*pRetVal, &i, static_cast<IRawElementProviderSimple *>(childProvider));
-                childProvider->Release();
+            if (ComPtr<IRawElementProviderSimple> provider =
+                        QWindowsUiaMainProvider::providerForAccessible(selectedList.at(i))) {
+                SafeArrayPutElement(*pRetVal, &i, provider.Get());
             }
         }
     }
@@ -127,18 +102,155 @@ HRESULT STDMETHODCALLTYPE QWindowsUiaSelectionProvider::get_IsSelectionRequired(
     if (!accessible)
         return UIA_E_ELEMENTNOTAVAILABLE;
 
-    // Initially returns false if none are selected. After the first selection, it may be required.
-    bool anySelected = false;
-    for (int i = 0; i < accessible->childCount(); ++i) {
-        if (QAccessibleInterface *child = accessible->child(i)) {
-            if (child->state().selected) {
-                anySelected = true;
-                break;
+    if (accessible->role() == QAccessible::PageTabList) {
+        *pRetVal = TRUE;
+    } else {
+
+        // Initially returns false if none are selected. After the first selection, it may be required.
+        bool anySelected = false;
+        if (QAccessibleSelectionInterface *selectionInterface = accessible->selectionInterface()) {
+            anySelected = selectionInterface->selectedItem(0) != nullptr;
+        } else {
+            for (int i = 0; i < accessible->childCount(); ++i) {
+                if (QAccessibleInterface *child = accessible->child(i)) {
+                    if (child->state().selected) {
+                        anySelected = true;
+                        break;
+                    }
+                }
             }
+        }
+
+        *pRetVal = anySelected && !accessible->state().multiSelectable && !accessible->state().extSelectable;
+    }
+    return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE QWindowsUiaSelectionProvider::get_FirstSelectedItem(__RPC__deref_out_opt IRawElementProviderSimple **pRetVal)
+{
+    qCDebug(lcQpaUiAutomation) << __FUNCTION__;
+
+    if (!pRetVal)
+        return E_INVALIDARG;
+    *pRetVal = nullptr;
+
+    QAccessibleInterface *accessible = accessibleInterface();
+    if (!accessible)
+        return UIA_E_ELEMENTNOTAVAILABLE;
+
+    QAccessibleInterface *firstSelectedChild = nullptr;
+    if (QAccessibleSelectionInterface *selectionInterface = accessible->selectionInterface()) {
+        firstSelectedChild = selectionInterface->selectedItem(0);
+        if (!firstSelectedChild)
+            return UIA_E_ELEMENTNOTAVAILABLE;
+    } else {
+        int i = 0;
+        while (!firstSelectedChild && i < accessible->childCount()) {
+            if (QAccessibleInterface *child = accessible->child(i)) {
+                if (accessible->role() == QAccessible::PageTabList) {
+                    if (child->role() == QAccessible::PageTab && child->state().focused)
+                        firstSelectedChild = child;
+                } else if (child->state().selected) {
+                    firstSelectedChild = child;
+                }
+            }
+            i++;
         }
     }
 
-    *pRetVal = anySelected && !accessible->state().multiSelectable && !accessible->state().extSelectable;
+    if (!firstSelectedChild)
+        return UIA_E_ELEMENTNOTAVAILABLE;
+
+    if (ComPtr<IRawElementProviderSimple> childProvider =
+                QWindowsUiaMainProvider::providerForAccessible(firstSelectedChild)) {
+        *pRetVal = childProvider.Detach();
+        return S_OK;
+    }
+
+    return S_FALSE;
+}
+
+HRESULT STDMETHODCALLTYPE QWindowsUiaSelectionProvider::get_LastSelectedItem(__RPC__deref_out_opt IRawElementProviderSimple **pRetVal)
+{
+    qCDebug(lcQpaUiAutomation) << __FUNCTION__;
+
+    if (!pRetVal)
+        return E_INVALIDARG;
+    *pRetVal = nullptr;
+
+    QAccessibleInterface *accessible = accessibleInterface();
+    if (!accessible)
+        return UIA_E_ELEMENTNOTAVAILABLE;
+
+    QAccessibleInterface *lastSelectedChild = nullptr;
+    if (QAccessibleSelectionInterface *selectionInterface = accessible->selectionInterface()) {
+        const int selectedItemCount = selectionInterface->selectedItemCount();
+        if (selectedItemCount <= 0)
+            return UIA_E_ELEMENTNOTAVAILABLE;
+        lastSelectedChild = selectionInterface->selectedItem(selectedItemCount - 1);
+    } else {
+        int i = accessible->childCount() - 1;
+        while (!lastSelectedChild && i >= 0) {
+            if (QAccessibleInterface *child = accessible->child(i)) {
+                if (accessible->role() == QAccessible::PageTabList) {
+                    if (child->role() == QAccessible::PageTab && child->state().focused)
+                        lastSelectedChild = child;
+                } else if (child->state().selected) {
+                    lastSelectedChild = child;
+                }
+            }
+            i--;
+        }
+    }
+
+    if (!lastSelectedChild)
+        return UIA_E_ELEMENTNOTAVAILABLE;
+
+    if (ComPtr<IRawElementProviderSimple> childProvider =
+                QWindowsUiaMainProvider::providerForAccessible(lastSelectedChild)) {
+        *pRetVal = childProvider.Detach();
+        return S_OK;
+    }
+
+    return S_FALSE;
+}
+
+HRESULT STDMETHODCALLTYPE QWindowsUiaSelectionProvider::get_CurrentSelectedItem(__RPC__deref_out_opt IRawElementProviderSimple **pRetVal)
+{
+    qCDebug(lcQpaUiAutomation) << __FUNCTION__;
+    return get_FirstSelectedItem(pRetVal);
+}
+
+HRESULT STDMETHODCALLTYPE QWindowsUiaSelectionProvider::get_ItemCount(__RPC__out int *pRetVal)
+{
+    qCDebug(lcQpaUiAutomation) << __FUNCTION__;
+
+    if (!pRetVal)
+        return E_INVALIDARG;
+    *pRetVal = -1;
+
+    QAccessibleInterface *accessible = accessibleInterface();
+    if (!accessible)
+        return UIA_E_ELEMENTNOTAVAILABLE;
+
+
+    if (QAccessibleSelectionInterface *selectionInterface = accessible->selectionInterface())
+        *pRetVal = selectionInterface->selectedItemCount();
+    else {
+        int selectedCount = 0;
+        for (int i = 0; i < accessible->childCount(); i++) {
+            if (QAccessibleInterface *child = accessible->child(i)) {
+                if (accessible->role() == QAccessible::PageTabList) {
+                    if (child->role() == QAccessible::PageTab && child->state().focused)
+                        selectedCount++;
+                } else if (child->state().selected) {
+                    selectedCount++;
+                }
+            }
+        }
+        *pRetVal = selectedCount;
+    }
+
     return S_OK;
 }
 

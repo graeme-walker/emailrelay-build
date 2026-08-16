@@ -138,6 +138,9 @@ AC_DEFUN([GCONFIG_FN_CHECK_HEADERS],[
 	AC_PREPROC_IFELSE([AC_LANG_PROGRAM([[#include <versionhelpers.h>]],[[]])],
 		AC_DEFINE([GCONFIG_HAVE_WINDOWS_VERSIONHELPERS_H],1,[Define true if versionhelpers.h is available]),
 		AC_DEFINE([GCONFIG_HAVE_WINDOWS_VERSIONHELPERS_H],0,[Define true if versionhelpers.h is available]))
+	AC_PREPROC_IFELSE([AC_LANG_PROGRAM([[#include <ShellScalingApi.h>]],[[]])],
+		AC_DEFINE([GCONFIG_HAVE_SHELLSCALINGAPI_H],1,[Define true if ShellScalingApi.h is available]),
+		AC_DEFINE([GCONFIG_HAVE_SHELLSCALINGAPI_H],0,[Define true if ShellScalingApi.h is available]))
 	AC_CHECK_HEADER([pwd.h],
 		AC_DEFINE([GCONFIG_HAVE_PWD_H],1,[Define true if pwd.h is available]),
 		AC_DEFINE([GCONFIG_HAVE_PWD_H],0,[Define true if pwd.h is available]))
@@ -567,7 +570,7 @@ AC_DEFUN([GCONFIG_FN_ENABLE_GUI],
 	AC_SUBST([GCONFIG_QT_MOC],[$QT_MOC])
 	AC_SUBST([GCONFIG_QT_LRELEASE],[$QT_LRELEASE])
 
-	AM_CONDITIONAL([GCONFIG_GUI],[test "$gconfig_gui" = "yes"])
+	AM_CONDITIONAL([GCONFIG_ENABLE_GUI],[test "$gconfig_gui" = "yes"])
 ])
 
 dnl GCONFIG_FN_ENABLE_INSTALL_HOOK
@@ -3086,20 +3089,33 @@ AC_DEFUN([GCONFIG_FN_WINDOWS_STARTUP_INFO_EX],
 
 dnl GCONFIG_FN_WITH_DOXYGEN
 dnl -----------------------
-dnl Tests for doxygen. Typically used after AC_CHECK_PROG(doxygen) and
-dnl AC_ARG_WITH(doxygen).
+dnl Sets GCONFIG_DOXYGEN for use in makefiles. Used after
+dnl AC_CHECK_PROG(GCONFIG_HAVE_DOXYGEN,doxygen) and AC_ARG_WITH(doxygen).
+dnl Defaults to "no".
 dnl
 AC_DEFUN([GCONFIG_FN_WITH_DOXYGEN],
 [
-	if test "$with_doxygen" != ""
+	GCONFIG_DOXYGEN="no"
+	if test "$with_doxygen" = "yes"
 	then
-		if test "$with_doxygen" = "yes" -a "$GCONFIG_HAVE_DOXYGEN" != "yes"
-		then
-			AC_MSG_WARN([forcing use of doxygen even though not found])
-		fi
-		GCONFIG_HAVE_DOXYGEN="$with_doxygen"
+		GCONFIG_DOXYGEN="yes"
 	fi
-	AC_SUBST([GCONFIG_HAVE_DOXYGEN])
+
+	if test "$GCONFIG_DOXYGEN" = "yes" -a "$GCONFIG_HAVE_DOXYGEN" != "yes"
+	then
+		AC_MSG_WARN([forcing use of doxygen even though not found])
+	fi
+
+	AC_SUBST([GCONFIG_DOXYGEN])
+])
+
+dnl GCONFIG_FN_WITH_HTML
+dnl --------------------
+dnl Enables "if GCONFIG_HTML" if --with-html.
+dnl
+AC_DEFUN([GCONFIG_FN_WITH_HTML],
+[
+	AM_CONDITIONAL([GCONFIG_HTML],[test "$with_html" = "yes"])
 ])
 
 dnl GCONFIG_FN_WITH_GETTEXT

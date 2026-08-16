@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qnetworkcookiejar.h"
 #include "qnetworkcookiejar_p.h"
@@ -47,15 +11,17 @@
 #include "private/qtldurl_p.h"
 #else
 QT_BEGIN_NAMESPACE
-static bool qIsEffectiveTLD(QString domain)
+static bool qIsEffectiveTLD(QStringView domain)
 {
     // provide minimal checking by not accepting cookies on real TLDs
-    return !domain.contains(QLatin1Char('.'));
+    return !domain.contains(u'.');
 }
 QT_END_NAMESPACE
 #endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*!
     \class QNetworkCookieJar
@@ -146,31 +112,31 @@ void QNetworkCookieJar::setAllCookies(const QList<QNetworkCookie> &cookieList)
     d->allCookies = cookieList;
 }
 
-static inline bool isParentPath(const QString &path, const QString &reference)
+static inline bool isParentPath(QStringView path, QStringView reference)
 {
-    if ((path.isEmpty() && reference == QLatin1String("/")) || path.startsWith(reference)) {
+    if ((path.isEmpty() && reference == "/"_L1) || path.startsWith(reference)) {
         //The cookie-path and the request-path are identical.
-        if (path.length() == reference.length())
+        if (path.size() == reference.size())
             return true;
         //The cookie-path is a prefix of the request-path, and the last
         //character of the cookie-path is %x2F ("/").
-        if (reference.endsWith('/'))
+        if (reference.endsWith(u'/'))
             return true;
         //The cookie-path is a prefix of the request-path, and the first
         //character of the request-path that is not included in the cookie-
         //path is a %x2F ("/") character.
-        if (path.at(reference.length()) == '/')
+        if (path.at(reference.size()) == u'/')
             return true;
     }
     return false;
 }
 
-static inline bool isParentDomain(const QString &domain, const QString &reference)
+static inline bool isParentDomain(QStringView domain, QStringView reference)
 {
-    if (!reference.startsWith(QLatin1Char('.')))
+    if (!reference.startsWith(u'.'))
         return domain == reference;
 
-    return domain.endsWith(reference) || domain == reference.midRef(1);
+    return domain.endsWith(reference) || domain == reference.mid(1);
 }
 
 /*!
@@ -234,49 +200,38 @@ QList<QNetworkCookie> QNetworkCookieJar::cookiesForUrl(const QUrl &url) const
     Q_D(const QNetworkCookieJar);
     const QDateTime now = QDateTime::currentDateTimeUtc();
     QList<QNetworkCookie> result;
-    bool isEncrypted = url.scheme() == QLatin1String("https");
+    const bool isEncrypted = url.scheme() == "https"_L1;
 
     // scan our cookies for something that matches
-    QList<QNetworkCookie>::ConstIterator it = d->allCookies.constBegin(),
-                                        end = d->allCookies.constEnd();
-    for ( ; it != end; ++it) {
-        if (!isParentDomain(url.host(), it->domain()))
+    for (const auto &cookie : std::as_const(d->allCookies)) {
+        if (!isEncrypted && cookie.isSecure())
             continue;
-        if (!isParentPath(url.path(), it->path()))
+        if (!cookie.isSessionCookie() && cookie.expirationDate() < now)
             continue;
-        if (!(*it).isSessionCookie() && (*it).expirationDate() < now)
+        const QString urlHost = url.host();
+        const QString cookieDomain = cookie.domain();
+        if (!isParentDomain(urlHost, cookieDomain))
             continue;
-        if ((*it).isSecure() && !isEncrypted)
+        if (!isParentPath(url.path(), cookie.path()))
             continue;
 
-        QString domain = it->domain();
-        if (domain.startsWith(QLatin1Char('.'))) /// Qt6?: remove when compliant with RFC6265
-            domain = domain.mid(1);
+        QStringView domain = cookieDomain;
+        if (domain.startsWith(u'.')) /// Qt6?: remove when compliant with RFC6265
+            domain = domain.sliced(1);
 #if QT_CONFIG(topleveldomain)
-        if (qIsEffectiveTLD(domain) && url.host() != domain)
+        if (urlHost != domain && qIsEffectiveTLD(domain))
             continue;
 #else
-        if (!domain.contains(QLatin1Char('.')) && url.host() != domain)
+        if (!domain.contains(u'.') && urlHost != domain)
             continue;
 #endif // topleveldomain
 
-        // insert this cookie into result, sorted by path
-        QList<QNetworkCookie>::Iterator insertIt = result.begin();
-        while (insertIt != result.end()) {
-            if (insertIt->path().length() < it->path().length()) {
-                // insert here
-                insertIt = result.insert(insertIt, *it);
-                break;
-            } else {
-                ++insertIt;
-            }
-        }
-
-        // this is the shortest path yet, just append
-        if (insertIt == result.end())
-            result += *it;
+        result += cookie;
     }
 
+    auto longerPath = [](const auto &c1, const auto &c2)
+                      { return c1.path().size() > c2.path().size(); };
+    std::sort(result.begin(), result.end(), longerPath);
     return result;
 }
 
@@ -333,12 +288,11 @@ bool QNetworkCookieJar::updateCookie(const QNetworkCookie &cookie)
 bool QNetworkCookieJar::deleteCookie(const QNetworkCookie &cookie)
 {
     Q_D(QNetworkCookieJar);
-    QList<QNetworkCookie>::Iterator it;
-    for (it = d->allCookies.begin(); it != d->allCookies.end(); ++it) {
-        if (it->hasSameIdentifier(cookie)) {
-            d->allCookies.erase(it);
-            return true;
-        }
+    const auto it = std::find_if(d->allCookies.cbegin(), d->allCookies.cend(),
+                                 [&cookie](const auto &c) { return c.hasSameIdentifier(cookie); });
+    if (it != d->allCookies.cend()) {
+        d->allCookies.erase(it);
+        return true;
     }
     return false;
 }
@@ -351,13 +305,14 @@ bool QNetworkCookieJar::deleteCookie(const QNetworkCookie &cookie)
 */
 bool QNetworkCookieJar::validateCookie(const QNetworkCookie &cookie, const QUrl &url) const
 {
-    QString domain = cookie.domain();
+    const QString cookieDomain = cookie.domain();
+    QStringView domain = cookieDomain;
     const QString host = url.host();
     if (!isParentDomain(domain, host) && !isParentDomain(host, domain))
         return false; // not accepted
 
-    if (domain.startsWith(QLatin1Char('.')))
-        domain = domain.mid(1);
+    if (domain.startsWith(u'.'))
+        domain = domain.sliced(1);
 
     // We shouldn't reject if:
     // "[...] the domain-attribute is identical to the canonicalized request-host"
@@ -373,3 +328,5 @@ bool QNetworkCookieJar::validateCookie(const QNetworkCookie &cookie, const QUrl 
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qnetworkcookiejar.cpp"

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 
 /*!
@@ -189,7 +153,7 @@
 
     QNetworkProxy sets different capabilities by default when the
     object is created (see QNetworkProxy::ProxyType for a list of the
-    defaults). However, it is possible to change the capabitilies
+    defaults). However, it is possible to change the capabilities
     after the object has been created with setCapabilities().
 
     The capabilities that QNetworkProxy supports are:
@@ -241,11 +205,11 @@
 #include "qstringlist.h"
 #include "qurl.h"
 
-#ifndef QT_NO_BEARERMANAGEMENT // ### Qt6: Remove section
-#include <QtNetwork/QNetworkConfiguration>
-#endif
-
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+QT_IMPL_METATYPE_EXTERN(QNetworkProxy)
 
 class QSocks5SocketEngineHandler;
 class QHttpSocketEngineHandler;
@@ -358,10 +322,8 @@ QList<QNetworkProxy> QGlobalNetworkProxy::proxyForQuery(const QNetworkProxyQuery
     // don't look for proxies for a local connection
     QHostAddress parsed;
     QString hostname = query.url().host();
-    if (hostname == QLatin1String("localhost")
-        || hostname.startsWith(QLatin1String("localhost."))
-        || (parsed.setAddress(hostname)
-            && (parsed.isLoopback()))) {
+    if (hostname == "localhost"_L1 || hostname.startsWith("localhost."_L1)
+            || (parsed.setAddress(hostname) && (parsed.isLoopback()))) {
         result << QNetworkProxy(QNetworkProxy::NoProxy);
         return result;
     }
@@ -576,9 +538,7 @@ QNetworkProxy &QNetworkProxy::operator=(const QNetworkProxy &other)
 /*!
     \fn void QNetworkProxy::swap(QNetworkProxy &other)
     \since 5.0
-
-    Swaps this network proxy instance with \a other. This function is
-    very fast and never fails.
+    \memberswap{network proxy instance}
 */
 
 /*!
@@ -790,6 +750,53 @@ QNetworkProxy QNetworkProxy::applicationProxy()
 }
 
 /*!
+    \since 6.8
+
+    Returns headers that are set in this network request.
+
+    If the proxy is not of type HttpProxy or HttpCachingProxy,
+    default constructed QHttpHeaders is returned.
+
+    \sa setHeaders()
+*/
+QHttpHeaders QNetworkProxy::headers() const
+{
+    if (d->type != HttpProxy && d->type != HttpCachingProxy)
+        return {};
+    return d->headers.headers();
+}
+
+/*!
+    \since 6.8
+
+    Sets \a newHeaders as headers in this network request, overriding
+    any previously set headers.
+
+    If some headers correspond to the known headers, the values will
+    be parsed and the corresponding parsed form will also be set.
+
+    If the proxy is not of type HttpProxy or HttpCachingProxy this has no
+    effect.
+
+    \sa headers(), QNetworkRequest::KnownHeaders
+*/
+void QNetworkProxy::setHeaders(QHttpHeaders &&newHeaders)
+{
+    if (d->type == HttpProxy || d->type == HttpCachingProxy)
+        d->headers.setHeaders(std::move(newHeaders));
+}
+
+/*!
+    \overload
+    \since 6.8
+*/
+void QNetworkProxy::setHeaders(const QHttpHeaders &newHeaders)
+{
+    if (d->type == HttpProxy || d->type == HttpCachingProxy)
+        d->headers.setHeaders(newHeaders);
+}
+
+/*!
     \since 5.0
     Returns the value of the known network header \a header if it is
     in use for this proxy. If it is not present, returns QVariant()
@@ -833,7 +840,7 @@ bool QNetworkProxy::hasRawHeader(const QByteArray &headerName) const
 {
     if (d->type != HttpProxy && d->type != HttpCachingProxy)
         return false;
-    return d->headers.findRawHeader(headerName) != d->headers.rawHeaders.constEnd();
+    return d->headers.headers().contains(headerName);
 }
 
 /*!
@@ -852,11 +859,7 @@ QByteArray QNetworkProxy::rawHeader(const QByteArray &headerName) const
 {
     if (d->type != HttpProxy && d->type != HttpCachingProxy)
         return QByteArray();
-    QNetworkHeadersPrivate::RawHeadersList::ConstIterator it =
-        d->headers.findRawHeader(headerName);
-    if (it != d->headers.rawHeaders.constEnd())
-        return it->second;
-    return QByteArray();
+    return d->headers.rawHeader(headerName);
 }
 
 /*!
@@ -1128,73 +1131,6 @@ QNetworkProxyQuery::QNetworkProxyQuery(quint16 bindPort, const QString &protocol
     d->type = queryType;
 }
 
-#if !defined(QT_NO_BEARERMANAGEMENT) && QT_DEPRECATED_SINCE(5, 10)
-/*!
-    \deprecated
-
-    Constructs a QNetworkProxyQuery with the URL \a requestUrl and
-    sets the query type to \a queryType. The specified \a networkConfiguration
-    parameter is ignored.
-
-    \sa protocolTag(), peerHostName(), peerPort(), networkConfiguration()
-*/
-QNetworkProxyQuery::QNetworkProxyQuery(const QNetworkConfiguration &networkConfiguration,
-                                       const QUrl &requestUrl, QueryType queryType)
-{
-    Q_UNUSED(networkConfiguration)
-    d->remote = requestUrl;
-    d->type = queryType;
-}
-
-/*!
-    \deprecated
-
-    Constructs a QNetworkProxyQuery of type \a queryType and sets the
-    protocol tag to be \a protocolTag. This constructor is suitable
-    for QNetworkProxyQuery::TcpSocket queries, because it sets the
-    peer hostname to \a hostname and the peer's port number to \a
-    port. The specified \a networkConfiguration parameter is ignored.
-
-    \sa networkConfiguration()
-*/
-QNetworkProxyQuery::QNetworkProxyQuery(const QNetworkConfiguration &networkConfiguration,
-                                       const QString &hostname, int port,
-                                       const QString &protocolTag,
-                                       QueryType queryType)
-{
-    Q_UNUSED(networkConfiguration);
-    d->remote.setScheme(protocolTag);
-    d->remote.setHost(hostname);
-    d->remote.setPort(port);
-    d->type = queryType;
-}
-
-/*!
-    \deprecated
-
-    Constructs a QNetworkProxyQuery of type \a queryType and sets the
-    protocol tag to be \a protocolTag. This constructor is suitable
-    for QNetworkProxyQuery::TcpSocket queries because it sets the
-    local port number to \a bindPort. The specified \a networkConfiguration
-    parameter is ignored.
-
-    Note that \a bindPort is of type quint16 to indicate the exact
-    port number that is requested. The value of -1 (unknown) is not
-    allowed in this context.
-
-    \sa localPort(), networkConfiguration()
-*/
-QNetworkProxyQuery::QNetworkProxyQuery(const QNetworkConfiguration &networkConfiguration,
-                                       quint16 bindPort, const QString &protocolTag,
-                                       QueryType queryType)
-{
-    Q_UNUSED(networkConfiguration);
-    d->remote.setScheme(protocolTag);
-    d->localPort = bindPort;
-    d->type = queryType;
-}
-#endif // !defined(QT_NO_BEARERMANAGEMENT) && QT_DEPRECATED_SINCE(5, 10)
-
 /*!
     Constructs a QNetworkProxyQuery object that is a copy of \a other.
 */
@@ -1223,9 +1159,7 @@ QNetworkProxyQuery &QNetworkProxyQuery::operator=(const QNetworkProxyQuery &othe
 /*!
     \fn void QNetworkProxyQuery::swap(QNetworkProxyQuery &other)
     \since 5.0
-
-    Swaps this network proxy query instance with \a other. This
-    function is very fast and never fails.
+    \memberswap{network proxy query instance}
 */
 
 /*!
@@ -1417,33 +1351,6 @@ void QNetworkProxyQuery::setUrl(const QUrl &url)
     d->remote = url;
 }
 
-#if !defined(QT_NO_BEARERMANAGEMENT) && QT_DEPRECATED_SINCE(5, 10)
-/*!
-    \deprecated
-
-    Returns QNetworkConfiguration().
-
-    \sa setNetworkConfiguration()
-*/
-QNetworkConfiguration QNetworkProxyQuery::networkConfiguration() const
-{
-    return QNetworkConfiguration();
-}
-
-/*!
-    \deprecated
-
-    This function does nothing. The specified \a networkConfiguration parameter
-    is ignored.
-
-    \sa networkConfiguration()
-*/
-void QNetworkProxyQuery::setNetworkConfiguration(const QNetworkConfiguration &networkConfiguration)
-{
-    Q_UNUSED(networkConfiguration);
-}
-#endif // !defined(QT_NO_BEARERMANAGEMENT) && QT_DEPRECATED_SINCE(5, 10)
-
 /*!
     \class QNetworkProxyFactory
     \brief The QNetworkProxyFactory class provides fine-grained proxy selection.
@@ -1598,12 +1505,17 @@ void QNetworkProxyFactory::setApplicationProxyFactory(QNetworkProxyFactory *fact
     Internet Explorer's settings and use them.
 
     On \macos, this function will obtain the proxy settings using the
-    SystemConfiguration framework from Apple. It will apply the FTP,
+    CFNetwork framework from Apple. It will apply the FTP,
     HTTP and HTTPS proxy configurations for queries that contain the
     protocol tag "ftp", "http" and "https", respectively. If the SOCKS
     proxy is enabled in that configuration, this function will use the
     SOCKS server for all queries. If SOCKS isn't enabled, it will use
     the HTTPS proxy for all TcpSocket and UrlRequest queries.
+
+    On systems configured with libproxy support, this function will
+    rely on libproxy to obtain the proxy settings. Depending on
+    libproxy configurations, this can in turn delegate to desktop
+    settings, environment variables, etc.
 
     On other systems, this function will pick up proxy settings from
     the "http_proxy" environment variable. This variable must be a URL
@@ -1616,9 +1528,6 @@ void QNetworkProxyFactory::setApplicationProxyFactory(QNetworkProxyFactory *fact
     listed here.
 
     \list
-    \li On \macos, this function will ignore the Proxy Auto Configuration
-    settings, since it cannot execute the associated ECMAScript code.
-
     \li On Windows platforms, this function may take several seconds to
     execute depending on the configuration of the user's system.
     \endlist
@@ -1683,7 +1592,7 @@ QDebug operator<<(QDebug debug, const QNetworkProxy &proxy)
         scaps << QStringLiteral("SctpTunnel");
     if (caps & QNetworkProxy::SctpListeningCapability)
         scaps << QStringLiteral("SctpListen");
-    debug << '[' << scaps.join(QLatin1Char(' ')) << ']';
+    debug << '[' << scaps.join(u' ') << ']';
     return debug;
 }
 
@@ -1704,5 +1613,7 @@ QDebug operator<<(QDebug debug, const QNetworkProxyQuery &proxyQuery)
 #endif
 
 QT_END_NAMESPACE
+
+#include "moc_qnetworkproxy.cpp"
 
 #endif // QT_NO_NETWORKPROXY

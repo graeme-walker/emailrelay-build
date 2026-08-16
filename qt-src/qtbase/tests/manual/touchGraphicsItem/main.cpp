@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtWidgets>
 
@@ -68,13 +21,13 @@ protected:
             case QEvent::TouchEnd:
             {
                 QTouchEvent *te = static_cast<QTouchEvent *>(e);
-                for (const QTouchEvent::TouchPoint &tp : te->touchPoints()) {
+                for (const QEventPoint &tp : te->points()) {
                     QGraphicsEllipseItem *diameterItem = nullptr;
                     QSizeF ellipse = tp.ellipseDiameters();
                     if (ellipse.isNull()) {
                         ellipse = QSizeF(5, 5);
                     } else {
-                        diameterItem = new QGraphicsEllipseItem(QRectF(tp.pos().x() - ellipse.width() / 2, tp.pos().y() - ellipse.height() / 2,
+                        diameterItem = new QGraphicsEllipseItem(QRectF(tp.position().x() - ellipse.width() / 2, tp.position().y() - ellipse.height() / 2,
                                                                        ellipse.width(), ellipse.height()), this);
                         diameterItem->setPen(QPen(Qt::red));
                         diameterItem->setBrush(QBrush(Qt::red));
@@ -82,8 +35,8 @@ protected:
                             ellipse.scale(ellipse.width() - 2, ellipse.height() - 2, Qt::IgnoreAspectRatio);
                     }
                     QGraphicsItem *parent = diameterItem ? static_cast<QGraphicsItem *>(diameterItem) : static_cast<QGraphicsItem *>(this);
-                    QGraphicsEllipseItem *ellipseItem = new QGraphicsEllipseItem(QRectF(tp.pos().x() - ellipse.width() / 2,
-                                                                                        tp.pos().y() - ellipse.height() / 2,
+                    QGraphicsEllipseItem *ellipseItem = new QGraphicsEllipseItem(QRectF(tp.position().x() - ellipse.width() / 2,
+                                                                                        tp.position().y() - ellipse.height() / 2,
                                                                                         ellipse.width(), ellipse.height()), parent);
                     ellipseItem->setPen(QPen(Qt::blue));
                     ellipseItem->setBrush(QBrush(Qt::blue));
@@ -106,26 +59,25 @@ int main(int argc, char **argv)
     QVBoxLayout *vbox = new QVBoxLayout;
     vbox->addWidget(new QLabel("The blue ellipses should indicate touch point contact patches"));
     qDebug() << "Touch devices:";
-    for (const QTouchDevice *device : QTouchDevice::devices()) {
+    for (const QInputDevice *device : QInputDevice::devices()) {
+        const QPointingDevice *dev = qobject_cast<const QPointingDevice *>(device);
         QString result;
         QTextStream str(&result);
-        str << (device->type() == QTouchDevice::TouchScreen ? "TouchScreen" : "TouchPad")
-            << " \"" << device->name() << "\", max " << device->maximumTouchPoints()
+        str << (device->type() == QInputDevice::DeviceType::TouchScreen ? "TouchScreen" : "TouchPad")
+            << " \"" << device->name() << "\", max " << (dev ? dev->maximumPoints() : 0)
             << " touch points, capabilities:";
-        const QTouchDevice::Capabilities capabilities = device->capabilities();
-        if (capabilities & QTouchDevice::Position)
+        const QInputDevice::Capabilities capabilities = device->capabilities();
+        if (capabilities & QInputDevice::Capability::Position)
             str << " Position";
-        if (capabilities & QTouchDevice::Area)
+        if (capabilities & QInputDevice::Capability::Area)
             str << " Area";
-        if (capabilities & QTouchDevice::Pressure)
+        if (capabilities & QInputDevice::Capability::Pressure)
             str << " Pressure";
-        if (capabilities & QTouchDevice::Velocity)
+        if (capabilities & QInputDevice::Capability::Velocity)
             str << " Velocity";
-        if (capabilities & QTouchDevice::RawPositions)
-            str << " RawPositions";
-        if (capabilities & QTouchDevice::NormalizedPosition)
+        if (capabilities & QInputDevice::Capability::NormalizedPosition)
             str << " NormalizedPosition";
-        if (capabilities & QTouchDevice::MouseEmulation)
+        if (capabilities & QInputDevice::Capability::MouseEmulation)
             str << " MouseEmulation";
         vbox->addWidget(new QLabel(result));
         qDebug() << "   " << result;

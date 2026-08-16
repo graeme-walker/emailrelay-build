@@ -1,58 +1,26 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSql module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsqlquery.h"
 
 //#define QT_DEBUG_SQL
 
-#include "qdebug.h"
-#include "qelapsedtimer.h"
 #include "qatomic.h"
+#include "qdebug.h"
+#include "qloggingcategory.h"
 #include "qsqlrecord.h"
 #include "qsqlresult.h"
 #include "qsqldriver.h"
 #include "qsqldatabase.h"
 #include "private/qsqlnulldriver_p.h"
-#include "qvector.h"
-#include "qmap.h"
+
+#ifdef QT_DEBUG_SQL
+#include "qelapsedtimer.h"
+#endif
 
 QT_BEGIN_NAMESPACE
+
+static Q_LOGGING_CATEGORY(lcSqlQuery, "qt.sql.qsqlquery")
 
 class QSqlQueryPrivate
 {
@@ -65,7 +33,7 @@ public:
     static QSqlQueryPrivate* shared_null();
 };
 
-Q_GLOBAL_STATIC_WITH_ARGS(QSqlQueryPrivate, nullQueryPrivate, (0))
+Q_GLOBAL_STATIC_WITH_ARGS(QSqlQueryPrivate, nullQueryPrivate, (nullptr))
 Q_GLOBAL_STATIC(QSqlNullDriver, nullDriver)
 Q_GLOBAL_STATIC_WITH_ARGS(QSqlNullResult, nullResult, (nullDriver()))
 
@@ -180,7 +148,7 @@ QSqlQueryPrivate::~QSqlQueryPrivate()
     them in the same query.
 
     You can retrieve the values of all the fields in a single variable
-    (a map) using boundValues().
+    using boundValues().
 
     \note Not all SQL operations support binding values. Refer to your database
     system's documentation to check their availability.
@@ -244,12 +212,18 @@ QSqlQuery::QSqlQuery(QSqlResult *result)
 
 QSqlQuery::~QSqlQuery()
 {
-    if (!d->ref.deref())
+    if (d && !d->ref.deref())
         delete d;
 }
 
+#if QT_DEPRECATED_SINCE(6, 2)
 /*!
     Constructs a copy of \a other.
+
+    \deprecated QSqlQuery cannot be meaningfully copied. Prepared
+    statements, bound values and so on will not work correctly, depending
+    on your database driver (for instance, changing the copy will affect
+    the original). Treat QSqlQuery as a move-only type instead.
 */
 
 QSqlQuery::QSqlQuery(const QSqlQuery& other)
@@ -259,16 +233,52 @@ QSqlQuery::QSqlQuery(const QSqlQuery& other)
 }
 
 /*!
+    Assigns \a other to this object.
+
+    \deprecated QSqlQuery cannot be meaningfully copied. Prepared
+    statements, bound values and so on will not work correctly, depending
+    on your database driver (for instance, changing the copy will affect
+    the original). Treat QSqlQuery as a move-only type instead.
+*/
+
+QSqlQuery& QSqlQuery::operator=(const QSqlQuery& other)
+{
+    qAtomicAssign(d, other.d);
+    return *this;
+}
+#endif
+
+/*!
+    \fn QSqlQuery::QSqlQuery(QSqlQuery &&other) noexcept
+    \since 6.2
+    Move-constructs a QSqlQuery from \a other.
+*/
+
+/*!
+    \fn QSqlQuery &QSqlQuery::operator=(QSqlQuery &&other) noexcept
+    \since 6.2
+    Move-assigns \a other to this object.
+*/
+
+/*!
+    \fn void QSqlQuery::swap(QSqlQuery &other) noexcept
+    \since 6.2
+    \memberswap{query}
+*/
+
+/*!
     \internal
 */
-static void qInit(QSqlQuery *q, const QString& query, QSqlDatabase db)
+static void qInit(QSqlQuery *q, const QString& query, const QSqlDatabase &db)
 {
     QSqlDatabase database = db;
-    if (!database.isValid())
-        database = QSqlDatabase::database(QLatin1String(QSqlDatabase::defaultConnection), false);
-    if (database.isValid()) {
-        *q = QSqlQuery(database.driver()->createResult());
+    if (!database.isValid()) {
+        database =
+                QSqlDatabase::database(QLatin1StringView(QSqlDatabase::defaultConnection), false);
     }
+    if (database.isValid())
+        *q = QSqlQuery(database.driver()->createResult());
+
     if (!query.isEmpty())
         q->exec(query);
 }
@@ -281,7 +291,7 @@ static void qInit(QSqlQuery *q, const QString& query, QSqlDatabase db)
 
     \sa QSqlDatabase
 */
-QSqlQuery::QSqlQuery(const QString& query, QSqlDatabase db)
+QSqlQuery::QSqlQuery(const QString& query, const QSqlDatabase &db)
 {
     d = QSqlQueryPrivate::shared_null();
     qInit(this, query, db);
@@ -294,21 +304,10 @@ QSqlQuery::QSqlQuery(const QString& query, QSqlDatabase db)
     \sa QSqlDatabase
 */
 
-QSqlQuery::QSqlQuery(QSqlDatabase db)
+QSqlQuery::QSqlQuery(const QSqlDatabase &db)
 {
     d = QSqlQueryPrivate::shared_null();
     qInit(this, QString(), db);
-}
-
-
-/*!
-    Assigns \a other to this object.
-*/
-
-QSqlQuery& QSqlQuery::operator=(const QSqlQuery& other)
-{
-    qAtomicAssign(d, other.d);
-    return *this;
 }
 
 /*!
@@ -335,14 +334,16 @@ bool QSqlQuery::isNull(int field) const
     returns isNull(int index) for the corresponding field index.
 
     This overload is less efficient than \l{QSqlQuery::}{isNull()}
-*/
 
-bool QSqlQuery::isNull(const QString &name) const
+    \note In Qt versions prior to 6.8, this function took QString, not
+    QAnyStringView.
+*/
+bool QSqlQuery::isNull(QAnyStringView name) const
 {
-    int index = d->sqlResult->record().indexOf(name);
+    qsizetype index = d->sqlResult->record().indexOf(name);
     if (index > -1)
         return isNull(index);
-    qWarning("QSqlQuery::isNull: unknown field name '%s'", qPrintable(name));
+    qCWarning(lcSqlQuery, "QSqlQuery::isNull: unknown field name '%ls'", qUtf16Printable(name.toString()));
     return true;
 }
 
@@ -377,6 +378,10 @@ bool QSqlQuery::exec(const QString& query)
     QElapsedTimer t;
     t.start();
 #endif
+    if (!driver()) {
+        qCWarning(lcSqlQuery, "QSqlQuery::exec: called before driver has been set up");
+        return false;
+    }
     if (d->ref.loadRelaxed() != 1) {
         bool fo = isForwardOnly();
         *this = QSqlQuery(driver()->createResult());
@@ -391,19 +396,20 @@ bool QSqlQuery::exec(const QString& query)
     }
     d->sqlResult->setQuery(query.trimmed());
     if (!driver()->isOpen() || driver()->isOpenError()) {
-        qWarning("QSqlQuery::exec: database not open");
+        qCWarning(lcSqlQuery, "QSqlQuery::exec: database not open");
         return false;
     }
     if (query.isEmpty()) {
-        qWarning("QSqlQuery::exec: empty query");
+        qCWarning(lcSqlQuery, "QSqlQuery::exec: empty query");
         return false;
     }
 
     bool retval = d->sqlResult->reset(query);
 #ifdef QT_DEBUG_SQL
-    qDebug().nospace() << "Executed query (" << t.elapsed() << "ms, " << d->sqlResult->size()
-                       << " results, " << d->sqlResult->numRowsAffected()
-                       << " affected): " << d->sqlResult->lastQuery();
+    qCDebug(lcSqlQuery()).nospace() << "Executed query (" << t.elapsed() << "ms, "
+                                    << d->sqlResult->size()
+                                    << " results, " << d->sqlResult->numRowsAffected()
+                                    << " affected): " << d->sqlResult->lastQuery();
 #endif
     return retval;
 }
@@ -431,7 +437,7 @@ QVariant QSqlQuery::value(int index) const
 {
     if (isActive() && isValid() && (index > -1))
         return d->sqlResult->data(index);
-    qWarning("QSqlQuery::value: not positioned on a valid record");
+    qCWarning(lcSqlQuery, "QSqlQuery::value: not positioned on a valid record");
     return QVariant();
 }
 
@@ -442,14 +448,16 @@ QVariant QSqlQuery::value(int index) const
     If field \a name does not exist an invalid variant is returned.
 
     This overload is less efficient than \l{QSqlQuery::}{value()}
-*/
 
-QVariant QSqlQuery::value(const QString& name) const
+    \note In Qt versions prior to 6.8, this function took QString, not
+    QAnyStringView.
+*/
+QVariant QSqlQuery::value(QAnyStringView name) const
 {
-    int index = d->sqlResult->record().indexOf(name);
+    qsizetype index = d->sqlResult->record().indexOf(name);
     if (index > -1)
         return value(index);
-    qWarning("QSqlQuery::value: unknown field name '%s'", qPrintable(name));
+    qCWarning(lcSqlQuery, "QSqlQuery::value: unknown field name '%ls'", qUtf16Printable(name.toString()));
     return QVariant();
 }
 
@@ -595,7 +603,7 @@ bool QSqlQuery::seek(int index, bool relative)
     }
     // let drivers optimize
     if (isForwardOnly() && actualIdx < at()) {
-        qWarning("QSqlQuery::seek: cannot seek backwards in a forward only query");
+        qCWarning(lcSqlQuery, "QSqlQuery::seek: cannot seek backwards in a forward only query");
         return false;
     }
     if (actualIdx == (at() + 1) && at() != QSql::BeforeFirstRow) {
@@ -701,7 +709,7 @@ bool QSqlQuery::previous()
     if (!isSelect() || !isActive())
         return false;
     if (isForwardOnly()) {
-        qWarning("QSqlQuery::seek: cannot seek backwards in a forward only query");
+        qCWarning(lcSqlQuery, "QSqlQuery::seek: cannot seek backwards in a forward only query");
         return false;
     }
 
@@ -734,7 +742,7 @@ bool QSqlQuery::first()
     if (!isSelect() || !isActive())
         return false;
     if (isForwardOnly() && at() > QSql::BeforeFirstRow) {
-        qWarning("QSqlQuery::seek: cannot seek backwards in a forward only query");
+        qCWarning(lcSqlQuery, "QSqlQuery::seek: cannot seek backwards in a forward only query");
         return false;
     }
     return d->sqlResult->fetchFirst();
@@ -849,10 +857,9 @@ bool QSqlQuery::isSelect() const
 }
 
 /*!
-  Returns \c true if you can only scroll forward through a result set;
-  otherwise returns \c false.
+  Returns \l forwardOnly.
 
-  \sa setForwardOnly(), next()
+  \sa forwardOnly, next(), seek()
 */
 bool QSqlQuery::isForwardOnly() const
 {
@@ -860,7 +867,10 @@ bool QSqlQuery::isForwardOnly() const
 }
 
 /*!
-  Sets forward only mode to \a forward. If \a forward is true, only
+  \property QSqlQuery::forwardOnly
+  \since 6.8
+
+  This property holds the forward only mode. If \a forward is true, only
   next() and seek() with positive values, are allowed for navigating
   the results.
 
@@ -889,7 +899,11 @@ bool QSqlQuery::isForwardOnly() const
   mode, do not execute any other SQL command on the same database
   connection. This will cause the query results to be lost.
 
-  \sa isForwardOnly(), next(), seek(), QSqlResult::setForwardOnly()
+  \sa next(), seek()
+*/
+/*!
+    Sets \l forwardOnly to \a forward.
+    \sa forwardOnly, next(), seek()
 */
 void QSqlQuery::setForwardOnly(bool forward)
 {
@@ -919,7 +933,7 @@ QSqlRecord QSqlQuery::record() const
     QSqlRecord rec = d->sqlResult->record();
 
     if (isValid()) {
-        for (int i = 0; i < rec.count(); ++i)
+        for (qsizetype i = 0; i < rec.count(); ++i)
             rec.setValue(i, value(i));
     }
     return rec;
@@ -975,19 +989,19 @@ bool QSqlQuery::prepare(const QString& query)
         d->sqlResult->setNumericalPrecisionPolicy(d->sqlResult->numericalPrecisionPolicy());
     }
     if (!driver()) {
-        qWarning("QSqlQuery::prepare: no driver");
+        qCWarning(lcSqlQuery, "QSqlQuery::prepare: no driver");
         return false;
     }
     if (!driver()->isOpen() || driver()->isOpenError()) {
-        qWarning("QSqlQuery::prepare: database not open");
+        qCWarning(lcSqlQuery, "QSqlQuery::prepare: database not open");
         return false;
     }
     if (query.isEmpty()) {
-        qWarning("QSqlQuery::prepare: empty query");
+        qCWarning(lcSqlQuery, "QSqlQuery::prepare: empty query");
         return false;
     }
 #ifdef QT_DEBUG_SQL
-    qDebug("\n QSqlQuery::prepare: %s", query.toLocal8Bit().constData());
+    qCDebug(lcSqlQuery, "\n QSqlQuery::prepare: %ls", qUtf16Printable(query));
 #endif
     return d->sqlResult->savePrepare(query);
 }
@@ -1014,9 +1028,9 @@ bool QSqlQuery::exec()
 
     bool retval = d->sqlResult->exec();
 #ifdef QT_DEBUG_SQL
-    qDebug().nospace() << "Executed prepared query (" << t.elapsed() << "ms, "
-                       << d->sqlResult->size() << " results, " << d->sqlResult->numRowsAffected()
-                       << " affected): " << d->sqlResult->lastQuery();
+    qCDebug(lcSqlQuery).nospace() << "Executed prepared query (" << t.elapsed() << "ms, "
+                                  << d->sqlResult->size() << " results, " << d->sqlResult->numRowsAffected()
+                                  << " affected): " << d->sqlResult->lastQuery();
 #endif
     return retval;
 }
@@ -1028,8 +1042,6 @@ bool QSqlQuery::exec()
 */
 
 /*!
-    \since 4.2
-
   Executes a previously prepared SQL query in a batch. All the bound
   parameters have to be lists of variants. If the database doesn't
   support batch executions, the driver will simulate it using
@@ -1048,8 +1060,8 @@ bool QSqlQuery::exec()
 
   To bind NULL values, a null QVariant of the relevant type has to be
   added to the bound QVariantList; for example, \c
-  {QVariant(QVariant::String)} should be used if you are using
-  strings.
+  {QVariant(QMetaType::fromType<QString>())} should be used if you are
+  using strings.
 
   \note Every bound QVariantList must contain the same amount of
   variants.
@@ -1086,7 +1098,7 @@ bool QSqlQuery::execBatch(BatchExecutionMode mode)
   the result into.
 
   To bind a NULL value, use a null QVariant; for example, use
-  \c {QVariant(QVariant::String)} if you are binding a string.
+  \c {QVariant(QMetaType::fromType<QString>())} if you are binding a string.
 
   \sa addBindValue(), prepare(), exec(), boundValue(), boundValues()
 */
@@ -1116,7 +1128,7 @@ void QSqlQuery::bindValue(int pos, const QVariant& val, QSql::ParamType paramTyp
   overwritten with data from the database after the exec() call.
 
   To bind a NULL value, use a null QVariant; for example, use \c
-  {QVariant(QVariant::String)} if you are binding a string.
+  {QVariant(QMetaType::fromType<QString>())} if you are binding a string.
 
   \sa bindValue(), prepare(), exec(), boundValue(), boundValues()
 */
@@ -1137,6 +1149,7 @@ QVariant QSqlQuery::boundValue(const QString& placeholder) const
 
 /*!
   Returns the value for the placeholder at position \a pos.
+  \sa boundValues()
 */
 QVariant QSqlQuery::boundValue(int pos) const
 {
@@ -1144,27 +1157,54 @@ QVariant QSqlQuery::boundValue(int pos) const
 }
 
 /*!
-  Returns a map of the bound values.
+  \since 6.0
 
-  With named binding, the bound values can be examined in the
-  following ways:
+  Returns a list of bound values.
+
+  The order of the list is in binding order, irrespective of whether
+  named or positional binding is used.
+
+  The bound values can be examined in the following way:
 
   \snippet sqldatabase/sqldatabase.cpp 14
 
-  With positional binding, the code becomes:
-
-  \snippet sqldatabase/sqldatabase.cpp 15
-
-  \sa boundValue(), bindValue(), addBindValue()
+  \sa boundValue(), bindValue(), addBindValue(), boundValueNames()
 */
-QMap<QString,QVariant> QSqlQuery::boundValues() const
-{
-    QMap<QString,QVariant> map;
 
-    const QVector<QVariant> values(d->sqlResult->boundValues());
-    for (int i = 0; i < values.count(); ++i)
-        map[d->sqlResult->boundValueName(i)] = values.at(i);
-    return map;
+QVariantList QSqlQuery::boundValues() const
+{
+    const QVariantList values(d->sqlResult->boundValues());
+    return values;
+}
+
+/*!
+  \since 6.6
+
+  Returns the names of all bound values.
+
+  The order of the list is in binding order, irrespective of whether
+  named or positional binding is used.
+
+  \sa boundValues(), boundValueName()
+*/
+QStringList QSqlQuery::boundValueNames() const
+{
+    return d->sqlResult->boundValueNames();
+}
+
+/*!
+  \since 6.6
+
+  Returns the bound value name at position \a pos.
+
+  The order of the list is in binding order, irrespective of whether
+  named or positional binding is used.
+
+  \sa boundValueNames()
+*/
+QString QSqlQuery::boundValueName(int pos) const
+{
+    return d->sqlResult->boundValueName(pos);
 }
 
 /*!
@@ -1193,7 +1233,7 @@ QString QSqlQuery::executedQuery() const
 
   For MySQL databases the row's auto-increment field will be returned.
 
-  \note For this function to work in PSQL, the table table must
+  \note For this function to work in PSQL, the table must
   contain OIDs, which may not have been created by default.  Check the
   \c default_with_oids configuration variable to be sure.
 
@@ -1205,6 +1245,8 @@ QVariant QSqlQuery::lastInsertId() const
 }
 
 /*!
+  \property QSqlQuery::numericalPrecisionPolicy
+  \since 6.8
 
   Instruct the database driver to return numerical values with a
   precision specified by \a precisionPolicy.
@@ -1223,17 +1265,19 @@ QVariant QSqlQuery::lastInsertId() const
   active query. Call \l{exec()}{exec(QString)} or prepare() in order
   to activate the policy.
 
-  \sa QSql::NumericalPrecisionPolicy, numericalPrecisionPolicy()
+  \sa QSql::NumericalPrecisionPolicy, QSqlDriver::numericalPrecisionPolicy,
+  QSqlDatabase::numericalPrecisionPolicy
 */
+/*!
+    Sets \l numericalPrecisionPolicy to \a precisionPolicy.
+ */
 void QSqlQuery::setNumericalPrecisionPolicy(QSql::NumericalPrecisionPolicy precisionPolicy)
 {
     d->sqlResult->setNumericalPrecisionPolicy(precisionPolicy);
 }
 
 /*!
-  Returns the current precision policy.
-
-  \sa QSql::NumericalPrecisionPolicy, setNumericalPrecisionPolicy()
+    Returns the \l numericalPrecisionPolicy.
 */
 QSql::NumericalPrecisionPolicy QSqlQuery::numericalPrecisionPolicy() const
 {
@@ -1241,8 +1285,41 @@ QSql::NumericalPrecisionPolicy QSqlQuery::numericalPrecisionPolicy() const
 }
 
 /*!
-  \since 4.3.2
+  \property QSqlQuery::positionalBindingEnabled
+  \since 6.8
+  This property enables or disables the positional \l {Approaches to Binding Values}{binding}
+  for this query, depending on \a enable (default is \c true).
+  Disabling positional bindings is useful if the query itself contains a '?'
+  which must not be handled as a positional binding parameter but, for example,
+  as a JSON operator for a PostgreSQL database.
 
+  This property will have no effect when the database has native
+  support for positional bindings with question marks (see also
+  \l{QSqlDriver::PositionalPlaceholders}).
+*/
+
+/*!
+  Sets \l positionalBindingEnabled to \a enable.
+  \since 6.7
+  \sa positionalBindingEnabled
+*/
+void QSqlQuery::setPositionalBindingEnabled(bool enable)
+{
+    d->sqlResult->setPositionalBindingEnabled(enable);
+}
+
+/*!
+  Returns \l positionalBindingEnabled.
+  \since 6.7
+  \sa positionalBindingEnabled
+*/
+bool QSqlQuery::isPositionalBindingEnabled() const
+{
+    return d->sqlResult->isPositionalBindingEnabled();
+}
+
+
+/*!
   Instruct the database driver that no more data will be fetched from
   this query until it is re-executed. There is normally no need to
   call this function, but it may be helpful in order to free resources
@@ -1264,8 +1341,6 @@ void QSqlQuery::finish()
 }
 
 /*!
-  \since 4.4
-
   Discards the current result set and navigates to the next if available.
 
   Some databases are capable of returning multiple result sets for
@@ -1291,7 +1366,7 @@ void QSqlQuery::finish()
   databases may have restrictions on which statements are allowed to
   be used in a SQL batch.
 
-  \sa QSqlDriver::hasFeature(), setForwardOnly(), next(), isSelect(),
+  \sa QSqlDriver::hasFeature(), forwardOnly, next(), isSelect(),
       numRowsAffected(), isActive(), lastError()
 */
 bool QSqlQuery::nextResult()
@@ -1302,3 +1377,5 @@ bool QSqlQuery::nextResult()
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qsqlquery.cpp"

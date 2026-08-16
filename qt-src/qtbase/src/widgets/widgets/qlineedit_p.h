@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QLINEEDIT_P_H
 #define QLINEEDIT_P_H
@@ -95,6 +59,11 @@ public:
 
     bool shouldHideWithText() const;
     void setHideWithText(bool hide);
+    bool needsSpace() const {
+        if (m_fadingOut)
+            return false;
+        return isVisibleTo(parentWidget());
+    }
 #endif
 
 protected:
@@ -118,7 +87,7 @@ private:
 
 #if QT_CONFIG(animation)
     bool m_hideWithText = false;
-    bool m_wasHidden = false;
+    bool m_fadingOut = false;
 #endif
 
 };
@@ -179,13 +148,19 @@ public:
     void setCursorVisible(bool visible);
     void setText(const QString& text);
 
+    QString textBeforeCursor(int curPos) const;
+    QString textAfterCursor(int curPos) const;
     void updatePasswordEchoEditing(bool);
 
     void resetInputMethod();
 
     inline bool shouldEnableInputMethod() const
     {
+#if defined (Q_OS_ANDROID)
+        return !control->isReadOnly() || control->isSelectableByMouse();
+#else
         return !control->isReadOnly();
+#endif
     }
     inline bool shouldShowPlaceholderText() const
     {
@@ -215,31 +190,36 @@ public:
 
     QRect adjustedContentsRect() const;
 
-    void _q_handleWindowActivate();
-    void _q_textEdited(const QString &);
-    void _q_cursorPositionChanged(int, int);
+    void handleWindowActivate();
+    void textEdited(const QString &);
+    void cursorPositionChanged(int, int);
 #ifdef QT_KEYPAD_NAVIGATION
-    void _q_editFocusChange(bool);
+    void editFocusChange(bool);
 #endif
-    void _q_selectionChanged();
-    void _q_updateNeeded(const QRect &);
+    void selectionChanged();
+    void updateNeeded(const QRect &);
 #if QT_CONFIG(completer)
-    void _q_completionHighlighted(const QString &);
+    void connectCompleter();
+    void disconnectCompleter();
+    void completionHighlighted(const QString &);
 #endif
     QPoint mousePressPos;
 #if QT_CONFIG(draganddrop)
     QBasicTimer dndTimer;
     void drag();
 #endif
-    void _q_textChanged(const QString &);
-    void _q_clearButtonClicked();
+    void textChanged(const QString &);
+    void clearButtonClicked();
+    void controlEditingFinished();
 
     QMargins textMargins; // use effectiveTextMargins() in case of icon.
 
     QString placeholderText;
 
+#if QT_CONFIG(action)
     QWidget *addAction(QAction *newAction, QAction *before, QLineEdit::ActionPosition, int flags = 0);
     void removeAction(QAction *action);
+#endif
     SideWidgetParameters sideWidgetParameters() const;
     QIcon clearButtonIcon() const;
     void setClearButtonEnabled(bool enabled);
@@ -261,7 +241,9 @@ private:
     };
     friend class QTypeInfo<SideWidgetLocation>;
 
+#if QT_CONFIG(action)
     SideWidgetLocation findSideWidget(const QAction *a) const;
+#endif
 
     SideWidgetEntryList leadingSideWidgets;
     SideWidgetEntryList trailingSideWidgets;

@@ -1,44 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include <QtCore/qglobal.h>
+#include "qdbus_symbols_p.h"
+#include <QtCore/qlatin1stringview.h>
 #if QT_CONFIG(library)
 #include <QtCore/qlibrary.h>
 #include <QtCore/private/qlocking_p.h>
@@ -47,16 +12,14 @@
 
 #ifndef QT_NO_DBUS
 
-extern "C" void dbus_shutdown();
-
 QT_BEGIN_NAMESPACE
 
-void (*qdbus_resolve_me(const char *name))();
+using namespace Qt::StringLiterals;
 
 #if !defined QT_LINKED_LIBDBUS
 
 #if QT_CONFIG(library)
-static QLibrary *qdbus_libdbus = 0;
+Q_CONSTINIT static QLibrary *qdbus_libdbus = nullptr;
 
 void qdbus_unloadLibDBus()
 {
@@ -66,7 +29,7 @@ void qdbus_unloadLibDBus()
         qdbus_libdbus->unload();
     }
     delete qdbus_libdbus;
-    qdbus_libdbus = 0;
+    qdbus_libdbus = nullptr;
 }
 #endif
 
@@ -79,8 +42,8 @@ bool qdbus_loadLibDBus()
         return false;
 #endif
 
-    static bool triedToLoadLibrary = false;
-    static QBasicMutex mutex;
+    Q_CONSTINIT static bool triedToLoadLibrary = false;
+    Q_CONSTINIT static QBasicMutex mutex;
     const auto locker = qt_scoped_lock(mutex);
 
     QLibrary *&lib = qdbus_libdbus;
@@ -91,12 +54,12 @@ bool qdbus_loadLibDBus()
     lib->setLoadHints(QLibrary::ExportExternalSymbolsHint); // make libdbus symbols available for apps that need more advanced control over the dbus
     triedToLoadLibrary = true;
 
-    static int majorversions[] = { 3, 2, -1 };
+    static constexpr int majorversions[] = { 3, 2, -1 };
     const QString baseNames[] = {
 #ifdef Q_OS_WIN
-        QLatin1String("dbus-1"),
+        "dbus-1"_L1,
 #endif
-        QLatin1String("libdbus-1")
+        "libdbus-1"_L1
     };
 
     lib->unload();
@@ -118,14 +81,14 @@ bool qdbus_loadLibDBus()
     }
 
     delete lib;
-    lib = 0;
+    lib = nullptr;
     return false;
 #else
     return true;
 #endif
 }
 
-void (*qdbus_resolve_conditionally(const char *name))()
+QFunctionPointer qdbus_resolve_conditionally(const char *name)
 {
 #if QT_CONFIG(library)
     if (qdbus_loadLibDBus())
@@ -133,10 +96,10 @@ void (*qdbus_resolve_conditionally(const char *name))()
 #else
     Q_UNUSED(name);
 #endif
-    return 0;
+    return nullptr;
 }
 
-void (*qdbus_resolve_me(const char *name))()
+QFunctionPointer qdbus_resolve_me(const char *name)
 {
 #if QT_CONFIG(library)
     if (Q_UNLIKELY(!qdbus_loadLibDBus()))
@@ -149,7 +112,7 @@ void (*qdbus_resolve_me(const char *name))()
     return ptr;
 #else
     Q_UNUSED(name);
-    return 0;
+    return nullptr;
 #endif
 }
 

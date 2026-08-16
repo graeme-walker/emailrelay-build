@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qglobal.h>
 #include "qcolumnview.h"
@@ -104,7 +68,9 @@ void QColumnViewPrivate::initialize()
     Q_Q(QColumnView);
     q->setTextElideMode(Qt::ElideMiddle);
 #if QT_CONFIG(animation)
-    QObject::connect(&currentAnimation, SIGNAL(finished()), q, SLOT(_q_changeCurrentColumn()));
+    animationConnection =
+        QObjectPrivate::connect(&currentAnimation, &QPropertyAnimation::finished,
+                                this, &QColumnViewPrivate::changeCurrentColumn);
     currentAnimation.setTargetObject(hbar);
     currentAnimation.setPropertyName("value");
     currentAnimation.setEasingCurve(QEasingCurve::InOutQuad);
@@ -113,11 +79,26 @@ void QColumnViewPrivate::initialize()
     q->setItemDelegate(new QColumnViewDelegate(q));
 }
 
+void QColumnViewPrivate::clearConnections()
+{
+#if QT_CONFIG(animation)
+    QObject::disconnect(animationConnection);
+#endif
+    for (const QMetaObject::Connection &connection : gripConnections)
+        QObject::disconnect(connection);
+    const auto copy = viewConnections;  // disconnectView modifies this container
+    for (auto it = copy.keyBegin(); it != copy.keyEnd(); ++it)
+        disconnectView(*it);
+}
+
+
 /*!
     Destroys the column view.
 */
 QColumnView::~QColumnView()
 {
+    Q_D(QColumnView);
+    d->clearConnections();
 }
 
 /*!
@@ -134,12 +115,15 @@ void QColumnView::setResizeGripsVisible(bool visible)
     if (d->showResizeGrips == visible)
         return;
     d->showResizeGrips = visible;
-    for (int i = 0; i < d->columns.count(); ++i) {
-        QAbstractItemView *view = d->columns[i];
+    d->gripConnections.clear();
+    for (QAbstractItemView *view : std::as_const(d->columns)) {
         if (visible) {
             QColumnViewGrip *grip = new QColumnViewGrip(view);
             view->setCornerWidget(grip);
-            connect(grip, SIGNAL(gripMoved(int)), this, SLOT(_q_gripMoved(int)));
+            d->gripConnections.push_back(
+                QObjectPrivate::connect(grip, &QColumnViewGrip::gripMoved,
+                                        d, &QColumnViewPrivate::gripMoved)
+            );
         } else {
             QWidget *widget = view->cornerWidget();
             view->setCornerWidget(nullptr);
@@ -176,7 +160,7 @@ void QColumnView::setRootIndex(const QModelIndex &index)
         return;
 
     d->closeColumns();
-    Q_ASSERT(d->columns.count() == 0);
+    Q_ASSERT(d->columns.size() == 0);
 
     QAbstractItemView *view = d->createColumn(index, true);
     if (view->selectionModel())
@@ -242,7 +226,7 @@ void QColumnView::scrollContentsBy(int dx, int dy)
         return;
 
     dx = isRightToLeft() ? -dx : dx;
-    for (int i = 0; i < d->columns.count(); ++i)
+    for (int i = 0; i < d->columns.size(); ++i)
         d->columns.at(i)->move(d->columns.at(i)->x() + dx, 0);
     d->offset += dx;
     QAbstractItemView::scrollContentsBy(dx, dy);
@@ -303,7 +287,7 @@ void QColumnView::scrollTo(const QModelIndex &index, ScrollHint hint)
     if (leftEdge > -horizontalOffset()
         && rightEdge <= ( -horizontalOffset() + viewport()->size().width())) {
             d->columns.at(indexColumn)->scrollTo(index);
-            d->_q_changeCurrentColumn();
+            d->changeCurrentColumn();
             return;
     }
 
@@ -456,7 +440,7 @@ int QColumnView::verticalOffset() const
 */
 QRegion QColumnView::visualRegionForSelection(const QItemSelection &selection) const
 {
-    int ranges = selection.count();
+    int ranges = selection.size();
 
     if (ranges == 0)
         return QRect();
@@ -522,7 +506,7 @@ QSize QColumnView::sizeHint() const
     \internal
     Move all widgets from the corner grip and to the right
   */
-void QColumnViewPrivate::_q_gripMoved(int offset)
+void QColumnViewPrivate::gripMoved(int offset)
 {
     Q_Q(QColumnView);
 
@@ -566,7 +550,7 @@ void QColumnViewPrivate::closeColumns(const QModelIndex &parent, bool build)
     bool clearAll = !parent.isValid();
     bool passThroughRoot = false;
 
-    QVector<QModelIndex> dirsToAppend;
+    QList<QModelIndex> dirsToAppend;
 
     // Find the last column that matches the parent's tree
     int currentColumn = -1;
@@ -614,8 +598,10 @@ void QColumnViewPrivate::closeColumns(const QModelIndex &parent, bool build)
         QAbstractItemView* notShownAnymore = columns.at(i);
         columns.removeAt(i);
         notShownAnymore->setVisible(false);
-        if (notShownAnymore != previewColumn)
+        if (notShownAnymore != previewColumn) {
             notShownAnymore->deleteLater();
+            disconnectView(notShownAnymore);
+        }
     }
 
     if (columns.isEmpty()) {
@@ -634,12 +620,22 @@ void QColumnViewPrivate::closeColumns(const QModelIndex &parent, bool build)
         createColumn(parent, false);
 }
 
-void QColumnViewPrivate::_q_clicked(const QModelIndex &index)
+void QColumnViewPrivate::disconnectView(QAbstractItemView *view)
+{
+    const auto it = viewConnections.find(view);
+    if (it == viewConnections.end())
+        return;
+    for (const QMetaObject::Connection &connection : it.value())
+        QObject::disconnect(connection);
+    viewConnections.erase(it);
+}
+
+void QColumnViewPrivate::clicked(const QModelIndex &index)
 {
     Q_Q(QColumnView);
     QModelIndex parent = index.parent();
     QAbstractItemView *columnClicked = nullptr;
-    for (int column = 0; column < columns.count(); ++column) {
+    for (int column = 0; column < columns.size(); ++column) {
         if (columns.at(column)->rootIndex() == parent) {
             columnClicked = columns[column];
             break;
@@ -667,10 +663,11 @@ QAbstractItemView *QColumnViewPrivate::createColumn(const QModelIndex &index, bo
 {
     Q_Q(QColumnView);
     QAbstractItemView *view = nullptr;
+    QMetaObject::Connection clickedConnection;
     if (model->hasChildren(index)) {
         view = q->createColumn(index);
-        q->connect(view, SIGNAL(clicked(QModelIndex)),
-                   q, SLOT(_q_clicked(QModelIndex)));
+        clickedConnection = QObjectPrivate::connect(view, &QAbstractItemView::clicked,
+                                                    this, &QColumnViewPrivate::clicked);
     } else {
         if (!previewColumn)
             setPreviewWidget(new QWidget(q));
@@ -678,16 +675,14 @@ QAbstractItemView *QColumnViewPrivate::createColumn(const QModelIndex &index, bo
         view->setMinimumWidth(qMax(view->minimumWidth(), previewWidget->minimumWidth()));
     }
 
-    q->connect(view, SIGNAL(activated(QModelIndex)),
-            q, SIGNAL(activated(QModelIndex)));
-    q->connect(view, SIGNAL(clicked(QModelIndex)),
-            q, SIGNAL(clicked(QModelIndex)));
-    q->connect(view, SIGNAL(doubleClicked(QModelIndex)),
-            q, SIGNAL(doubleClicked(QModelIndex)));
-    q->connect(view, SIGNAL(entered(QModelIndex)),
-            q, SIGNAL(entered(QModelIndex)));
-    q->connect(view, SIGNAL(pressed(QModelIndex)),
-            q, SIGNAL(pressed(QModelIndex)));
+    viewConnections[view] = {
+        QObject::connect(view, &QAbstractItemView::activated, q, &QColumnView::activated),
+        QObject::connect(view, &QAbstractItemView::clicked, q, &QColumnView::clicked),
+        QObject::connect(view, &QAbstractItemView::doubleClicked, q, &QColumnView::doubleClicked),
+        QObject::connect(view, &QAbstractItemView::entered, q, &QColumnView::entered),
+        QObject::connect(view, &QAbstractItemView::pressed, q, &QColumnView::pressed),
+        clickedConnection
+    };
 
     view->setFocusPolicy(Qt::NoFocus);
     view->setParent(viewport);
@@ -697,19 +692,22 @@ QAbstractItemView *QColumnViewPrivate::createColumn(const QModelIndex &index, bo
     if (showResizeGrips) {
         QColumnViewGrip *grip = new QColumnViewGrip(view);
         view->setCornerWidget(grip);
-        q->connect(grip, SIGNAL(gripMoved(int)), q, SLOT(_q_gripMoved(int)));
+        gripConnections.push_back(
+            QObjectPrivate::connect(grip, &QColumnViewGrip::gripMoved,
+                                    this, &QColumnViewPrivate::gripMoved)
+        );
     }
 
-    if (columnSizes.count() > columns.count()) {
-        view->setGeometry(0, 0, columnSizes.at(columns.count()), viewport->height());
+    if (columnSizes.size() > columns.size()) {
+        view->setGeometry(0, 0, columnSizes.at(columns.size()), viewport->height());
     } else {
         int initialWidth = view->sizeHint().width();
         if (q->isRightToLeft())
             view->setGeometry(viewport->width() - initialWidth, 0, initialWidth, viewport->height());
         else
             view->setGeometry(0, 0, initialWidth, viewport->height());
-        columnSizes.resize(qMax(columnSizes.count(), columns.count() + 1));
-        columnSizes[columns.count()] = initialWidth;
+        columnSizes.resize(qMax(columnSizes.size(), columns.size() + 1));
+        columnSizes[columns.size()] = initialWidth;
     }
     if (!columns.isEmpty() && columns.constLast()->isHidden())
         columns.constLast()->setVisible(true);
@@ -862,8 +860,8 @@ void QColumnView::setColumnWidths(const QList<int> &list)
 {
     Q_D(QColumnView);
     int i = 0;
-    const int listCount = list.count();
-    const int count = qMin(listCount, d->columns.count());
+    const int listCount = list.size();
+    const int count = qMin(listCount, d->columns.size());
     for (; i < count; ++i) {
         d->columns.at(i)->resize(list.at(i), d->columns.at(i)->height());
         d->columnSizes[i] = list.at(i);
@@ -883,7 +881,7 @@ QList<int> QColumnView::columnWidths() const
 {
     Q_D(const QColumnView);
     QList<int> list;
-    const int columnCount = d->columns.count();
+    const int columnCount = d->columns.size();
     list.reserve(columnCount);
     for (int i = 0; i < columnCount; ++i)
         list.append(d->columnSizes.at(i));
@@ -951,7 +949,7 @@ void QColumnView::currentChanged(const QModelIndex &current, const QModelIndex &
     We have change the current column and need to update focus and selection models
     on the new current column.
 */
-void QColumnViewPrivate::_q_changeCurrentColumn()
+void QColumnViewPrivate::changeCurrentColumn()
 {
     Q_Q(QColumnView);
     if (columns.isEmpty())
@@ -1020,9 +1018,9 @@ void QColumnView::selectAll()
     QModelIndexList indexList = selectionModel()->selectedIndexes();
     QModelIndex parent = rootIndex();
     QItemSelection selection;
-    if (indexList.count() >= 1)
+    if (indexList.size() >= 1)
         parent = indexList.at(0).parent();
-    if (indexList.count() == 1) {
+    if (indexList.size() == 1) {
         parent = indexList.at(0);
         if (!model()->hasChildren(parent))
             parent = parent.parent();
@@ -1058,9 +1056,9 @@ QColumnViewPrivate::~QColumnViewPrivate()
     \internal
 
   */
-void QColumnViewPrivate::_q_columnsInserted(const QModelIndex &parent, int start, int end)
+void QColumnViewPrivate::columnsInserted(const QModelIndex &parent, int start, int end)
 {
-    QAbstractItemViewPrivate::_q_columnsInserted(parent, start, end);
+    QAbstractItemViewPrivate::columnsInserted(parent, start, end);
     checkColumnCreation(parent);
 }
 
@@ -1075,7 +1073,7 @@ void QColumnViewPrivate::checkColumnCreation(const QModelIndex &parent)
     if (parent == q_func()->currentIndex() && model->hasChildren(parent)) {
         //the parent has children and is the current
         //let's try to find out if there is already a mapping that is good
-        for (int i = 0; i < columns.count(); ++i) {
+        for (int i = 0; i < columns.size(); ++i) {
             QAbstractItemView *view = columns.at(i);
             if (view->rootIndex() == parent) {
                 if (view == previewColumn) {
@@ -1126,14 +1124,12 @@ void QColumnViewPrivate::doLayout()
 
     Draws a delegate with a > if an object has children.
 
-    \sa {Model/View Programming}, QItemDelegate
+    \sa {Model/View Programming}, QStyledItemDelegate
 */
 void QColumnViewDelegate::paint(QPainter *painter,
                           const QStyleOptionViewItem &option,
                           const QModelIndex &index) const
 {
-    drawBackground(painter, option, index );
-
     bool reverse = (option.direction == Qt::RightToLeft);
     int width = ((option.rect.height() * 2) / 3);
     // Modify the options to give us room to add an arrow
@@ -1148,7 +1144,7 @@ void QColumnViewDelegate::paint(QPainter *painter,
         opt.state |= QStyle::State_Selected;
     }
 
-    QItemDelegate::paint(painter, opt, index);
+    QStyledItemDelegate::paint(painter, opt, index);
 
     if (reverse)
         opt.rect = QRect(option.rect.x(), option.rect.y(), width, option.rect.height());

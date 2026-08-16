@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example mainwindows/menus
     \title Menus Example
+    \examplecategory {User Interface Components}
     \ingroup examples-mainwindow
     \ingroup examples-layout
 
@@ -143,7 +120,8 @@
     using the provided convenience functions.
 
     In the \c createActions() function, we first create a \c newAct
-    action. We make \uicontrol Ctrl+N its shortcut using the
+    action, passing the text and and an icon using one of the theme
+    icon constants. We make \uicontrol Ctrl+N its shortcut using the
     QAction::setShortcut() function, and we set its status tip using the
     QAction::setStatusTip() function (the status tip is displayed on all
     status bars provided by the action's top-level parent widget). We

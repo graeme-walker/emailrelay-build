@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhttpsocketengine_p.h"
 #include "qtcpsocket.h"
@@ -43,13 +7,15 @@
 #include "qurl.h"
 #include "private/qhttpnetworkreply_p.h"
 #include "private/qiodevice_p.h"
-#include "qelapsedtimer.h"
+#include "qdeadlinetimer.h"
 #include "qnetworkinterface.h"
 
 #if !defined(QT_NO_NETWORKPROXY)
 #include <qdebug.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 #define DEBUG
 
@@ -72,9 +38,6 @@ bool QHttpSocketEngine::initialize(QAbstractSocket::SocketType type, QAbstractSo
     setSocketType(type);
     d->socket = new QTcpSocket(this);
     d->reply = new QHttpNetworkReply(QUrl(), this);
-#ifndef QT_NO_BEARERMANAGEMENT // ### Qt6: Remove section
-    d->socket->setProperty("_q_networkSession", property("_q_networkSession"));
-#endif
 
     // Explicitly disable proxying on the proxy socket itself to avoid
     // unwanted recursion.
@@ -189,24 +152,22 @@ bool QHttpSocketEngine::connectToHostByName(const QString &hostname, quint16 por
 bool QHttpSocketEngine::bind(const QHostAddress &, quint16)
 {
     qWarning("Operation is not supported");
-    setError(QAbstractSocket::UnsupportedSocketOperationError,
-             QLatin1String("Unsupported socket operation"));
+    setError(QAbstractSocket::UnsupportedSocketOperationError, "Unsupported socket operation"_L1);
     return false;
 }
 
-bool QHttpSocketEngine::listen()
+bool QHttpSocketEngine::listen(int backlog)
 {
+    Q_UNUSED(backlog);
     qWarning("Operation is not supported");
-    setError(QAbstractSocket::UnsupportedSocketOperationError,
-             QLatin1String("Unsupported socket operation"));
+    setError(QAbstractSocket::UnsupportedSocketOperationError, "Unsupported socket operation"_L1);
     return false;
 }
 
-int QHttpSocketEngine::accept()
+qintptr QHttpSocketEngine::accept()
 {
     qWarning("Operation is not supported");
-    setError(QAbstractSocket::UnsupportedSocketOperationError,
-             QLatin1String("Unsupported socket operation"));
+    setError(QAbstractSocket::UnsupportedSocketOperationError, "Unsupported socket operation"_L1);
     return -1;
 }
 
@@ -241,8 +202,7 @@ qint64 QHttpSocketEngine::read(char *data, qint64 maxlen)
         // failed, return the socket's error. Otherwise, fall through and
         // return as much as we read so far.
         close();
-        setError(QAbstractSocket::RemoteHostClosedError,
-                 QLatin1String("Remote host closed"));
+        setError(QAbstractSocket::RemoteHostClosedError, "Remote host closed"_L1);
         setState(QAbstractSocket::UnconnectedState);
         return -1;
     }
@@ -261,8 +221,7 @@ bool QHttpSocketEngine::joinMulticastGroup(const QHostAddress &,
                                            const QNetworkInterface &)
 {
     qWarning("Operation is not supported");
-    setError(QAbstractSocket::UnsupportedSocketOperationError,
-             QLatin1String("Unsupported socket operation"));
+    setError(QAbstractSocket::UnsupportedSocketOperationError, "Unsupported socket operation"_L1);
     return false;
 }
 
@@ -270,8 +229,7 @@ bool QHttpSocketEngine::leaveMulticastGroup(const QHostAddress &,
                                             const QNetworkInterface &)
 {
     qWarning("Operation is not supported");
-    setError(QAbstractSocket::UnsupportedSocketOperationError,
-             QLatin1String("Unsupported socket operation"));
+    setError(QAbstractSocket::UnsupportedSocketOperationError, "Unsupported socket operation"_L1);
     return false;
 }
 
@@ -283,8 +241,7 @@ QNetworkInterface QHttpSocketEngine::multicastInterface() const
 bool QHttpSocketEngine::setMulticastInterface(const QNetworkInterface &)
 {
     qWarning("Operation is not supported");
-    setError(QAbstractSocket::UnsupportedSocketOperationError,
-             QLatin1String("Unsupported socket operation"));
+    setError(QAbstractSocket::UnsupportedSocketOperationError, "Unsupported socket operation"_L1);
     return false;
 }
 #endif // QT_NO_NETWORKINTERFACE
@@ -305,16 +262,14 @@ qint64 QHttpSocketEngine::pendingDatagramSize() const
 qint64 QHttpSocketEngine::readDatagram(char *, qint64, QIpPacketHeader *, PacketHeaderOptions)
 {
     qWarning("Operation is not supported");
-    setError(QAbstractSocket::UnsupportedSocketOperationError,
-             QLatin1String("Unsupported socket operation"));
+    setError(QAbstractSocket::UnsupportedSocketOperationError, "Unsupported socket operation"_L1);
     return -1;
 }
 
 qint64 QHttpSocketEngine::writeDatagram(const char *, qint64, const QIpPacketHeader &)
 {
     qWarning("Operation is not supported");
-    setError(QAbstractSocket::UnsupportedSocketOperationError,
-             QLatin1String("Unsupported socket operation"));
+    setError(QAbstractSocket::UnsupportedSocketOperationError, "Unsupported socket operation"_L1);
     return -1;
 }
 
@@ -355,19 +310,16 @@ bool QHttpSocketEngine::setOption(SocketOption option, int value)
     return false;
 }
 
-bool QHttpSocketEngine::waitForRead(int msecs, bool *timedOut)
+bool QHttpSocketEngine::waitForRead(QDeadlineTimer deadline, bool *timedOut)
 {
     Q_D(const QHttpSocketEngine);
 
     if (!d->socket || d->socket->state() == QAbstractSocket::UnconnectedState)
         return false;
 
-    QElapsedTimer stopWatch;
-    stopWatch.start();
-
     // Wait for more data if nothing is available.
     if (!d->socket->bytesAvailable()) {
-        if (!d->socket->waitForReadyRead(qt_subtract_from_timeout(msecs, stopWatch.elapsed()))) {
+        if (!d->socket->waitForReadyRead(deadline.remainingTime())) {
             if (d->socket->state() == QAbstractSocket::UnconnectedState)
                 return true;
             setError(d->socket->error(), d->socket->errorString());
@@ -377,11 +329,7 @@ bool QHttpSocketEngine::waitForRead(int msecs, bool *timedOut)
         }
     }
 
-    // If we're not connected yet, wait until we are, or until an error
-    // occurs.
-    while (d->state != Connected && d->socket->waitForReadyRead(qt_subtract_from_timeout(msecs, stopWatch.elapsed()))) {
-        // Loop while the protocol handshake is taking place.
-    }
+    waitForProtocolHandshake(deadline);
 
     // Report any error that may occur.
     if (d->state != Connected) {
@@ -393,14 +341,14 @@ bool QHttpSocketEngine::waitForRead(int msecs, bool *timedOut)
     return true;
 }
 
-bool QHttpSocketEngine::waitForWrite(int msecs, bool *timedOut)
+bool QHttpSocketEngine::waitForWrite(QDeadlineTimer deadline, bool *timedOut)
 {
     Q_D(const QHttpSocketEngine);
 
     // If we're connected, just forward the call.
     if (d->state == Connected) {
         if (d->socket->bytesToWrite()) {
-            if (!d->socket->waitForBytesWritten(msecs)) {
+            if (!d->socket->waitForBytesWritten(deadline.remainingTime())) {
                 if (d->socket->error() == QAbstractSocket::SocketTimeoutError && timedOut)
                     *timedOut = true;
                 return false;
@@ -409,15 +357,7 @@ bool QHttpSocketEngine::waitForWrite(int msecs, bool *timedOut)
         return true;
     }
 
-    QElapsedTimer stopWatch;
-    stopWatch.start();
-
-    // If we're not connected yet, wait until we are, and until bytes have
-    // been received (i.e., the socket has connected, we have sent the
-    // greeting, and then received the response).
-    while (d->state != Connected && d->socket->waitForReadyRead(qt_subtract_from_timeout(msecs, stopWatch.elapsed()))) {
-        // Loop while the protocol handshake is taking place.
-    }
+    waitForProtocolHandshake(deadline);
 
     // Report any error that may occur.
     if (d->state != Connected) {
@@ -431,23 +371,35 @@ bool QHttpSocketEngine::waitForWrite(int msecs, bool *timedOut)
 
 bool QHttpSocketEngine::waitForReadOrWrite(bool *readyToRead, bool *readyToWrite,
                                            bool checkRead, bool checkWrite,
-                                           int msecs, bool *timedOut)
+                                           QDeadlineTimer deadline, bool *timedOut)
 {
     Q_UNUSED(checkRead);
 
     if (!checkWrite) {
         // Not interested in writing? Then we wait for read notifications.
-        bool canRead = waitForRead(msecs, timedOut);
+        bool canRead = waitForRead(deadline, timedOut);
         if (readyToRead)
             *readyToRead = canRead;
         return canRead;
     }
 
     // Interested in writing? Then we wait for write notifications.
-    bool canWrite = waitForWrite(msecs, timedOut);
+    bool canWrite = waitForWrite(deadline, timedOut);
     if (readyToWrite)
         *readyToWrite = canWrite;
     return canWrite;
+}
+
+void QHttpSocketEngine::waitForProtocolHandshake(QDeadlineTimer deadline) const
+{
+    Q_D(const QHttpSocketEngine);
+
+    // If we're not connected yet, wait until we are (and until bytes have
+    // been received, i.e. the socket has connected, we have sent the
+    // greeting, and then received the response), or until an error occurs.
+    while (d->state != Connected && d->socket->waitForReadyRead(deadline.remainingTime())) {
+        // Loop while the protocol handshake is taking place.
+    }
 }
 
 bool QHttpSocketEngine::isReadNotificationEnabled() const
@@ -515,11 +467,14 @@ void QHttpSocketEngine::slotSocketConnected()
     data += " HTTP/1.1\r\n";
     data += "Proxy-Connection: keep-alive\r\n";
     data += "Host: " + peerAddress + "\r\n";
-    if (!d->proxy.hasRawHeader("User-Agent"))
+    const auto headers = d->proxy.headers();
+    if (!headers.contains(QHttpHeaders::WellKnownHeader::UserAgent))
         data += "User-Agent: Mozilla/5.0\r\n";
-    const auto headers = d->proxy.rawHeaderList();
-    for (const QByteArray &header : headers)
-        data += header + ": " + d->proxy.rawHeader(header) + "\r\n";
+    for (qsizetype i = 0; i < headers.size(); ++i) {
+        const auto name = headers.nameAt(i);
+        data += QByteArrayView(name.data(), name.size()) + ": "
+                + headers.valueAt(i) + "\r\n";
+    }
     QAuthenticatorPrivate *priv = QAuthenticatorPrivate::getPrivate(d->authenticator);
     //qDebug() << "slotSocketConnected: priv=" << priv << (priv ? (int)priv->method : -1);
     if (priv && priv->method != QAuthenticatorPrivate::None) {
@@ -581,7 +536,7 @@ void QHttpSocketEngine::slotSocketReadNotification()
         d->pendingResponseData -= uint(skipped);
         if (d->pendingResponseData > 0)
             return;
-        if (d->reply->d_func()->statusCode == 407)
+        if (d->reply->statusCode() == 407)
             d->state = SendAuthentication;
     }
 
@@ -601,16 +556,8 @@ void QHttpSocketEngine::slotSocketReadNotification()
             d->authenticator.detach();
         priv = QAuthenticatorPrivate::getPrivate(d->authenticator);
 
-        if (d->credentialsSent && priv->phase != QAuthenticatorPrivate::Phase2) {
-            // Remember that (e.g.) NTLM is two-phase, so only reset when the authentication is not currently in progress.
-            //407 response again means the provided username/password were invalid.
-            d->authenticator = QAuthenticator(); //this is needed otherwise parseHttpResponse won't set the state, and then signal isn't emitted.
-            d->authenticator.detach();
-            priv = QAuthenticatorPrivate::getPrivate(d->authenticator);
-            priv->hasFailed = true;
-        }
-
-        priv->parseHttpResponse(d->reply->header(), true, d->proxy.hostName());
+        const auto headers = d->reply->header();
+        priv->parseHttpResponse(headers, true, d->proxy.hostName());
 
         if (priv->phase == QAuthenticatorPrivate::Invalid) {
             // problem parsing the reply
@@ -619,6 +566,29 @@ void QHttpSocketEngine::slotSocketReadNotification()
             setError(QAbstractSocket::ProxyProtocolError, tr("Error parsing authentication request from proxy"));
             emitConnectionNotification();
             return;
+        }
+
+        if (priv->phase == QAuthenticatorPrivate::Done
+            || (priv->phase == QAuthenticatorPrivate::Start
+                && (priv->method == QAuthenticatorPrivate::Ntlm
+                    || priv->method == QAuthenticatorPrivate::Negotiate))) {
+            if (priv->phase == QAuthenticatorPrivate::Start)
+                priv->phase = QAuthenticatorPrivate::Phase1;
+            bool credentialsWasSent = d->credentialsSent;
+            if (d->credentialsSent) {
+                // Remember that (e.g.) NTLM is two-phase, so only reset when the authentication is
+                // not currently in progress. 407 response again means the provided
+                // username/password were invalid.
+                d->authenticator.detach();
+                priv = QAuthenticatorPrivate::getPrivate(d->authenticator);
+                priv->hasFailed = true;
+                d->credentialsSent = false;
+                priv->phase = QAuthenticatorPrivate::Done;
+            }
+            if ((priv->method != QAuthenticatorPrivate::Ntlm
+                 && priv->method != QAuthenticatorPrivate::Negotiate)
+                || credentialsWasSent)
+                proxyAuthenticationRequired(d->proxy, &d->authenticator);
         }
 
         bool willClose;
@@ -645,13 +615,11 @@ void QHttpSocketEngine::slotSocketReadNotification()
             d->socket->readAll();
             //We're done with the reply and need to reset it for the next connection
             delete d->reply;
-            d->reply = new QHttpNetworkReply;
+            d->reply = new QHttpNetworkReply(QUrl(), this);
         }
 
-        if (priv->phase == QAuthenticatorPrivate::Done)
-            proxyAuthenticationRequired(d->proxy, &d->authenticator);
-        // priv->phase will get reset to QAuthenticatorPrivate::Start if the authenticator got modified in the signal above.
         if (priv->phase == QAuthenticatorPrivate::Done) {
+            d->authenticator = QAuthenticator();
             setError(QAbstractSocket::ProxyAuthenticationRequiredError, tr("Authentication required"));
             d->socket->disconnectFromHost();
         } else {
@@ -793,7 +761,7 @@ void QHttpSocketEngine::emitReadNotification()
 {
     Q_D(QHttpSocketEngine);
     // if there is a connection notification pending we have to emit the readNotification
-    // incase there is connection error. This is only needed for Windows, but it does not
+    // in case there is connection error. This is only needed for Windows, but it does not
     // hurt in other cases.
     if ((d->readNotificationEnabled && !d->readNotificationPending) || d->connectionNotificationPending) {
         d->readNotificationPending = true;
@@ -866,3 +834,5 @@ QAbstractSocketEngine *QHttpSocketEngineHandler::createSocketEngine(qintptr, QOb
 QT_END_NAMESPACE
 
 #endif // !QT_NO_NETWORKPROXY
+
+#include "moc_qhttpsocketengine_p.cpp"

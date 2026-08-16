@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef ITEMLISTEDITOR_H
 #define ITEMLISTEDITOR_H
@@ -53,8 +28,10 @@ class DesignerEditorFactory;
 class BoolBlocker
 {
 public:
-    inline BoolBlocker(bool &b):block(b), reset(b){block = true;}
-    inline ~BoolBlocker(){block = reset; }
+    Q_DISABLE_COPY_MOVE(BoolBlocker);
+
+    inline explicit BoolBlocker(bool &b) noexcept : block(b), reset(b) { block = true; }
+    inline ~BoolBlocker() noexcept { block = reset; }
 private:
     bool &block;
     bool reset;
@@ -86,9 +63,11 @@ private slots:
 
 protected:
     virtual int defaultItemFlags() const = 0;
-    void setupProperties(PropertyDefinition *propDefs);
+    void setupProperties(const PropertyDefinition *propList,
+                         Qt::Alignment alignDefault = Qt::AlignLeading | Qt::AlignVCenter);
     void setupObject(QWidget *object);
-    void setupEditor(QWidget *object, PropertyDefinition *propDefs);
+    void setupEditor(QWidget *object, const PropertyDefinition *propDefs,
+                     Qt::Alignment alignDefault = Qt::AlignLeading | Qt::AlignVCenter);
     void injectPropertyBrowser(QWidget *parent, QWidget *widget);
     void updateBrowser();
     virtual void setItemData(int role, const QVariant &v) = 0;
@@ -112,11 +91,15 @@ class ItemListEditor: public AbstractItemEditor
 public:
     explicit ItemListEditor(QDesignerFormWindowInterface *form, QWidget *parent);
 
-    void setupEditor(QWidget *object, PropertyDefinition *propDefs);
+    void setupEditor(QWidget *object, const PropertyDefinition *propDefs,
+                     Qt::Alignment alignDefault = Qt::AlignLeading | Qt::AlignVCenter);
     QListWidget *listWidget() const { return ui.listWidget; }
     void setNewItemText(const QString &tpl) { m_newItemText = tpl; }
     QString newItemText() const { return m_newItemText; }
     void setCurrentIndex(int idx);
+
+    uint alignDefault() const;
+    void setAlignDefault(uint newAlignDefault);
 
 signals:
     void indexChanged(int idx);
@@ -127,12 +110,12 @@ signals:
     void itemMovedDown(int idx);
 
 private slots:
-    void on_newListItemButton_clicked();
-    void on_deleteListItemButton_clicked();
-    void on_moveListItemUpButton_clicked();
-    void on_moveListItemDownButton_clicked();
-    void on_listWidget_currentRowChanged();
-    void on_listWidget_itemChanged(QListWidgetItem * item);
+    void newListItemButtonClicked();
+    void deleteListItemButtonClicked();
+    void moveListItemUpButtonClicked();
+    void moveListItemDownButtonClicked();
+    void listWidgetCurrentRowChanged();
+    void listWidgetItemChanged(QListWidgetItem * item);
     void togglePropertyBrowser();
     void cacheReloaded();
 
@@ -145,6 +128,7 @@ private:
     void setPropertyBrowserVisible(bool v);
     void updateEditor();
     Ui::ItemListEditor ui;
+    uint m_alignDefault = 0;
     bool m_updating;
     QString m_newItemText;
 };

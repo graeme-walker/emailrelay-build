@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtGui/qtguiglobal.h>
 #if QT_CONFIG(accessibility)
@@ -47,7 +11,7 @@
 #include <QtGui/qaccessible.h>
 #include <QtCore/qloggingcategory.h>
 #include <QtCore/qstring.h>
-
+#include <QtCore/private/qcomptr_p.h>
 QT_BEGIN_NAMESPACE
 
 using namespace QWindowsUiAutomation;
@@ -60,20 +24,6 @@ QWindowsUiaTextProvider::QWindowsUiaTextProvider(QAccessible::Id id) :
 
 QWindowsUiaTextProvider::~QWindowsUiaTextProvider()
 {
-}
-
-HRESULT STDMETHODCALLTYPE QWindowsUiaTextProvider::QueryInterface(REFIID iid, LPVOID *iface)
-{
-    qCDebug(lcQpaUiAutomation) << __FUNCTION__ << this;
-
-    if (!iface)
-        return E_INVALIDARG;
-    *iface = nullptr;
-
-    const bool result = qWindowsComQueryUnknownInterfaceMulti<ITextProvider>(this, iid, iface)
-        || qWindowsComQueryInterface<ITextProvider>(this, iid, iface)
-        || qWindowsComQueryInterface<ITextProvider2>(this, iid, iface);
-    return result ? S_OK : E_NOINTERFACE;
 }
 
 // Returns an array of providers for the selected text ranges.
@@ -100,9 +50,9 @@ HRESULT STDMETHODCALLTYPE QWindowsUiaTextProvider::GetSelection(SAFEARRAY **pRet
             for (LONG i = 0; i < selCount; ++i) {
                 int startOffset = 0, endOffset = 0;
                 textInterface->selection((int)i, &startOffset, &endOffset);
-                auto *textRangeProvider = new QWindowsUiaTextRangeProvider(id(), startOffset, endOffset);
-                SafeArrayPutElement(*pRetVal, &i, static_cast<IUnknown *>(textRangeProvider));
-                textRangeProvider->Release();
+                ComPtr<IUnknown> textRangeProvider =
+                        makeComObject<QWindowsUiaTextRangeProvider>(id(), startOffset, endOffset);
+                SafeArrayPutElement(*pRetVal, &i, textRangeProvider.Get());
             }
         }
     } else {
@@ -110,9 +60,9 @@ HRESULT STDMETHODCALLTYPE QWindowsUiaTextProvider::GetSelection(SAFEARRAY **pRet
         if ((*pRetVal = SafeArrayCreateVector(VT_UNKNOWN, 0, 1))) {
             LONG i = 0;
             int cursorPosition = textInterface->cursorPosition();
-            auto *textRangeProvider = new QWindowsUiaTextRangeProvider(id(), cursorPosition, cursorPosition);
-            SafeArrayPutElement(*pRetVal, &i, static_cast<IUnknown *>(textRangeProvider));
-            textRangeProvider->Release();
+            ComPtr<IUnknown> textRangeProvider = makeComObject<QWindowsUiaTextRangeProvider>(
+                    id(), cursorPosition, cursorPosition);
+            SafeArrayPutElement(*pRetVal, &i, textRangeProvider.Get());
         }
     }
     return S_OK;
@@ -138,9 +88,9 @@ HRESULT STDMETHODCALLTYPE QWindowsUiaTextProvider::GetVisibleRanges(SAFEARRAY **
     // Considering the entire text as visible.
     if ((*pRetVal = SafeArrayCreateVector(VT_UNKNOWN, 0, 1))) {
         LONG i = 0;
-        auto *textRangeProvider = new QWindowsUiaTextRangeProvider(id(), 0, textInterface->characterCount());
-        SafeArrayPutElement(*pRetVal, &i, static_cast<IUnknown *>(textRangeProvider));
-        textRangeProvider->Release();
+        ComPtr<IUnknown> textRangeProvider =
+                makeComObject<QWindowsUiaTextRangeProvider>(id(), 0, textInterface->characterCount());
+        SafeArrayPutElement(*pRetVal, &i, textRangeProvider.Get());
     }
     return S_OK;
 }
@@ -182,9 +132,10 @@ HRESULT STDMETHODCALLTYPE QWindowsUiaTextProvider::RangeFromPoint(UiaPoint point
     nativeUiaPointToPoint(point, window, &pt);
 
     int offset = textInterface->offsetAtPoint(pt);
-    if ((offset >= 0) && (offset < textInterface->characterCount())) {
-        *pRetVal = new QWindowsUiaTextRangeProvider(id(), offset, offset);
-    }
+    if (offset < 0 || offset >= textInterface->characterCount())
+        return UIA_E_ELEMENTNOTAVAILABLE;
+
+    *pRetVal = makeComObject<QWindowsUiaTextRangeProvider>(id(), offset, offset).Detach();
     return S_OK;
 }
 
@@ -205,7 +156,8 @@ HRESULT STDMETHODCALLTYPE QWindowsUiaTextProvider::get_DocumentRange(ITextRangeP
     if (!textInterface)
         return UIA_E_ELEMENTNOTAVAILABLE;
 
-    *pRetVal = new QWindowsUiaTextRangeProvider(id(), 0, textInterface->characterCount());
+    *pRetVal = makeComObject<QWindowsUiaTextRangeProvider>(id(), 0, textInterface->characterCount())
+                       .Detach();
     return S_OK;
 }
 
@@ -251,7 +203,8 @@ HRESULT STDMETHODCALLTYPE QWindowsUiaTextProvider::GetCaretRange(BOOL *isActive,
     *isActive = accessible->state().focused;
 
     int cursorPosition = textInterface->cursorPosition();
-    *pRetVal = new QWindowsUiaTextRangeProvider(id(), cursorPosition, cursorPosition);
+    *pRetVal = makeComObject<QWindowsUiaTextRangeProvider>(id(), cursorPosition, cursorPosition)
+                       .Detach();
     return S_OK;
 }
 

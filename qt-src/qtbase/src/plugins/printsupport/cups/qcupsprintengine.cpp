@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcupsprintengine_p.h"
 
@@ -89,8 +53,10 @@ void QCupsPrintEngine::setProperty(PrintEnginePropertyKey key, const QVariant &v
         break;
     case PPK_Duplex: {
         QPrint::DuplexMode mode = QPrint::DuplexMode(value.toInt());
-        if (mode != d->duplex && d->m_printDevice.supportedDuplexModes().contains(mode))
+        if (d->m_printDevice.supportedDuplexModes().contains(mode)) {
             d->duplex = mode;
+            d->duplexRequestedExplicitly = true;
+        }
         break;
     }
     case PPK_PrinterName:
@@ -98,6 +64,12 @@ void QCupsPrintEngine::setProperty(PrintEnginePropertyKey key, const QVariant &v
         break;
     case PPK_CupsOptions:
         d->cupsOptions = value.toStringList();
+        if (d->cupsOptions.size() % 2 == 1) {
+            qWarning("%s: malformed value for key = PPK_CupsOptions "
+                     "(odd number of elements in the string-list; "
+                     "appending an empty entry)", Q_FUNC_INFO);
+            d->cupsOptions.emplace_back();
+        }
         break;
     case PPK_QPageSize:
         d->setPageSize(qvariant_cast<QPageSize>(value));
@@ -178,7 +150,20 @@ bool QCupsPrintEnginePrivate::openPrintDevice()
         }
         cupsTempFile = QString::fromLocal8Bit(filename);
         outDevice = new QFile();
-        static_cast<QFile *>(outDevice)->open(fd, QIODevice::WriteOnly);
+        if (!static_cast<QFile *>(outDevice)->open(fd, QIODevice::WriteOnly)) {
+            qWarning("QPdfPrinter: Could not open CUPS temporary file descriptor: %s",
+                     qPrintable(outDevice->errorString()));
+            delete outDevice;
+            outDevice = nullptr;
+
+#if defined(Q_OS_WIN) && defined(Q_CC_MSVC)
+            ::_close(fd);
+#else
+            ::close(fd);
+#endif
+            fd = -1;
+            return false;
+        }
     }
 
     return true;
@@ -200,41 +185,42 @@ void QCupsPrintEnginePrivate::closePrintDevice()
         }
 
         // Set up print options.
-        QList<QPair<QByteArray, QByteArray> > options;
-        QVector<cups_option_t> cupsOptStruct;
+        QList<std::pair<QByteArray, QByteArray> > options;
+        QList<cups_option_t> cupsOptStruct;
 
-        options.append(QPair<QByteArray, QByteArray>("media", m_pageLayout.pageSize().key().toLocal8Bit()));
+        options.emplace_back("media", m_pageLayout.pageSize().key().toLocal8Bit());
 
         if (copies > 1)
-            options.append(QPair<QByteArray, QByteArray>("copies", QString::number(copies).toLocal8Bit()));
+            options.emplace_back("copies", QString::number(copies).toLocal8Bit());
 
         if (copies > 1 && collate)
-            options.append(QPair<QByteArray, QByteArray>("Collate", "True"));
+            options.emplace_back("Collate", "True");
 
         switch (duplex) {
         case QPrint::DuplexNone:
-            options.append(QPair<QByteArray, QByteArray>("sides", "one-sided"));
+            options.emplace_back("sides", "one-sided");
             break;
         case QPrint::DuplexAuto:
             if (m_pageLayout.orientation() == QPageLayout::Portrait)
-                options.append(QPair<QByteArray, QByteArray>("sides", "two-sided-long-edge"));
+                options.emplace_back("sides", "two-sided-long-edge");
             else
-                options.append(QPair<QByteArray, QByteArray>("sides", "two-sided-short-edge"));
+                options.emplace_back("sides", "two-sided-short-edge");
             break;
         case QPrint::DuplexLongSide:
-            options.append(QPair<QByteArray, QByteArray>("sides", "two-sided-long-edge"));
+            options.emplace_back("sides", "two-sided-long-edge");
             break;
         case QPrint::DuplexShortSide:
-            options.append(QPair<QByteArray, QByteArray>("sides", "two-sided-short-edge"));
+            options.emplace_back("sides", "two-sided-short-edge");
             break;
         }
 
         if (m_pageLayout.orientation() == QPageLayout::Landscape)
-            options.append(QPair<QByteArray, QByteArray>("landscape", ""));
+            options.emplace_back("landscape", "");
 
         QStringList::const_iterator it = cupsOptions.constBegin();
+        Q_ASSERT(cupsOptions.size() % 2 == 0);
         while (it != cupsOptions.constEnd()) {
-            options.append(QPair<QByteArray, QByteArray>((*it).toLocal8Bit(), (*(it+1)).toLocal8Bit()));
+            options.emplace_back((*it).toLocal8Bit(), (*(it+1)).toLocal8Bit());
             it += 2;
         }
 
@@ -249,7 +235,7 @@ void QCupsPrintEnginePrivate::closePrintDevice()
 
         // Print the file
         // Cups expect the printer original name without instance, the full name is used only to retrieve the configuration
-        const auto parts = printerName.splitRef(QLatin1Char('/'));
+        const auto parts = QStringView{printerName}.split(u'/');
         const auto printerOriginalName = parts.at(0);
         cups_option_t* optPtr = cupsOptStruct.size() ? &cupsOptStruct.first() : 0;
         cupsPrintFile(printerOriginalName.toLocal8Bit().constData(), tempFile.toLocal8Bit().constData(),
@@ -277,12 +263,18 @@ void QCupsPrintEnginePrivate::changePrinter(const QString &newPrinter)
     m_printDevice.swap(printDevice);
     printerName = m_printDevice.id();
 
-    // Check if new printer supports current settings, otherwise us defaults
-    if (duplex != QPrint::DuplexAuto && !m_printDevice.supportedDuplexModes().contains(duplex))
+    // in case a duplex value was explicitly set, check if new printer supports current value,
+    // otherwise use device default
+    if (!duplexRequestedExplicitly || !m_printDevice.supportedDuplexModes().contains(duplex)) {
         duplex = m_printDevice.defaultDuplexMode();
-    QPrint::ColorMode colorMode = grayscale ? QPrint::GrayScale : QPrint::Color;
-    if (!m_printDevice.supportedColorModes().contains(colorMode))
-        grayscale = m_printDevice.defaultColorMode() == QPrint::GrayScale;
+        duplexRequestedExplicitly = false;
+    }
+    QPrint::ColorMode colorMode = static_cast<QPrint::ColorMode>(printerColorMode());
+    if (!m_printDevice.supportedColorModes().contains(colorMode)) {
+        colorModel = (m_printDevice.defaultColorMode() == QPrint::GrayScale)
+                         ? QPdfEngine::ColorModel::Grayscale
+                         : QPdfEngine::ColorModel::RGB;
+    }
 
     // Get the equivalent page size for this printer as supported names may be different
     if (m_printDevice.supportedPageSize(m_pageLayout.pageSize()).isValid())

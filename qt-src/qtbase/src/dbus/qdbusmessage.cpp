@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdbusmessage.h"
 #include "qdbusmessage_p.h"
@@ -56,11 +20,15 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_STATIC_ASSERT(QDBusMessage::InvalidMessage == DBUS_MESSAGE_TYPE_INVALID);
-Q_STATIC_ASSERT(QDBusMessage::MethodCallMessage == DBUS_MESSAGE_TYPE_METHOD_CALL);
-Q_STATIC_ASSERT(QDBusMessage::ReplyMessage == DBUS_MESSAGE_TYPE_METHOD_RETURN);
-Q_STATIC_ASSERT(QDBusMessage::ErrorMessage == DBUS_MESSAGE_TYPE_ERROR);
-Q_STATIC_ASSERT(QDBusMessage::SignalMessage == DBUS_MESSAGE_TYPE_SIGNAL);
+using namespace Qt::StringLiterals;
+
+QT_IMPL_METATYPE_EXTERN(QDBusMessage)
+
+static_assert(QDBusMessage::InvalidMessage == DBUS_MESSAGE_TYPE_INVALID);
+static_assert(QDBusMessage::MethodCallMessage == DBUS_MESSAGE_TYPE_METHOD_CALL);
+static_assert(QDBusMessage::ReplyMessage == DBUS_MESSAGE_TYPE_METHOD_RETURN);
+static_assert(QDBusMessage::ErrorMessage == DBUS_MESSAGE_TYPE_ERROR);
+static_assert(QDBusMessage::SignalMessage == DBUS_MESSAGE_TYPE_SIGNAL);
 
 static inline const char *data(const QByteArray &arr)
 {
@@ -68,20 +36,35 @@ static inline const char *data(const QByteArray &arr)
 }
 
 QDBusMessagePrivate::QDBusMessagePrivate()
-    : msg(nullptr), reply(nullptr), localReply(nullptr), ref(1), type(QDBusMessage::InvalidMessage),
-      delayedReply(false), localMessage(false),
-      parametersValidated(false), autoStartService(true),
-      interactiveAuthorizationAllowed(false)
+    : localReply(nullptr), ref(1), type(QDBusMessage::InvalidMessage),
+      delayedReply(false), parametersValidated(false),
+      localMessage(false), autoStartService(true),
+      interactiveAuthorizationAllowed(false), isReplyRequired(false)
 {
 }
 
 QDBusMessagePrivate::~QDBusMessagePrivate()
 {
-    if (msg)
-        q_dbus_message_unref(msg);
-    if (reply)
-        q_dbus_message_unref(reply);
     delete localReply;
+}
+
+void QDBusMessagePrivate::createResponseLink(const QDBusMessagePrivate *call)
+{
+    if (Q_UNLIKELY(call->type != QDBusMessage::MethodCallMessage)) {
+        qWarning("QDBusMessage: replying to a message that isn't a method call");
+        return;
+    }
+
+    if (call->localMessage) {
+        localMessage = true;
+        call->localReply = new QDBusMessage(*this); // keep an internal copy
+    } else {
+        serial = call->serial;
+        service = call->service;
+    }
+
+    // the reply must have a serial or be a local-loop optimization
+    Q_ASSERT(serial || localMessage);
 }
 
 /*!
@@ -112,7 +95,7 @@ DBusMessage *QDBusMessagePrivate::toDBusMessage(const QDBusMessage &message, QDB
                                                 QDBusError *error)
 {
     if (!qdbus_loadLibDBus()) {
-        *error = QDBusError(QDBusError::Failed, QLatin1String("Could not open lidbus-1 library"));
+        *error = QDBusError(QDBusError::Failed, "Could not open lidbus-1 library"_L1);
         return nullptr;
     }
 
@@ -126,7 +109,10 @@ DBusMessage *QDBusMessagePrivate::toDBusMessage(const QDBusMessage &message, QDB
     case QDBusMessage::MethodCallMessage:
         // only service and interface can be empty -> path and name must not be empty
         if (!d_ptr->parametersValidated) {
-            if (!QDBusUtil::checkBusName(d_ptr->service, QDBusUtil::EmptyAllowed, error))
+            using namespace QDBusUtil;
+            AllowEmptyFlag serviceCheckMode = capabilities & QDBusConnectionPrivate::ConnectionIsBus
+                    ? EmptyNotAllowed : EmptyAllowed;
+            if (!checkBusName(d_ptr->service, serviceCheckMode, error))
                 return nullptr;
             if (!QDBusUtil::checkObjectPath(d_ptr->path, QDBusUtil::EmptyNotAllowed, error))
                 return nullptr;
@@ -145,8 +131,8 @@ DBusMessage *QDBusMessagePrivate::toDBusMessage(const QDBusMessage &message, QDB
     case QDBusMessage::ReplyMessage:
         msg = q_dbus_message_new(DBUS_MESSAGE_TYPE_METHOD_RETURN);
         if (!d_ptr->localMessage) {
-            q_dbus_message_set_destination(msg, q_dbus_message_get_sender(d_ptr->reply));
-            q_dbus_message_set_reply_serial(msg, q_dbus_message_get_serial(d_ptr->reply));
+            q_dbus_message_set_destination(msg, data(d_ptr->service.toUtf8()));
+            q_dbus_message_set_reply_serial(msg, d_ptr->serial);
         }
         break;
     case QDBusMessage::ErrorMessage:
@@ -158,12 +144,12 @@ DBusMessage *QDBusMessagePrivate::toDBusMessage(const QDBusMessage &message, QDB
         msg = q_dbus_message_new(DBUS_MESSAGE_TYPE_ERROR);
         q_dbus_message_set_error_name(msg, d_ptr->name.toUtf8());
         if (!d_ptr->localMessage) {
-            q_dbus_message_set_destination(msg, q_dbus_message_get_sender(d_ptr->reply));
-            q_dbus_message_set_reply_serial(msg, q_dbus_message_get_serial(d_ptr->reply));
+            q_dbus_message_set_destination(msg, data(d_ptr->service.toUtf8()));
+            q_dbus_message_set_reply_serial(msg, d_ptr->serial);
         }
         break;
     case QDBusMessage::SignalMessage:
-        // only the service name can be empty here
+        // only the service name can be empty here (even for bus connections)
         if (!d_ptr->parametersValidated) {
             if (!QDBusUtil::checkBusName(d_ptr->service, QDBusUtil::EmptyAllowed, error))
                 return nullptr;
@@ -187,14 +173,12 @@ DBusMessage *QDBusMessagePrivate::toDBusMessage(const QDBusMessage &message, QDB
     d_ptr->parametersValidated = true;
 
     QDBusMarshaller marshaller(capabilities);
-    QVariantList::ConstIterator it =  d_ptr->arguments.constBegin();
-    QVariantList::ConstIterator cend = d_ptr->arguments.constEnd();
     q_dbus_message_iter_init_append(msg, &marshaller.iterator);
     if (!d_ptr->message.isEmpty())
         // prepend the error message
         marshaller.append(d_ptr->message);
-    for ( ; it != cend; ++it)
-        marshaller.appendVariantInternal(*it);
+    for (const QVariant &argument : std::as_const(d_ptr->arguments))
+        marshaller.appendVariantInternal(argument);
 
     // check if everything is ok
     if (marshaller.ok)
@@ -202,7 +186,7 @@ DBusMessage *QDBusMessagePrivate::toDBusMessage(const QDBusMessage &message, QDB
 
     // not ok;
     q_dbus_message_unref(msg);
-    *error = QDBusError(QDBusError::Failed, QLatin1String("Marshalling failed: ") + marshaller.errorString);
+    *error = QDBusError(QDBusError::Failed, "Marshalling failed: "_L1 + marshaller.errorString);
     return nullptr;
 }
 
@@ -238,6 +222,7 @@ QDBusMessage QDBusMessagePrivate::fromDBusMessage(DBusMessage *dmsg, QDBusConnec
         return message;
 
     message.d_ptr->type = QDBusMessage::MessageType(q_dbus_message_get_type(dmsg));
+    message.d_ptr->serial = q_dbus_message_get_serial(dmsg);
     message.d_ptr->path = QString::fromUtf8(q_dbus_message_get_path(dmsg));
     message.d_ptr->interface = QString::fromUtf8(q_dbus_message_get_interface(dmsg));
     message.d_ptr->name = message.d_ptr->type == DBUS_MESSAGE_TYPE_ERROR ?
@@ -246,7 +231,7 @@ QDBusMessage QDBusMessagePrivate::fromDBusMessage(DBusMessage *dmsg, QDBusConnec
     message.d_ptr->service = QString::fromUtf8(q_dbus_message_get_sender(dmsg));
     message.d_ptr->signature = QString::fromUtf8(q_dbus_message_get_signature(dmsg));
     message.d_ptr->interactiveAuthorizationAllowed = q_dbus_message_get_allow_interactive_authorization(dmsg);
-    message.d_ptr->msg = q_dbus_message_ref(dmsg);
+    message.d_ptr->isReplyRequired = !q_dbus_message_get_no_reply(dmsg);
 
     QDBusDemarshaller demarshaller(capabilities);
     demarshaller.message = q_dbus_message_ref(dmsg);
@@ -271,13 +256,11 @@ QDBusMessage QDBusMessagePrivate::makeLocal(const QDBusConnectionPrivate &conn,
 
     // determine if we are carrying any complex types
     QString computedSignature;
-    QVariantList::ConstIterator it = asSent.d_ptr->arguments.constBegin();
-    QVariantList::ConstIterator end = asSent.d_ptr->arguments.constEnd();
-    for ( ; it != end; ++it) {
-        int id = it->userType();
+    for (const QVariant &argument : std::as_const(asSent.d_ptr->arguments)) {
+        QMetaType id = argument.metaType();
         const char *signature = QDBusMetaType::typeToSignature(id);
-        if ((id != QMetaType::QStringList && id != QMetaType::QByteArray &&
-             qstrlen(signature) != 1) || id == qMetaTypeId<QDBusVariant>()) {
+        if ((id.id() != QMetaType::QStringList && id.id() != QMetaType::QByteArray &&
+             qstrlen(signature) != 1) || id == QMetaType::fromType<QDBusVariant>()) {
             // yes, we are
             // we must marshall and demarshall again so as to create QDBusArgument
             // entries for the complex types
@@ -297,7 +280,7 @@ QDBusMessage QDBusMessagePrivate::makeLocal(const QDBusConnectionPrivate &conn,
                 retval.d_ptr->service = conn.baseService;
             return retval;
         } else {
-            computedSignature += QLatin1String(signature);
+            computedSignature += QLatin1StringView(signature);
         }
     }
 
@@ -438,6 +421,7 @@ QDBusMessage QDBusMessage::createMethodCall(const QString &service, const QStrin
     message.d_ptr->path = path;
     message.d_ptr->interface = interface;
     message.d_ptr->name = method;
+    message.d_ptr->isReplyRequired = true;
 
     return message;
 }
@@ -480,15 +464,7 @@ QDBusMessage QDBusMessage::createReply(const QVariantList &arguments) const
     QDBusMessage reply;
     reply.setArguments(arguments);
     reply.d_ptr->type = ReplyMessage;
-    if (d_ptr->msg)
-        reply.d_ptr->reply = q_dbus_message_ref(d_ptr->msg);
-    if (d_ptr->localMessage) {
-        reply.d_ptr->localMessage = true;
-        d_ptr->localReply = new QDBusMessage(reply); // keep an internal copy
-    }
-
-    // the reply must have a msg or be a local-loop optimization
-    Q_ASSERT(reply.d_ptr->reply || reply.d_ptr->localMessage);
+    reply.d_ptr->createResponseLink(d_ptr);
     return reply;
 }
 
@@ -496,31 +472,21 @@ QDBusMessage QDBusMessage::createReply(const QVariantList &arguments) const
     Constructs a new DBus message representing an error reply message,
     with the given \a name and \a msg.
 */
-#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
 QDBusMessage QDBusMessage::createErrorReply(const QString &name, const QString &msg) const
-#else
-QDBusMessage QDBusMessage::createErrorReply(const QString name, const QString &msg) const
-#endif
 {
     QDBusMessage reply = QDBusMessage::createError(name, msg);
-    if (d_ptr->msg)
-        reply.d_ptr->reply = q_dbus_message_ref(d_ptr->msg);
-    if (d_ptr->localMessage) {
-        reply.d_ptr->localMessage = true;
-        d_ptr->localReply = new QDBusMessage(reply); // keep an internal copy
-    }
-
-    // the reply must have a msg or be a local-loop optimization
-    Q_ASSERT(reply.d_ptr->reply || reply.d_ptr->localMessage);
+    reply.d_ptr->createResponseLink(d_ptr);
     return reply;
 }
 
 /*!
-   \fn QDBusMessage QDBusMessage::createReply(const QVariant &argument) const
-
     Constructs a new DBus message representing a reply, with the
     given \a argument.
 */
+QDBusMessage QDBusMessage::createReply(const QVariant &argument) const
+{
+    return createReply(QList{argument});
+}
 
 /*!
     \fn QDBusMessage QDBusMessage::createErrorReply(const QDBusError &error) const
@@ -593,6 +559,8 @@ QDBusMessage &QDBusMessage::operator=(const QDBusMessage &other)
 */
 QString QDBusMessage::service() const
 {
+    if (d_ptr->type == ErrorMessage || d_ptr->type == ReplyMessage)
+        return QString();   // d_ptr->service holds the destination
     return d_ptr->service;
 }
 
@@ -655,9 +623,9 @@ bool QDBusMessage::isReplyRequired() const
     if (d_ptr->type != QDBusMessage::MethodCallMessage)
         return false;
 
-    if (!d_ptr->msg)
-        return d_ptr->localMessage; // if it's a local message, reply is required
-    return !q_dbus_message_get_no_reply(d_ptr->msg);
+    if (d_ptr->localMessage) // if it's a local message, reply is required
+        return true;
+    return d_ptr->isReplyRequired;
 }
 
 /*!
@@ -729,20 +697,26 @@ bool QDBusMessage::autoStartService() const
 }
 
 /*!
-    Sets the interactive authorization flag to \a enable.
-    This flag only makes sense for method call messages, where it
-    tells the D-Bus server that the caller of the method is prepared
-    to wait for interactive authorization to take place (for instance
-    via Polkit) before the actual method is processed.
+    Enables or disables the \c ALLOW_INTERACTIVE_AUTHORIZATION flag
+    in a message.
 
-    By default this flag is false and the other end is expected to
-    make any authorization decisions non-interactively and promptly.
+    This flag only makes sense for method call messages
+    (\l QDBusMessage::MethodCallMessage). If \a enable
+    is set to \c true, the flag indicates to the callee that the
+    caller of the method is prepared to wait for interactive authorization
+    to take place (for instance via Polkit) before the actual method
+    is processed.
+
+    If \a enable is set to \c false, the flag is not
+    set, meaning that the other end is expected to make any authorization
+    decisions non-interactively and promptly. This is the default.
 
     The \c org.freedesktop.DBus.Error.InteractiveAuthorizationRequired
     error indicates that authorization failed, but could have succeeded
     if this flag had been set.
 
-    \sa isInteractiveAuthorizationAllowed()
+    \sa isInteractiveAuthorizationAllowed(),
+        QDBusAbstractInterface::setInteractiveAuthorizationAllowed()
 
     \since 5.12
 */
@@ -752,12 +726,11 @@ void QDBusMessage::setInteractiveAuthorizationAllowed(bool enable)
 }
 
 /*!
-    Returns the interactive authorization allowed flag, as set by
-    setInteractiveAuthorizationAllowed(). By default this flag
-    is false and the other end is expected to make any authorization
-    decisions non-interactively and promptly.
+    Returns whether the message has the
+    \c ALLOW_INTERACTIVE_AUTHORIZATION flag set.
 
-    \sa setInteractiveAuthorizationAllowed()
+    \sa setInteractiveAuthorizationAllowed(),
+        QDBusAbstractInterface::isInteractiveAuthorizationAllowed()
 
     \since 5.12
 */
@@ -774,7 +747,6 @@ bool QDBusMessage::isInteractiveAuthorizationAllowed() const
 */
 void QDBusMessage::setArguments(const QList<QVariant> &arguments)
 {
-    // FIXME: should we detach?
     d_ptr->arguments = arguments;
 }
 
@@ -794,9 +766,14 @@ QList<QVariant> QDBusMessage::arguments() const
 
 QDBusMessage &QDBusMessage::operator<<(const QVariant &arg)
 {
-    // FIXME: should we detach?
     d_ptr->arguments.append(arg);
     return *this;
+}
+
+QDBusMessage::QDBusMessage(QDBusMessagePrivate &dd)
+    : d_ptr(&dd)
+{
+    d_ptr->ref.ref();
 }
 
 /*!
@@ -840,12 +817,10 @@ static QDebug operator<<(QDebug dbg, QDBusMessage::MessageType t)
 static void debugVariantList(QDebug dbg, const QVariantList &list)
 {
     bool first = true;
-    QVariantList::ConstIterator it = list.constBegin();
-    QVariantList::ConstIterator end = list.constEnd();
-    for ( ; it != end; ++it) {
+    for (const QVariant &elem : list) {
         if (!first)
             dbg.nospace() << ", ";
-        dbg.nospace() << qPrintable(QDBusUtil::argumentToString(*it));
+        dbg.nospace() << qPrintable(QDBusUtil::argumentToString(elem));
         first = false;
     }
 }
@@ -873,8 +848,7 @@ QDebug operator<<(QDebug dbg, const QDBusMessage &msg)
 
 /*!
     \fn void QDBusMessage::swap(QDBusMessage &other)
-
-    Swaps this QDBusMessage instance with \a other.
+    \memberswap{message}
 */
 
 QT_END_NAMESPACE

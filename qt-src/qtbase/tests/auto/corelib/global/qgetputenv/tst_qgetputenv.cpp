@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qdebug.h>
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <qglobal.h>
 #ifdef Q_OS_WIN
@@ -85,7 +60,11 @@ void tst_QGetPutEnv::getSetCheck()
     QCOMPARE(sresult, QString());
 #endif
 
-    QVERIFY(qputenv(varName, QByteArray("supervalue")));
+    constexpr char varValueFullString[] = "supervalue123";
+    const auto varValueQBA = QByteArray::fromRawData(varValueFullString, sizeof varValueFullString - 4);
+    QCOMPARE_EQ(varValueQBA, "supervalue");
+
+    QVERIFY(qputenv(varName, varValueQBA));
 
     QVERIFY(qEnvironmentVariableIsSet(varName));
     QVERIFY(!qEnvironmentVariableIsEmpty(varName));
@@ -135,9 +114,7 @@ void tst_QGetPutEnv::encoding()
     static const wchar_t rawvalue[] = { 'a', 0x00E1, 0x03B1, 0x0430, 0 };
     QString value = QString::fromWCharArray(rawvalue);
 
-#if defined(Q_OS_WINRT)
-    QSKIP("Test cannot be run on this platform");
-#elif defined(Q_OS_WIN)
+#if defined(Q_OS_WIN)
     const wchar_t wvarName[] = L"should_not_exist";
     _wputenv_s(wvarName, rawvalue);
 #else
@@ -165,40 +142,49 @@ void tst_QGetPutEnv::intValue_data()
     QTest::newRow("junk-heading") << QByteArray("x1") << 0 << false;
     QTest::newRow("junk-trailing") << QByteArray("1x") << 0 << false;
 
-#define ROW(x, i, b) \
-    QTest::newRow(#x) << QByteArray(#x) << (i) << (b)
-    ROW(auto, 0, false);
-    ROW(1auto, 0, false);
-    ROW(0, 0, true);
-    ROW(+0, 0, true);
-    ROW(1, 1, true);
-    ROW(+1, 1, true);
-    ROW(09, 0, false);
-    ROW(010, 8, true);
-    ROW(0x10, 16, true);
-    ROW(0x, 0, false);
-    ROW(0xg, 0, false);
-    ROW(0x1g, 0, false);
-    ROW(000000000000000000000000000000000000000000000000001, 0, false);
-    ROW(+000000000000000000000000000000000000000000000000001, 0, false);
-    ROW(000000000000000000000000000000000000000000000000001g, 0, false);
-    ROW(-0, 0, true);
-    ROW(-1, -1, true);
-    ROW(-010, -8, true);
-    ROW(-000000000000000000000000000000000000000000000000001, 0, false);
-    ROW(2147483648, 0, false);
-    // ROW(0xffffffff, -1, true); // could be expected, but not how QByteArray::toInt() works
-    ROW(0xffffffff, 0, false);
-    const int bases[] = {10, 8, 16};
-    for (size_t i = 0; i < sizeof bases / sizeof *bases; ++i) {
-        QTest::addRow("INT_MAX, base %d", bases[i])
-                << QByteArray::number(INT_MAX) << INT_MAX << true;
-        QTest::addRow("INT_MAX+1, base %d", bases[i])
-                << QByteArray::number(qlonglong(INT_MAX) + 1) << 0 << false;
-        QTest::addRow("INT_MIN, base %d", bases[i])
-                << QByteArray::number(INT_MIN) << INT_MIN << true;
-        QTest::addRow("INT_MIN-1, base %d", bases[i])
-                << QByteArray::number(qlonglong(INT_MIN) - 1) << 0 << false;
+    auto addRow = [](const char *text, int expected, bool ok) {
+        QTest::newRow(text) << QByteArray(text) << expected << ok;
+    };
+    addRow("auto", 0, false);
+    addRow("1auto", 0, false);
+    addRow("0", 0, true);
+    addRow("+0", 0, true);
+    addRow("1", 1, true);
+    addRow("+1", 1, true);
+    addRow("09", 0, false);
+    addRow("010", 8, true);
+    addRow("0x10", 16, true);
+    addRow("0x", 0, false);
+    addRow("0xg", 0, false);
+    addRow("0x1g", 0, false);
+    addRow("000000000000000000000000000000000000000000000000001", 0, false);
+    addRow("+000000000000000000000000000000000000000000000000001", 0, false);
+    addRow("000000000000000000000000000000000000000000000000001g", 0, false);
+    addRow("-0", 0, true);
+    addRow("-1", -1, true);
+    addRow("-010", -8, true);
+    addRow("-000000000000000000000000000000000000000000000000001", 0, false);
+    // addRow("0xffffffff", -1, true); // could be expected, but not how QByteArray::toInt() works
+    addRow("0xffffffff", 0, false);
+
+    auto addNumWithBase = [](qlonglong num, int base) {
+        QByteArray text;
+        {
+            QTextStream s(&text);
+            s.setIntegerBase(base);
+            s << Qt::showbase << num;
+        }
+        QTestData &row = QTest::addRow("%s", text.constData()) << text;
+        if (num == int(num))
+            row << int(num) << true;
+        else
+            row << 0 << false;
+    };
+    for (int base : {10, 8, 16}) {
+        addNumWithBase(INT_MAX, base);
+        addNumWithBase(qlonglong(INT_MAX) + 1, base);
+        addNumWithBase(INT_MIN, base);
+        addNumWithBase(qlonglong(INT_MIN) - 1 , base);
     };
 }
 
@@ -214,7 +200,7 @@ void tst_QGetPutEnv::intValue()
     bool actualOk = !ok;
 
     // Self-test: confirm that it was like the docs said it should be
-    if (value.length() < maxlen) {
+    if (value.size() < maxlen) {
         QCOMPARE(value.toInt(&actualOk, 0), expected);
         QCOMPARE(actualOk, ok);
     }

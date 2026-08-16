@@ -1,40 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <comment>*********************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-*********************************************************************</comment>
+ <comment>
+* Copyright (C) 2016 The Qt Company Ltd.
+* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+</comment>
  <class>qdesigner_internal::NewActionDialog</class>
  <widget class="QDialog" name="qdesigner_internal::NewActionDialog">
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>366</width>
-    <height>270</height>
+    <width>381</width>
+    <height>291</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -110,20 +87,20 @@
        </item>
       </layout>
      </item>
-     <item row="3" column="0">
+     <item row="4" column="0">
       <widget class="QLabel" name="iconThemeLabel">
        <property name="text">
-        <string>Icon th&amp;eme:</string>
+        <string>Icon &amp;XDG theme:</string>
        </property>
        <property name="buddy">
         <cstring>iconThemeEditor</cstring>
        </property>
       </widget>
      </item>
-     <item row="3" column="1">
+     <item row="4" column="1">
       <widget class="qdesigner_internal::IconThemeEditor" name="iconThemeEditor" native="true"/>
      </item>
-     <item row="4" column="0">
+     <item row="5" column="0">
       <widget class="QLabel" name="iconLabel">
        <property name="text">
         <string>&amp;Icon:</string>
@@ -133,7 +110,7 @@
        </property>
       </widget>
      </item>
-     <item row="4" column="1">
+     <item row="5" column="1">
       <layout class="QHBoxLayout" name="horizontalLayout">
        <item>
         <widget class="qdesigner_internal::IconSelector" name="iconSelector" native="true"/>
@@ -153,14 +130,14 @@
        </item>
       </layout>
      </item>
-     <item row="5" column="1">
+     <item row="6" column="1">
       <widget class="QCheckBox" name="checkableCheckBox">
        <property name="text">
         <string/>
        </property>
       </widget>
      </item>
-     <item row="5" column="0">
+     <item row="6" column="0">
       <widget class="QLabel" name="checkableLabel">
        <property name="text">
         <string>&amp;Checkable:</string>
@@ -170,7 +147,7 @@
        </property>
       </widget>
      </item>
-     <item row="6" column="0">
+     <item row="7" column="0">
       <widget class="QLabel" name="shortcutLabel">
        <property name="text">
         <string>&amp;Shortcut:</string>
@@ -180,10 +157,10 @@
        </property>
       </widget>
      </item>
-     <item row="6" column="1">
+     <item row="7" column="1">
       <layout class="QHBoxLayout" name="keysequenceLayout">
        <item>
-        <widget class="QKeySequenceEdit" name="keySequenceEdit" native="true">
+        <widget class="QKeySequenceEdit" name="keySequenceEdit">
          <property name="sizePolicy">
           <sizepolicy hsizetype="MinimumExpanding" vsizetype="Preferred">
            <horstretch>0</horstretch>
@@ -200,6 +177,32 @@
         </widget>
        </item>
       </layout>
+     </item>
+     <item row="8" column="0">
+      <widget class="QLabel" name="label">
+       <property name="text">
+        <string>&amp;Menu role:</string>
+       </property>
+       <property name="buddy">
+        <cstring>menuRole</cstring>
+       </property>
+      </widget>
+     </item>
+     <item row="8" column="1">
+      <widget class="QComboBox" name="menuRole"/>
+     </item>
+     <item row="3" column="0">
+      <widget class="QLabel" name="iconThemeEnumLabel">
+       <property name="text">
+        <string>Icon &amp;theme:</string>
+       </property>
+       <property name="buddy">
+        <cstring>iconThemeEnumEditor</cstring>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="1">
+      <widget class="qdesigner_internal::IconThemeEnumEditor" name="iconThemeEnumEditor" native="true"/>
      </item>
     </layout>
    </item>
@@ -250,6 +253,12 @@
   </customwidget>
   <customwidget>
    <class>qdesigner_internal::IconThemeEditor</class>
+   <extends>QWidget</extends>
+   <header>iconselector_p.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>qdesigner_internal::IconThemeEnumEditor</class>
    <extends>QWidget</extends>
    <header>iconselector_p.h</header>
    <container>1</container>

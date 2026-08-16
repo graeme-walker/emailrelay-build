@@ -1,32 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-#include <qmath.h>               // qIsNan
-#include <qvariant.h>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
+#include <QtGlobal>
+#include <QMap>
+#include <QString>
+#include <QVariant>
+#include <QDateTime>
+#include <QLine>
+#include <QDBusObjectPath>
+#include <QDBusSignature>
+#include <QDBusUnixFileDescriptor>
+#include <QDBusArgument>
+#include <QDBusMetaType>
 
 #ifdef Q_OS_UNIX
 # include <private/qcore_unix_p.h>
@@ -167,7 +152,9 @@ void commonInit()
     qDBusRegisterMetaType<QMap<QDBusObjectPath, QString> >();
     qDBusRegisterMetaType<QMap<qlonglong, QDateTime> >();
     qDBusRegisterMetaType<QMap<QDBusSignature, QString> >();
+    qDBusRegisterMetaType<QMap<QString, std::pair<int, int>>>();
 
+    qDBusRegisterMetaType<std::pair<int, int>>();
     qDBusRegisterMetaType<MyStruct>();
     qDBusRegisterMetaType<MyVariantMapStruct>();
     qDBusRegisterMetaType<QList<MyVariantMapStruct> >();
@@ -203,7 +190,11 @@ inline QDBusIntrospection::Argument arg(const char* type, const char *name = 0)
 
 template<typename T>
 inline QMap<QString, T>& operator<<(QMap<QString, T>& map, const T& m)
-{ map.insertMulti(m.name, m); return map; }
+{ map.insert(m.name, m); return map; }
+
+template<typename T>
+inline QMultiMap<QString, T>& operator<<(QMultiMap<QString, T>& map, const T& m)
+{ map.insert(m.name, m); return map; }
 
 inline const char* mapName(const MethodMap&)
 { return "MethodMap"; }
@@ -217,15 +208,17 @@ inline const char* mapName(const PropertyMap&)
 QString printable(const QDBusIntrospection::Method& m)
 {
     QString result = "method " + m.name + "(";
-    foreach (QDBusIntrospection::Argument arg, m.inputArgs)
+    for (QDBusIntrospection::Argument arg : m.inputArgs) {
         result += QString("in %1 %2, ")
         .arg(arg.type, arg.name);
-    foreach (QDBusIntrospection::Argument arg, m.outputArgs)
+    }
+    for (QDBusIntrospection::Argument arg : m.outputArgs) {
         result += QString("out %1 %2, ")
         .arg(arg.type, arg.name);
+    }
     AnnotationsMap::const_iterator it = m.annotations.begin();
     for ( ; it != m.annotations.end(); ++it)
-        result += QString("%1 \"%2\", ").arg(it.key()).arg(it.value());
+        result += QString("%1 \"%2\", ").arg(it.key()).arg(it.value().value);
 
     result += ")";
     return result;
@@ -234,12 +227,13 @@ QString printable(const QDBusIntrospection::Method& m)
 QString printable(const QDBusIntrospection::Signal& s)
 {
     QString result = "signal " + s.name + "(";
-    foreach (QDBusIntrospection::Argument arg, s.outputArgs)
+    for (QDBusIntrospection::Argument arg : s.outputArgs) {
         result += QString("out %1 %2, ")
         .arg(arg.type, arg.name);
+    }
     AnnotationsMap::const_iterator it = s.annotations.begin();
     for ( ; it != s.annotations.end(); ++it)
-        result += QString("%1 \"%2\", ").arg(it.key()).arg(it.value());
+        result += QString("%1 \"%2\", ").arg(it.key()).arg(it.value().value);
 
     result += ")";
     return result;
@@ -258,16 +252,16 @@ QString printable(const QDBusIntrospection::Property& p)
 
     AnnotationsMap::const_iterator it = p.annotations.begin();
     for ( ; it != p.annotations.end(); ++it)
-        result += QString("%1 \"%2\", ").arg(it.key()).arg(it.value());
+        result += QString("%1 \"%2\", ").arg(it.key()).arg(it.value().value);
 
     return result;
 }
 
-template<typename T>
-char* printableMap(const QMap<QString, T>& map)
+template<typename Map>
+char* printableMap(const Map& map)
 {
     QString contents = "\n";
-    typename QMap<QString, T>::const_iterator it = map.begin();
+    auto it = map.begin();
     for ( ; it != map.end(); ++it) {
         if (it.key() != it.value().name)
             contents += it.value().name + ":";
@@ -345,7 +339,7 @@ bool compare(const QDBusVariant &s1, const QDBusVariant &s2)
 template<typename T>
 bool compare(const QList<T> &l1, const QList<T> &l2)
 {
-    if (l1.count() != l2.count())
+    if (l1.size() != l2.size())
         return false;
 
     typename QList<T>::ConstIterator it1 = l1.constBegin();
@@ -360,7 +354,7 @@ bool compare(const QList<T> &l1, const QList<T> &l2)
 template<typename Key, typename T>
 bool compare(const QMap<Key, T> &m1, const QMap<Key, T> &m2)
 {
-    if (m1.count() != m2.size())
+    if (m1.size() != m2.size())
         return false;
     typename QMap<Key, T>::ConstIterator i1 = m1.constBegin();
     typename QMap<Key, T>::ConstIterator end = m1.constEnd();
@@ -382,13 +376,13 @@ inline bool compare(const QDBusArgument &arg, const QVariant &v2, T * = 0)
 
 bool compareToArgument(const QDBusArgument &arg, const QVariant &v2)
 {
-    if (arg.currentSignature() != QDBusMetaType::typeToSignature(v2.userType()))
+    if (arg.currentSignature() != QDBusMetaType::typeToSignature(v2.metaType()))
         return false;
 
     // try to demarshall the arg according to v2
     switch (v2.userType())
     {
-    case QVariant::Bool:
+    case QMetaType::Bool:
         return compare<bool>(arg, v2);
     case QMetaType::UChar:
         return compare<uchar>(arg, v2);
@@ -396,45 +390,45 @@ bool compareToArgument(const QDBusArgument &arg, const QVariant &v2)
         return compare<short>(arg, v2);
     case QMetaType::UShort:
         return compare<ushort>(arg, v2);
-    case QVariant::Int:
+    case QMetaType::Int:
         return compare<int>(arg, v2);
-    case QVariant::UInt:
+    case QMetaType::UInt:
         return compare<uint>(arg, v2);
-    case QVariant::LongLong:
+    case QMetaType::LongLong:
         return compare<qlonglong>(arg, v2);
-    case QVariant::ULongLong:
+    case QMetaType::ULongLong:
         return compare<qulonglong>(arg, v2);
-    case QVariant::Double:
+    case QMetaType::Double:
         return compare<double>(arg, v2);
-    case QVariant::String:
+    case QMetaType::QString:
         return compare<QString>(arg, v2);
-    case QVariant::ByteArray:
+    case QMetaType::QByteArray:
         return compare<QByteArray>(arg, v2);
-    case QVariant::List:
+    case QMetaType::QVariantList:
         return compare<QVariantList>(arg, v2);
-    case QVariant::Map:
+    case QMetaType::QVariantMap:
         return compare<QVariantMap>(arg, v2);
-    case QVariant::Point:
+    case QMetaType::QPoint:
         return compare<QPoint>(arg, v2);
-    case QVariant::PointF:
+    case QMetaType::QPointF:
         return compare<QPointF>(arg, v2);
-    case QVariant::Size:
+    case QMetaType::QSize:
         return compare<QSize>(arg, v2);
-    case QVariant::SizeF:
+    case QMetaType::QSizeF:
         return compare<QSizeF>(arg, v2);
-    case QVariant::Line:
+    case QMetaType::QLine:
         return compare<QLine>(arg, v2);
-    case QVariant::LineF:
+    case QMetaType::QLineF:
         return compare<QLineF>(arg, v2);
-    case QVariant::Rect:
+    case QMetaType::QRect:
         return compare<QRect>(arg, v2);
-    case QVariant::RectF:
+    case QMetaType::QRectF:
         return compare<QRectF>(arg, v2);
-    case QVariant::Date:
+    case QMetaType::QDate:
         return compare<QDate>(arg, v2);
-    case QVariant::Time:
+    case QMetaType::QTime:
         return compare<QTime>(arg, v2);
-    case QVariant::DateTime:
+    case QMetaType::QDateTime:
         return compare<QDateTime>(arg, v2);
     default:
         int id = v2.userType();
@@ -479,6 +473,8 @@ bool compareToArgument(const QDBusArgument &arg, const QVariant &v2)
             return compare<QMap<qlonglong, QDateTime> >(arg, v2);
         else if (id == qMetaTypeId<QMap<QDBusSignature, QString> >())
             return compare<QMap<QDBusSignature, QString> >(arg, v2);
+        else if (id == qMetaTypeId<QMap<QString, std::pair<int, int>>>())
+            return compare<QMap<QString, std::pair<int, int>>>(arg, v2);
 
         else if (id == qMetaTypeId<QList<QByteArray> >())
             return compare<QList<QByteArray> >(arg, v2);
@@ -517,8 +513,8 @@ bool compareToArgument(const QDBusArgument &arg, const QVariant &v2)
     }
 
     qWarning() << "Unexpected QVariant type" << v2.userType()
-               << QByteArray(QDBusMetaType::typeToSignature(v2.userType()))
-               << QMetaType::typeName(v2.userType());
+               << QByteArray(QDBusMetaType::typeToSignature(v2.metaType()))
+               << v2.metaType().name();
     return false;
 }
 
@@ -527,7 +523,7 @@ template<> bool compare(const QVariant &v1, const QVariant &v2)
     // v1 is the one that came from the network
     // v2 is the one that we sent
 
-    if (v1.userType() == qMetaTypeId<QDBusArgument>())
+    if (v1.metaType() == QMetaType::fromType<QDBusArgument>())
         // this argument has been left un-demarshalled
         return compareToArgument(qvariant_cast<QDBusArgument>(v1), v2);
 
@@ -535,16 +531,16 @@ template<> bool compare(const QVariant &v1, const QVariant &v2)
         return false;
 
     int id = v1.userType();
-    if (id == QVariant::List)
+    if (id == QMetaType::QVariantList)
         return compare(v1.toList(), v2.toList());
 
-    else if (id == QVariant::Map)
+    else if (id == QMetaType::QVariantMap)
         return compare(v1.toMap(), v2.toMap());
 
-    else if (id == QVariant::String)
+    else if (id == QMetaType::QString)
         return compare(v1.toString(), v2.toString());
 
-    else if (id == QVariant::ByteArray)
+    else if (id == QMetaType::QByteArray)
         return compare(v1.toByteArray(), v2.toByteArray());
 
     else if (id == QMetaType::UChar)
@@ -649,7 +645,7 @@ template<> bool compare(const QVariant &v1, const QVariant &v2)
     else if (id == qMetaTypeId<MyStruct>()) // (is)
             return qvariant_cast<MyStruct>(v1) == qvariant_cast<MyStruct>(v2);
 
-    else if (id < int(QVariant::UserType)) // yes, v1.type()
+    else if (id < int(QMetaType::User)) // yes, v1.type()
         // QVariant can compare
         return v1 == v2;
 

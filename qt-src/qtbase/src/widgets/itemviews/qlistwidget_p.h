@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QLISTWIDGET_P_H
 #define QLISTWIDGET_P_H
@@ -54,9 +18,10 @@
 #include <QtCore/qabstractitemmodel.h>
 #include <QtWidgets/qabstractitemview.h>
 #include <QtWidgets/qlistwidget.h>
-#include <qitemdelegate.h>
 #include <private/qlistview_p.h>
 #include <private/qwidgetitemdata_p.h>
+
+#include <array>
 
 QT_REQUIRE_CONFIG(listwidget);
 
@@ -100,9 +65,7 @@ public:
 
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     bool setData(const QModelIndex &index, const QVariant &value, int role) override;
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     bool clearItemData(const QModelIndex &index) override;
-#endif
 
     QMap<int, QVariant> itemData(const QModelIndex &index) const override;
 
@@ -114,16 +77,16 @@ public:
 
     void sort(int column, Qt::SortOrder order) override;
     void ensureSorted(int column, Qt::SortOrder order, int start, int end);
-    static bool itemLessThan(const QPair<QListWidgetItem*,int> &left,
-                             const QPair<QListWidgetItem*,int> &right);
-    static bool itemGreaterThan(const QPair<QListWidgetItem*,int> &left,
-                                const QPair<QListWidgetItem*,int> &right);
+    static bool itemLessThan(const std::pair<QListWidgetItem*,int> &left,
+                             const std::pair<QListWidgetItem*,int> &right);
+    static bool itemGreaterThan(const std::pair<QListWidgetItem*,int> &left,
+                                const std::pair<QListWidgetItem*,int> &right);
     static QList<QListWidgetItem*>::iterator sortedInsertionIterator(
         const QList<QListWidgetItem*>::iterator &begin,
         const QList<QListWidgetItem*>::iterator &end,
         Qt::SortOrder order, QListWidgetItem *item);
 
-    void itemChanged(QListWidgetItem *item, const QVector<int> &roles = QVector<int>());
+    void itemChanged(QListWidgetItem *item, const QList<int> &roles = QList<int>());
 
     // dnd
     QStringList mimeTypes() const override;
@@ -151,17 +114,21 @@ public:
     QListWidgetPrivate() : QListViewPrivate(), sortOrder(Qt::AscendingOrder), sortingEnabled(false) {}
     inline QListModel *listModel() const { return qobject_cast<QListModel*>(model); }
     void setup();
-    void _q_emitItemPressed(const QModelIndex &index);
-    void _q_emitItemClicked(const QModelIndex &index);
-    void _q_emitItemDoubleClicked(const QModelIndex &index);
-    void _q_emitItemActivated(const QModelIndex &index);
-    void _q_emitItemEntered(const QModelIndex &index);
-    void _q_emitItemChanged(const QModelIndex &index);
-    void _q_emitCurrentItemChanged(const QModelIndex &current, const QModelIndex &previous);
-    void _q_sort();
-    void _q_dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight);
+    void clearConnections();
+    void emitItemPressed(const QModelIndex &index);
+    void emitItemClicked(const QModelIndex &index);
+    void emitItemDoubleClicked(const QModelIndex &index);
+    void emitItemActivated(const QModelIndex &index);
+    void emitItemEntered(const QModelIndex &index);
+    void emitItemChanged(const QModelIndex &index);
+    void emitCurrentItemChanged(const QModelIndex &current, const QModelIndex &previous);
+    void sort();
+    void dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight);
     Qt::SortOrder sortOrder;
     bool sortingEnabled;
+
+    std::array<QMetaObject::Connection, 8> connections;
+    std::array<QMetaObject::Connection, 2> selectionModelConnections;
 };
 
 class QListWidgetItemPrivate
@@ -169,7 +136,7 @@ class QListWidgetItemPrivate
 public:
     QListWidgetItemPrivate(QListWidgetItem *item) : q(item), theid(-1) {}
     QListWidgetItem *q;
-    QVector<QWidgetItemData> values;
+    QList<QWidgetItemData> values;
     int theid;
 };
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="de">
+<TS version="2.1" language="de_DE">
 <context>
     <name>AbstractFindWidget</name>
     <message>
@@ -632,8 +632,12 @@
 <context>
     <name>Designer</name>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
+    </message>
+    <message>
+        <source>%1 does not exist.</source>
+        <translation>%1 existiert nicht.</translation>
     </message>
     <message>
         <source>Unable to launch %1: %2</source>
@@ -815,8 +819,77 @@
         <translation>Kantenglättung bevorzugen</translation>
     </message>
     <message>
+        <source>PreferDefaultHinting</source>
+        <comment>QFont::StyleStrategy combo</comment>
+        <translation>PreferDefaultHinting</translation>
+    </message>
+    <message>
+        <source>PreferNoHinting</source>
+        <comment>QFont::StyleStrategy combo</comment>
+        <translation>PreferNoHinting</translation>
+    </message>
+    <message>
+        <source>PreferVerticalHinting</source>
+        <comment>QFont::StyleStrategy combo</comment>
+        <translation>PreferVerticalHinting</translation>
+    </message>
+    <message>
+        <source>PreferFullHinting</source>
+        <comment>QFont::StyleStrategy combo</comment>
+        <translation>PreferFullHinting</translation>
+    </message>
+    <message>
         <source>Antialiasing</source>
         <translation>Kantenglättung</translation>
+    </message>
+    <message>
+        <source>HintingPreference</source>
+        <translation>HintingPreference</translation>
+    </message>
+    <message>
+        <source>Thin</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>Thin</translation>
+    </message>
+    <message>
+        <source>ExtraLight</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>ExtraLight</translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>Light</translation>
+    </message>
+    <message>
+        <source>Normal</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>Normal</translation>
+    </message>
+    <message>
+        <source>Medium</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>Medium</translation>
+    </message>
+    <message>
+        <source>DemiBold</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>DemiBold</translation>
+    </message>
+    <message>
+        <source>Bold</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>Bold</translation>
+    </message>
+    <message>
+        <source>ExtraBold</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>ExtraBold</translation>
+    </message>
+    <message>
+        <source>Black</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>Black</translation>
     </message>
 </context>
 <context>
@@ -1093,8 +1166,8 @@
         <translation>Formular</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
 </context>
 <context>
@@ -1394,8 +1467,8 @@ This indicates an inconsistency in the ui-file.</source>
         <translation>CTRL+M</translation>
     </message>
     <message>
-        <source>Qt Designer &amp;Help</source>
-        <translation>&amp;Hilfe zum Qt Designer</translation>
+        <source>Qt Widgets Designer &amp;Help</source>
+        <translation>&amp;Hilfe zum Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Current Widget Help</source>
@@ -1406,8 +1479,8 @@ This indicates an inconsistency in the ui-file.</source>
         <translation>Plugins</translation>
     </message>
     <message>
-        <source>About Qt Designer</source>
-        <translation>Über Qt Designer</translation>
+        <source>About Qt Widgets Designer</source>
+        <translation>Über Qt Widgets Designer</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -1464,8 +1537,8 @@ Möchten Sie einen anderen Namen eingeben oder ein neues Formular erzeugen?</tra
         <translation>&amp;Neues Formular</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Save Form?</source>
@@ -1480,16 +1553,8 @@ Möchten Sie einen anderen Namen eingeben oder ein neues Formular erzeugen?</tra
         <translation>Formular speichern</translation>
     </message>
     <message>
-        <source>The backup file %1 could not be written.</source>
-        <translation>Hintergrundsicherung: Die Datei %1 konnte nicht geschrieben werden.</translation>
-    </message>
-    <message>
         <source>The backup directory %1 could not be created.</source>
         <translation>Hintergrundsicherung: Das Verzeichnis %1 konnte nicht angelegt werden.</translation>
-    </message>
-    <message>
-        <source>The temporary backup directory %1 could not be created.</source>
-        <translation>Hintergrundsicherung: Das temporäre Verzeichnis %1 konnte nicht angelegt werden.</translation>
     </message>
     <message>
         <source>Please close all forms to enable the loading of additional fonts.</source>
@@ -1532,6 +1597,10 @@ Möchten Sie es noch einmal versuchen oder eine andere Datei auswählen?</transl
 Reason: %2</source>
         <translation>Die Datei %1 konnte nicht geschrieben werden.
 Grund: %2</translation>
+    </message>
+    <message>
+        <source>The backup file %1 could not be written: %2</source>
+        <translation>Die Backup-Datei %1 konnte nicht geschrieben werden: %2</translation>
     </message>
     <message>
         <source>Image files (*.%1)</source>
@@ -1937,8 +2006,16 @@ Container-Seiten sollten ausschließlich im XML der domXML()-Methode spezifizier
         <translation>Die Eigenschaft %1 konnte nicht gelesen werden (Typ: Menge).</translation>
     </message>
     <message>
+        <source>The value &quot;%1&quot; of the set-type property %2 could not be read.</source>
+        <translation>Der Wert &quot;%1&quot; der Eigenschaft %2 konnte nicht gelesen werden (Typ: Menge).</translation>
+    </message>
+    <message>
         <source>The enumeration-type property %1 could not be read.</source>
         <translation>Die Eigenschaft %1 konnte nicht gelesen werden (Typ: Aufzählung).</translation>
+    </message>
+    <message>
+        <source>The value &quot;%1&quot; of the enum-type property %2 could not be read.</source>
+        <translation>Der Wert &quot;%1&quot; der Eigenschaft %2 konnte nicht gelesen werden (Typ: Aufzählung).</translation>
     </message>
     <message>
         <source>Reading properties of the type %1 is not supported yet.</source>
@@ -2218,6 +2295,7 @@ Container-Seiten sollten ausschließlich im XML der domXML()-Methode spezifizier
     </message>
     <message>
         <source>Bold</source>
+        <comment>Bold toggle</comment>
         <translation>Fett</translation>
     </message>
     <message>
@@ -2235,6 +2313,10 @@ Container-Seiten sollten ausschließlich im XML der domXML()-Methode spezifizier
     <message>
         <source>Kerning</source>
         <translation>Kerning</translation>
+    </message>
+    <message>
+        <source>Weight</source>
+        <translation>Stärke</translation>
     </message>
 </context>
 <context>
@@ -2575,8 +2657,8 @@ Container-Seiten sollten ausschließlich im XML der domXML()-Methode spezifizier
         <translation>Sprache</translation>
     </message>
     <message>
-        <source>Country</source>
-        <translation>Land</translation>
+        <source>Territory</source>
+        <translation>Territorium</translation>
     </message>
 </context>
 <context>
@@ -3251,30 +3333,27 @@ Möchten Sie sie überschreiben?</translation>
         <translation>&lt;h3&gt;%1&lt;/h3&gt;&lt;br/&gt;&lt;br/&gt;Version %2</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
-        <source>&lt;br/&gt;Qt Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
-        <translation>&lt;br/&gt;Qt Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</translation>
+        <source>&lt;br/&gt;Qt Widgets Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
+        <translation>&lt;br/&gt;Qt Widgets Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</translation>
     </message>
     <message>
-        <source>%1&lt;br/&gt;Copyright (C) %2 The Qt Company Ltd.</source>
-        <translation>%1&lt;br/&gt;Copyright (C) %2 The Qt Company Ltd.</translation>
+        <source>%1&lt;br/&gt;Copyright (C) The Qt Company Ltd. and other contributors.</source>
+        <translation>%1&lt;br/&gt;Copyright (C) The Qt Company Ltd. and other contributors.</translation>
     </message>
 </context>
 <context>
     <name>WidgetDataBase</name>
     <message>
+        <source>Abstract base class that cannot be instantiated. For promotion/custom widget usage only.</source>
+        <translation>Abstrakte Basisklasse, die nicht instanziiert werden kann. Ausschließlich zur Verwendung mit Promoted Widgets oder benutzerdefinierten Widgets.</translation>
+    </message>
+    <message>
         <source>The file contains a custom widget &apos;%1&apos; whose base class (%2) differs from the current entry in the widget database (%3). The widget database is left unchanged.</source>
         <translation>Die Datei enthält ein benutzerdefiniertes Widget &apos;%1&apos; dessen Basisklasse (%2) nicht mit dem Eintrag in der Widget-Datenbank übereinstimmt. Die Widget-Datenbank wird nicht geändert.</translation>
-    </message>
-</context>
-<context>
-    <name>qdesigner_internal</name>
-    <message>
-        <source>%1 Widget</source>
-        <translation>%1 Widget</translation>
     </message>
 </context>
 <context>
@@ -3377,6 +3456,10 @@ Möchten Sie sie überschreiben?</translation>
     <message>
         <source>ToolTip</source>
         <translation>ToolTip</translation>
+    </message>
+    <message>
+        <source>MenuRole</source>
+        <translation>MenuRole</translation>
     </message>
 </context>
 <context>
@@ -3684,10 +3767,6 @@ Möchten Sie sie überschreiben?</translation>
         <translation>Geerbt</translation>
     </message>
     <message>
-        <source>[Theme] %1</source>
-        <translation>[Thema] %1</translation>
-    </message>
-    <message>
         <source>Horizontal</source>
         <translation>Horizontal</translation>
     </message>
@@ -3698,6 +3777,10 @@ Möchten Sie sie überschreiben?</translation>
     <message>
         <source>Theme</source>
         <translation>Thema</translation>
+    </message>
+    <message>
+        <source>XDG Theme</source>
+        <translation>XDG-Thema</translation>
     </message>
     <message>
         <source>Normal Off</source>
@@ -3732,16 +3815,8 @@ Möchten Sie sie überschreiben?</translation>
         <translation>Ausgewählt, ein</translation>
     </message>
     <message>
-        <source>translatable</source>
-        <translation>Übersetzung</translation>
-    </message>
-    <message>
         <source>disambiguation</source>
         <translation>Kennung</translation>
-    </message>
-    <message>
-        <source>comment</source>
-        <translation>Kommentar</translation>
     </message>
 </context>
 <context>
@@ -4210,12 +4285,12 @@ Möchten Sie sie überschreiben?</translation>
 <context>
     <name>qdesigner_internal::IconThemeDialog</name>
     <message>
-        <source>Set Icon From Theme</source>
-        <translation>Icon aus Thema setzen</translation>
+        <source>Set Icon From XDG Theme</source>
+        <translation>Icon aus XDG-Thema setzen</translation>
     </message>
     <message>
-        <source>Input icon name from the current theme:</source>
-        <translation>Icon-Name vom aktuellen Thema eingeben:</translation>
+        <source>Select icon name from XDG theme:</source>
+        <translation>Icon-Namen aus aktuellem XDG-Thema wählen:</translation>
     </message>
 </context>
 <context>
@@ -4376,16 +4451,24 @@ Möchten Sie sie überschreiben?</translation>
         <translation>T&amp;oolTip:</translation>
     </message>
     <message>
-        <source>Icon th&amp;eme:</source>
-        <translation>Icon-Th&amp;ema:</translation>
-    </message>
-    <message>
         <source>&amp;Checkable:</source>
         <translation>&amp;Ankreuzbar:</translation>
     </message>
     <message>
         <source>&amp;Shortcut:</source>
         <translation>Tastenk&amp;ürzel</translation>
+    </message>
+    <message>
+        <source>&amp;Menu role:</source>
+        <translation>&amp;Menu role:</translation>
+    </message>
+    <message>
+        <source>Icon &amp;XDG theme:</source>
+        <translation>Icon &amp;XDG-Thema:</translation>
+    </message>
+    <message>
+        <source>Icon &amp;theme:</source>
+        <translation>Icon-Th&amp;ema:</translation>
     </message>
 </context>
 <context>
@@ -4509,8 +4592,16 @@ Please select another name.</source>
         <translation>Klassenname:</translation>
     </message>
     <message>
+        <source>Header file for C++ classes or module name for Qt for Python.</source>
+        <translation>Include-Datei für C++-Klassen oder Modulname für Qt for Python.</translation>
+    </message>
+    <message>
         <source>Header file:</source>
         <translation>Include-Datei:</translation>
+    </message>
+    <message>
+        <source>Indicates that the header file is a global header file. Does not have any effect on Qt for Python.</source>
+        <translation>Zeigt an, dass die Include-Datei global ist. Hat keine Bedeutung für Qt for Python.</translation>
     </message>
     <message>
         <source>Global include</source>
@@ -4604,6 +4695,10 @@ Please select another name.</source>
     <message>
         <source>Load...</source>
         <translation>Laden...</translation>
+    </message>
+    <message>
+        <source>Preview (%1)</source>
+        <translation>Vorschau (%1)</translation>
     </message>
     <message>
         <source>Lighter</source>
@@ -4707,12 +4802,24 @@ Please select another name.</source>
         <translation>Icon aus Thema setzen...</translation>
     </message>
     <message>
+        <source>Set Icon From XDG Theme...</source>
+        <translation>Icon aus XDG-Thema setzen...</translation>
+    </message>
+    <message>
         <source>...</source>
         <translation>...</translation>
     </message>
     <message>
         <source>[Theme] %1</source>
         <translation>[Thema] %1</translation>
+    </message>
+    <message>
+        <source>[Theme] %1 (missing)</source>
+        <translation>[Thema] %1 (fehlt)</translation>
+    </message>
+    <message>
+        <source>%1 (fallback)</source>
+        <translation>%1 (fallback)</translation>
     </message>
 </context>
 <context>
@@ -4749,16 +4856,21 @@ Please select another name.</source>
         <translation>Fehlgeschlagene Plugins</translation>
     </message>
     <message>
-        <source>Qt Designer couldn&apos;t find any plugins</source>
-        <translation>Qt Designer kann keine Plugins finden</translation>
+        <source>Qt Widgets Designer couldn&apos;t find any plugins</source>
+        <translation>Qt Widgets Designer kann keine Plugins finden</translation>
     </message>
     <message>
-        <source>Qt Designer found the following plugins</source>
-        <translation>Qt Designer hat die folgenden Plugins gefunden</translation>
+        <source>Qt Widgets Designer found the following plugins</source>
+        <translation>Qt Widgets Designer hat die folgenden Plugins gefunden</translation>
     </message>
     <message>
         <source>New custom widget plugins have been found.</source>
         <translation>Es wurden neu installierte Plugins mit benutzerdefinierten Widgets gefunden.</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <extracomment>Copy error text</extracomment>
+        <translation>Kopieren</translation>
     </message>
 </context>
 <context>
@@ -5269,22 +5381,6 @@ Klasse: %2</translation>
         <source>The XML code specified for the widget %1 does not contain any widget elements.
 %2</source>
         <translation>Der XML-Code für das Widget %1 enthält keine Widgets.%2</translation>
-    </message>
-    <message>
-        <source>An error has been encountered at line %1 of %2: %3</source>
-        <translation>Fehler bei Zeile %1 von %2: %3</translation>
-    </message>
-    <message>
-        <source>Unexpected element &lt;%1&gt; encountered when parsing for &lt;widget&gt; or &lt;ui&gt;</source>
-        <translation>An Stelle des erwarteten &lt;widget&gt;- oder &lt;ui&gt;-Elementes wurde &lt;%1&gt; gefunden</translation>
-    </message>
-    <message>
-        <source>Unexpected end of file encountered when parsing widgets.</source>
-        <translation>Vorzeitiges Dateiende beim Lesen der Widget-Box-Konfiguration.</translation>
-    </message>
-    <message>
-        <source>A widget element could not be found.</source>
-        <translation>Es fehlt das Widget-Element.</translation>
     </message>
 </context>
 <context>
@@ -5870,6 +5966,10 @@ This indicates an inconsistency in the ui-file.</source>
         <source>Cannot create style &apos;%1&apos;.</source>
         <translation>Der Stil &apos;%1&apos; konnte nicht erzeugt werden.</translation>
     </message>
+    <message>
+        <source>%1 Widget</source>
+        <translation>%1 Widget</translation>
+    </message>
 </context>
 <context>
     <name>qdesigner_internal::WizardContainerWidgetTaskMenu</name>
@@ -5895,6 +5995,82 @@ This indicates an inconsistency in the ui-file.</source>
     <message>
         <source>&amp;Zoom</source>
         <translation>&amp;Vergrößern</translation>
+    </message>
+</context>
+<context>
+    <name>Dialog</name>
+    <message>
+        <source>Dialog</source>
+        <translation>Dialog</translation>
+    </message>
+</context>
+<context>
+    <name>MainWindow</name>
+    <message>
+        <source>MainWindow</source>
+        <translation>MainWindow</translation>
+    </message>
+</context>
+<context>
+    <name>Form</name>
+    <message>
+        <source>Form</source>
+        <translation>Form</translation>
+    </message>
+</context>
+<context>
+    <name>QDesignerWidgetBox</name>
+    <message>
+        <source>An error has been encountered at line %1 of %2: %3</source>
+        <translation>Fehler bei Zeile %1 von %2: %3</translation>
+    </message>
+    <message>
+        <source>Unexpected element &lt;%1&gt; encountered when parsing for &lt;widget&gt; or &lt;ui&gt;</source>
+        <translation>An Stelle des erwarteten &lt;widget&gt;- oder &lt;ui&gt;-Elementes wurde &lt;%1&gt; gefunden</translation>
+    </message>
+    <message>
+        <source>Unexpected end of file encountered when parsing widgets.</source>
+        <translation>Vorzeitiges Dateiende beim Lesen der Widget-Box-Konfiguration.</translation>
+    </message>
+    <message>
+        <source>A widget element could not be found.</source>
+        <translation>Es fehlt das Widget-Element.</translation>
+    </message>
+</context>
+<context>
+    <name>QView3DPlugin</name>
+    <message>
+        <source>3D View</source>
+        <translation>3D View</translation>
+    </message>
+</context>
+<context>
+    <name>QView3DTool</name>
+    <message>
+        <source>3DView</source>
+        <translation>3DView</translation>
+    </message>
+</context>
+<context>
+    <name>qdesigner_internal::PropertySheetValue</name>
+    <message>
+        <source>translatable</source>
+        <translation>Übersetzbar</translation>
+    </message>
+    <message>
+        <source>comment</source>
+        <translation>Kommentar</translation>
+    </message>
+</context>
+<context>
+    <name>qdesigner_internal::IconThemeEnumDialog</name>
+    <message>
+        <source>Set Icon From Theme</source>
+        <translation>Icon aus Thema setzen</translation>
+    </message>
+    <message>
+        <source>Select icon name from theme:</source>
+        <translation>Icon-Namen aus aktuellem Thema wählen:</translation>
     </message>
 </context>
 </TS>

@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtGui/QtGui>
 #include <QtCore/QTextStream>
 #include <QtCore/QStringList>
@@ -43,6 +18,7 @@
 #include <qlabel.h>
 #include <qmainwindow.h>
 #include <qtoolbar.h>
+#include <qsignalspy.h>
 #include <private/qwindow_p.h>
 #include <private/qguiapplication_p.h>
 #include <qpa/qplatformintegration.h>
@@ -52,7 +28,10 @@
 
 #include <QtTest/private/qtesthelpers_p.h>
 
+#include <QtWidgets/private/qapplication_p.h>
+
 using namespace QTestPrivate;
+using namespace Qt::StringLiterals;
 
 // Compare a window position that may go through scaling in the platform plugin with fuzz.
 static inline bool qFuzzyCompareWindowPosition(const QPoint &p1, const QPoint p2, int fuzz)
@@ -75,6 +54,7 @@ public:
     tst_QWidget_window();
 
 public slots:
+    void init();
     void initTestCase();
     void cleanupTestCase();
     void cleanup();
@@ -90,6 +70,8 @@ private slots:
     void tst_show_resize();
     void tst_show_resize_hide_show();
 
+    void close();
+
     void tst_windowFilePathAndwindowTitle_data();
     void tst_windowFilePathAndwindowTitle();
     void tst_windowFilePath_data();
@@ -104,6 +86,7 @@ private slots:
     void tst_dnd();
     void tst_dnd_events();
     void tst_dnd_propagation();
+    void tst_dnd_destroyOnDrop();
 #endif
 
     void tst_qtbug35600();
@@ -129,6 +112,13 @@ private slots:
     void mouseMoveWithPopup_data();
     void mouseMoveWithPopup();
 
+    void showHideWindowHandle_data();
+    void showHideWindowHandle();
+
+    void resetFocusObjectOnDestruction();
+
+    void cleanupOnDestruction();
+
 private:
     QSize m_testWidgetSize;
     const int m_fuzz;
@@ -144,6 +134,11 @@ tst_QWidget_window::tst_QWidget_window() :
 
 void tst_QWidget_window::initTestCase()
 {
+}
+
+void tst_QWidget_window::init()
+{
+    QTest::failOnWarning(QRegularExpression(".*No such slot.*"));
 }
 
 void tst_QWidget_window::cleanupTestCase()
@@ -195,9 +190,6 @@ void tst_QWidget_window::tst_move_show()
     const QPoint pos(100, 100);
     w.move(pos);
     w.show();
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Winrt does not support move", Abort);
-#endif
     QVERIFY2(qFuzzyCompareWindowPosition(w.pos(), pos, m_fuzz),
              qPrintable(msgPointMismatch(w.pos(), pos)));
 }
@@ -229,9 +221,6 @@ void tst_QWidget_window::tst_resize_show()
     QWidget w;
     w.resize(m_testWidgetSize);
     w.show();
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Winrt does not support resize", Abort);
-#endif
     QCOMPARE(w.size(), m_testWidgetSize);
 }
 
@@ -251,6 +240,70 @@ void tst_QWidget_window::tst_show_resize_hide_show()
     w.hide();
     w.show();
     QCOMPARE(w.size(), m_testWidgetSize);
+}
+
+void tst_QWidget_window::close()
+{
+    // Verfy that closing a QWidgetWindow deletes its platform window,
+    // as expected of a QWindow subclass. This must be done also
+    // if QWidget API is used to close. The QCloseEvent must not be
+    // spontaneous if the close is triggered by a Qt API that the application
+    // would call in response to an event, and spontaneous if it is directly
+    // caused by user interaction, such as clicking the (x) in the titlebar.
+    // We can simulate this only by generating a WindowSystemEvent.
+    // Children of the window should get a hide event (never spontaneous when
+    // caused by closing the window).
+
+    struct Widget : public QWidget
+    {
+        using QWidget::QWidget;
+        int spontClose = -1;
+        int spontHide = -1;
+    protected:
+        void hideEvent(QHideEvent *e) override
+        { spontHide = e->spontaneous() ? 1 : 0; }
+        void closeEvent(QCloseEvent *e) override
+        { spontClose = e->spontaneous() ? 1 : 0; }
+    };
+
+    // QWindow::close()
+    {
+        Widget w;
+        Widget child(&w);
+        w.winId();
+        QVERIFY(w.windowHandle());
+        QVERIFY(w.windowHandle()->handle());
+        w.windowHandle()->close();
+        QCOMPARE(w.spontClose, 0);
+        QCOMPARE(child.spontHide, -1); // was never shown
+        QVERIFY(w.windowHandle());
+        QVERIFY(!w.windowHandle()->handle());
+    }
+
+    // QWidget::close()
+    {
+        Widget w;
+        Widget child(&w);
+        w.show();
+        QVERIFY(w.windowHandle());
+        QVERIFY(w.windowHandle()->handle());
+        w.close();
+        QCOMPARE(w.spontClose, 0);
+        QCOMPARE(child.spontHide, 0);
+        QVERIFY(w.windowHandle());
+        QVERIFY(!w.windowHandle()->handle());
+    }
+
+    // User-initiated close
+    {
+        Widget w;
+        Widget child(&w);
+        w.show();
+        QWindowSystemInterface::handleCloseEvent(w.windowHandle());
+        QApplication::processEvents();
+        QCOMPARE(w.spontClose, 1);
+        QCOMPARE(child.spontHide, 0);
+    }
 }
 
 class PaintTestWidget : public QWidget
@@ -374,14 +427,14 @@ void tst_QWidget_window::tst_windowFilePath()
 void tst_QWidget_window::tst_showWithoutActivating()
 {
     QString platformName = QGuiApplication::platformName().toLower();
-    if (platformName == "cocoa")
-        QSKIP("Cocoa: This fails. Figure out why.");
-    else if (platformName != QStringLiteral("xcb")
-            && platformName != QStringLiteral("windows")
-            && platformName != QStringLiteral("ios")
-            && platformName != QStringLiteral("tvos")
-            && platformName != QStringLiteral("watchos"))
-        QSKIP("Qt::WA_ShowWithoutActivating is currently supported only on xcb, windows, and ios/tvos/watchos platforms.");
+    if (platformName != QStringLiteral("xcb")
+        && platformName != QStringLiteral("windows")
+        && platformName != QStringLiteral("cocoa")
+        && platformName != QStringLiteral("ios")
+        && platformName != QStringLiteral("tvos")
+        && platformName != QStringLiteral("watchos"))
+        QSKIP("Qt::WA_ShowWithoutActivating is currently supported only on xcb, " \
+              "windows, and macos/ios/tvos/watchos platforms.");
 
     QWidget w1;
     w1.setAttribute(Qt::WA_ShowWithoutActivating);
@@ -405,6 +458,7 @@ void tst_QWidget_window::tst_paintEventOnSecondShow()
 {
     PaintTestWidget w;
     w.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&w));
     w.hide();
 
     w.paintEventCount = 0;
@@ -421,8 +475,7 @@ void tst_QWidget_window::tst_exposeObscuredMapped_QTBUG39220()
 
     const auto integration = QGuiApplicationPrivate::platformIntegration();
     if (!integration->hasCapability(QPlatformIntegration::MultipleWindows)
-        || !integration->hasCapability(QPlatformIntegration::NonFullScreenWindows)
-        || QGuiApplication::platformName() == QLatin1String("winrt")) {
+        || !integration->hasCapability(QPlatformIntegration::NonFullScreenWindows)) {
         QSKIP("The platform does not have the required capabilities");
     }
     // QTBUG-39220: Fully obscured parent widgets may not receive expose
@@ -530,10 +583,10 @@ public:
         : QWidget(w), m_log(log), m_ignoreDragMove(ignoreDragMove)
     {}
 protected:
-    void dragEnterEvent(QDragEnterEvent *);
-    void dragMoveEvent(QDragMoveEvent *);
-    void dragLeaveEvent(QDragLeaveEvent *);
-    void dropEvent(QDropEvent *);
+    void dragEnterEvent(QDragEnterEvent *) override;
+    void dragMoveEvent(QDragMoveEvent *) override;
+    void dragLeaveEvent(QDragLeaveEvent *) override;
+    void dropEvent(QDropEvent *) override;
 
 private:
     void formatDropEvent(const char *function, const QDropEvent *e, QTextStream &str) const;
@@ -543,7 +596,7 @@ private:
 
 void DnDEventLoggerWidget::formatDropEvent(const char *function, const QDropEvent *e, QTextStream &str) const
 {
-    str << objectName() << "::" << function  << " at " << e->pos().x() << ',' << e->pos().y()
+    str << objectName() << "::" << function  << " at " << e->position().toPoint().x() << ',' << e->position().toPoint().y()
         << " action=" << e->dropAction()
         << ' ' << quintptr(e->mimeData()) << " '" << e->mimeData()->text() << '\'';
 }
@@ -587,7 +640,7 @@ static QString msgEventAccepted(const QDropEvent &e)
 {
     QString message;
     QTextStream str(&message);
-    str << "Event at " << e.pos().x() << ',' << e.pos().y() << ' ' << (e.isAccepted() ? "accepted" : "ignored");
+    str << "Event at " << e.position().toPoint().x() << ',' << e.position().toPoint().y() << ' ' << (e.isAccepted() ? "accepted" : "ignored");
     return message;
 }
 
@@ -634,15 +687,11 @@ void tst_QWidget_window::tst_dnd()
     QWidget *dropsAcceptingWidget3 = new DnDEventLoggerWidget(&log, &dndTestWidget, true);
     dropsAcceptingWidget3->setAcceptDrops(true);
     dropsAcceptingWidget3->setObjectName(QLatin1String("acceptingDropsWidget3"));
-    // 260 + 40 = 300 = widget size, must not be more than that.
-    // otherwise it will break WinRT because there the tlw is maximized every time
-    // and this window will receive one more event
     dropsAcceptingWidget3->resize(180, 40);
     dropsAcceptingWidget3->move(10, 260);
 
     dndTestWidget.show();
     QVERIFY(QTest::qWaitForWindowExposed(&dndTestWidget));
-    qApp->setActiveWindow(&dndTestWidget);
     QVERIFY(QTest::qWaitForWindowActive(&dndTestWidget));
 
     QMimeData mimeData;
@@ -710,7 +759,7 @@ public:
     DnDEventRecorder() { setAcceptDrops(true); }
 
 protected:
-    void mousePressEvent(QMouseEvent *)
+    void mousePressEvent(QMouseEvent *) override
     {
         QMimeData *mimeData = new QMimeData;
         mimeData->setData("application/x-dnditemdata", "some data");
@@ -719,23 +768,23 @@ protected:
         drag->exec();
     }
 
-    void dragEnterEvent(QDragEnterEvent *e)
+    void dragEnterEvent(QDragEnterEvent *e) override
     {
         e->accept();
         _dndEvents.append(QStringLiteral("DragEnter "));
     }
-    void dragMoveEvent(QDragMoveEvent *e)
+    void dragMoveEvent(QDragMoveEvent *e) override
     {
         e->accept();
         _dndEvents.append(QStringLiteral("DragMove "));
         emit dragMoveReceived();
     }
-    void dragLeaveEvent(QDragLeaveEvent *e)
+    void dragLeaveEvent(QDragLeaveEvent *e) override
     {
         e->accept();
         _dndEvents.append(QStringLiteral("DragLeave "));
     }
-    void dropEvent(QDropEvent *e)
+    void dropEvent(QDropEvent *e) override
     {
         e->accept();
         _dndEvents.append(QStringLiteral("DropEvent "));
@@ -757,6 +806,8 @@ void tst_QWidget_window::tst_dnd_events()
     // catch regressions at cross platform code: QGuiApplication::processDrag/Leave().
     if (platformName != "xcb")
         return;
+    if (qgetenv("XDG_CURRENT_DESKTOP").toLower().contains("ubuntu") && QSysInfo::productVersion() == "24.04"_L1)
+        QSKIP("This hangs on Ubuntu 24.04 X11, see also QTBUG-129567.");
 
     const QString expectedDndEvents = "DragEnter DragMove DropEvent DragEnter DragMove "
                                       "DropEvent DragEnter DragMove DropEvent ";
@@ -882,6 +933,78 @@ void tst_QWidget_window::tst_dnd_propagation()
 
     QCOMPARE(target.mDndEvents, "enter leave enter drop ");
 }
+
+class ReparentSelfOnDropWidget : public QWidget
+{
+public:
+    ReparentSelfOnDropWidget(QWidget *newFutureParent)
+        : m_newFutureParent(newFutureParent)
+    {
+        setAcceptDrops(true);
+
+        const QRect availableGeometry = QGuiApplication::primaryScreen()->availableGeometry();
+        auto width = availableGeometry.width() / 6;
+        auto height = availableGeometry.height() / 4;
+
+        setGeometry(availableGeometry.x() + 200, availableGeometry.y() + 200, width, height);
+
+        QLabel *label = new QLabel(QStringLiteral("Test"), this);
+        label->setGeometry(40, 40, 60, 60);
+        label->setAcceptDrops(true);
+    }
+
+    void dragEnterEvent(QDragEnterEvent *event) override
+    {
+        event->accept();
+    }
+
+    void dragMoveEvent(QDragMoveEvent *event) override
+    {
+        event->acceptProposedAction();
+    }
+
+    void dropEvent(QDropEvent *event) override
+    {
+        event->accept();
+        // Turn 'this' from a top-level widget to a child widget.
+        // This destroys the QWidgetWindow since the widget is no longer top-level.
+        setParent(m_newFutureParent);
+    }
+
+private:
+    QWidget *m_newFutureParent;
+};
+
+void tst_QWidget_window::tst_dnd_destroyOnDrop()
+{
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
+        QSKIP("Wayland: This fails. Figure out why.");
+
+    QMimeData mimeData;
+    mimeData.setText(QLatin1String("testmimetext"));
+
+    QWidget newParent;
+    newParent.resize(400, 400);
+    newParent.show();
+    QVERIFY(QTest::qWaitForWindowActive(&newParent));
+
+    ReparentSelfOnDropWidget *target = new ReparentSelfOnDropWidget(&newParent);
+    target->show();
+    QVERIFY(QTest::qWaitForWindowActive(target));
+
+    Qt::DropActions supportedActions = Qt::DropAction::CopyAction;
+    QWindow *window = target->windowHandle();
+
+    auto posInsideDropTarget = QHighDpi::toNativePixels(QPoint(20, 20), window->screen());
+    auto posInsideLabel      = QHighDpi::toNativePixels(QPoint(60, 60), window->screen());
+
+    QWindowSystemInterface::handleDrag(window, &mimeData, posInsideDropTarget, supportedActions, {}, {});
+    QWindowSystemInterface::handleDrag(window, &mimeData, posInsideLabel, supportedActions, {}, {});
+    QWindowSystemInterface::handleDrop(window, &mimeData, posInsideLabel, supportedActions, {}, {});
+
+    QGuiApplication::processEvents();
+}
+
 #endif
 
 void tst_QWidget_window::tst_qtbug35600()
@@ -976,7 +1099,7 @@ class ResizeWidget : public QWidget
 {
 Q_OBJECT
 public:
-    ResizeWidget(QWidget *parent = 0)
+    ResizeWidget(QWidget *parent = nullptr)
         : QWidget(parent)
         , resizeCount(0)
     { }
@@ -997,9 +1120,6 @@ void tst_QWidget_window::tst_resize_count()
         resize.setWindowFlags(Qt::X11BypassWindowManagerHint);
         resize.show();
         QVERIFY(QTest::qWaitForWindowExposed(&resize));
-#ifdef Q_OS_WINRT
-        QEXPECT_FAIL("", "Winrt does not support resize", Abort);
-#endif
         QCOMPARE(resize.resizeCount, 1);
         resize.resizeCount = 0;
         QSize size = resize.size();
@@ -1068,7 +1188,7 @@ void tst_QWidget_window::tst_showhide_count()
             return count;
         }
     protected:
-        bool eventFilter(QObject *receiver, QEvent *event)
+        bool eventFilter(QObject *receiver, QEvent *event) override
         {
             if (QWidget *widget = qobject_cast<QWidget*>(receiver)) {
                 const auto entry = Entry(widget, event->type());
@@ -1123,7 +1243,7 @@ class MoveWidget : public QWidget
 {
 Q_OBJECT
 public:
-    MoveWidget(QWidget *parent = 0)
+    MoveWidget(QWidget *parent = nullptr)
         : QWidget(parent)
         , moveCount(0)
     { }
@@ -1245,10 +1365,10 @@ void tst_QWidget_window::setWindowState_data()
     QString platformName = QGuiApplication::platformName().toLower();
 
     QTest::addColumn<Qt::WindowStates>("state");
-    QTest::newRow("0") << Qt::WindowStates();
-    QTest::newRow("Qt::WindowMaximized") << Qt::WindowStates(Qt::WindowMaximized);
-    QTest::newRow("Qt::WindowMinimized") << Qt::WindowStates(Qt::WindowMinimized);
-    QTest::newRow("Qt::WindowFullScreen") << Qt::WindowStates(Qt::WindowFullScreen);
+    QTest::newRow("nostate") << Qt::WindowStates();
+    QTest::newRow("maximized") << Qt::WindowStates(Qt::WindowMaximized);
+    QTest::newRow("minimized") << Qt::WindowStates(Qt::WindowMinimized);
+    QTest::newRow("fullscreen") << Qt::WindowStates(Qt::WindowFullScreen);
 
     if (platformName != "xcb" && platformName != "windows" && !platformName.startsWith("wayland")
         && platformName != "offscreen")
@@ -1277,11 +1397,6 @@ void tst_QWidget_window::setWindowState()
     w.setWindowState(state);
     QCOMPARE(w.windowState(), state);
     w.show();
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("0", "Winrt windows are maximized by default", Abort);
-    QEXPECT_FAIL("Qt::WindowMinimized", "Winrt windows are maximized by default", Abort);
-    QEXPECT_FAIL("Qt::WindowFullScreen", "Winrt windows are maximized by default", Abort);
-#endif
     QCOMPARE(w.windowState(), state);
     QCOMPARE(w.windowHandle()->windowStates(), state);
     if (!(state & Qt::WindowMinimized))
@@ -1350,6 +1465,9 @@ void tst_QWidget_window::mouseMoveWithPopup_data()
 
 void tst_QWidget_window::mouseMoveWithPopup()
 {
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
+        QSKIP("Wayland: Skip this test, see also QTBUG-107154");
+
     QFETCH(Qt::WindowType, windowType);
 
     class Window : public QWidget
@@ -1359,7 +1477,7 @@ void tst_QWidget_window::mouseMoveWithPopup()
         : QWidget(parent, flags|Qt::CustomizeWindowHint|Qt::FramelessWindowHint)
         {}
 
-        QSize sizeHint() const
+        QSize sizeHint() const override
         {
             if (parent())
                 return QSize(150, 100);
@@ -1378,14 +1496,14 @@ void tst_QWidget_window::mouseMoveWithPopup()
             mouseReleaseCount = 0;
         }
     protected:
-        void mousePressEvent(QMouseEvent *event)
+        void mousePressEvent(QMouseEvent *event) override
         {
             ++mousePressCount;
 
             if (event->button() == Qt::RightButton) {
                 if (!popup)
                     popup = new Window(this, type);
-                popup->move(event->globalPos());
+                popup->move(event->globalPosition().toPoint());
                 popup->show();
                 if (!QTest::qWaitForWindowExposed(popup)) {
                     delete popup;
@@ -1396,12 +1514,12 @@ void tst_QWidget_window::mouseMoveWithPopup()
                 QWidget::mousePressEvent(event);
             }
         }
-        void mouseReleaseEvent(QMouseEvent *event)
+        void mouseReleaseEvent(QMouseEvent *event) override
         {
             ++mouseReleaseCount;
             QWidget::mouseReleaseEvent(event);
         }
-        void mouseMoveEvent(QMouseEvent *event)
+        void mouseMoveEvent(QMouseEvent *event) override
         {
             ++mouseMoveCount;
             QWidget::mouseMoveEvent(event);
@@ -1415,7 +1533,7 @@ void tst_QWidget_window::mouseMoveWithPopup()
         QSKIP("Failed to expose window!");
 
     QCOMPARE(QApplication::activePopupWidget(), nullptr);
-    QCOMPARE(QApplication::activeWindow(), &topLevel);
+    QTRY_COMPARE(QApplication::activeWindow(), &topLevel);
 
     QPoint mousePos = topLevel.geometry().center();
     QWindow *window = nullptr;
@@ -1470,6 +1588,9 @@ void tst_QWidget_window::mouseMoveWithPopup()
     topLevel.resetCounters();
     topLevel.popup->resetCounters();
 
+    QTRY_VERIFY(QApplication::activeWindow() == topLevel.popup
+                || QApplication::activePopupWidget() == topLevel.popup);
+
     // nested popup, same procedure
     QCOMPARE(mouseAction(Qt::RightButton), QEvent::MouseButtonPress);
     QVERIFY(topLevel.popup);
@@ -1516,11 +1637,218 @@ void tst_QWidget_window::mouseMoveWithPopup()
 
     // but the release event will still be delivered to the first popup - dialogs might not get it
     QCOMPARE(mouseAction(Qt::LeftButton), QEvent::MouseButtonRelease);
-    if (topLevel.popup->mouseMoveCount != 1
-        && (QGuiApplication::platformName().startsWith(QLatin1String("xcb"), Qt::CaseInsensitive)
-            || QGuiApplication::platformName().startsWith(QLatin1String("offscreen"), Qt::CaseInsensitive)))
+    if (topLevel.popup->mouseReleaseCount != 1)
         QEXPECT_FAIL("Dialog", "Platform specific behavior", Continue);
     QCOMPARE(topLevel.popup->mouseReleaseCount, 1);
+}
+
+struct ShowHideEntry {
+    QEvent::Type action;
+    Qt::WindowType target;
+    using List = QList<ShowHideEntry>;
+};
+
+void tst_QWidget_window::showHideWindowHandle_data()
+{
+    QTest::addColumn<ShowHideEntry::List>("entries");
+
+    QTest::addRow("show/hide widget") << ShowHideEntry::List{
+        { QEvent::Show, Qt::Widget }, { QEvent::Hide, Qt::Widget }
+    };
+    QTest::addRow("show/hide window") << ShowHideEntry::List{
+        { QEvent::Show, Qt::Window }, { QEvent::Hide, Qt::Window }
+    };
+    QTest::addRow("show widget, hide window") << ShowHideEntry::List{
+        { QEvent::Show, Qt::Widget }, { QEvent::Hide, Qt::Window }
+    };
+    QTest::addRow("show window, hide widget") << ShowHideEntry::List{
+        { QEvent::Show, Qt::Window }, { QEvent::Hide, Qt::Widget }
+    };
+    QTest::addRow("show/hide widget, then show window, hide widget") << ShowHideEntry::List{
+        { QEvent::Show, Qt::Widget }, { QEvent::Hide, Qt::Widget },
+        { QEvent::Show, Qt::Window }, { QEvent::Hide, Qt::Widget }
+    };
+    QTest::addRow("show widget, close widget, show widget") << ShowHideEntry::List{
+        { QEvent::Show, Qt::Widget }, { QEvent::Close, Qt::Widget }, { QEvent::Show, Qt::Widget }
+    };
+    QTest::addRow("show widget, close widget, show window") << ShowHideEntry::List{
+        { QEvent::Show, Qt::Widget }, { QEvent::Close, Qt::Widget }, { QEvent::Show, Qt::Window }
+    };
+    QTest::addRow("show widget, close window, show widget") << ShowHideEntry::List{
+        { QEvent::Show, Qt::Widget }, { QEvent::Close, Qt::Window }, { QEvent::Show, Qt::Widget }
+    };
+    QTest::addRow("show widget, close window, show window") << ShowHideEntry::List{
+        { QEvent::Show, Qt::Widget }, { QEvent::Close, Qt::Window }, { QEvent::Show, Qt::Window }
+    };
+}
+
+void tst_QWidget_window::showHideWindowHandle()
+{
+    QWidget parent;
+    parent.setObjectName("Parent");
+    QCOMPARE(parent.isVisible(), false);
+    QCOMPARE(parent.testAttribute(Qt::WA_WState_ExplicitShowHide), false);
+    QCOMPARE(parent.testAttribute(Qt::WA_WState_Visible), false);
+    QCOMPARE(parent.testAttribute(Qt::WA_WState_Hidden), true);
+
+    QWidget child;
+    child.setObjectName("Child");
+    QCOMPARE(child.isVisible(), false);
+    QCOMPARE(child.testAttribute(Qt::WA_WState_ExplicitShowHide), false);
+    QCOMPARE(child.testAttribute(Qt::WA_WState_Visible), false);
+    QCOMPARE(child.testAttribute(Qt::WA_WState_Hidden), true);
+
+    child.setParent(&parent);
+    QCOMPARE(child.isVisible(), false);
+    QCOMPARE(child.testAttribute(Qt::WA_WState_ExplicitShowHide), false);
+    QCOMPARE(child.testAttribute(Qt::WA_WState_Visible), false);
+    QCOMPARE(child.testAttribute(Qt::WA_WState_Hidden), false);
+
+    QFETCH(QList<ShowHideEntry>, entries);
+    for (const auto entry : entries) {
+
+        if (entry.action == QEvent::Show) {
+            if (entry.target == Qt::Window && !parent.windowHandle()) {
+                parent.setAttribute(Qt::WA_NativeWindow);
+                QVERIFY(parent.windowHandle());
+
+                QCOMPARE(parent.isVisible(), false);
+                QCOMPARE(parent.testAttribute(Qt::WA_WState_ExplicitShowHide), false);
+                QCOMPARE(parent.testAttribute(Qt::WA_WState_Visible), false);
+                QCOMPARE(parent.testAttribute(Qt::WA_WState_Hidden), true);
+            }
+
+            bool wasExplicitShowHide = parent.testAttribute(Qt::WA_WState_ExplicitShowHide);
+
+            if (entry.target == Qt::Widget)
+                parent.show();
+            else
+                parent.windowHandle()->show();
+
+            QVERIFY(QTest::qWaitForWindowActive(&parent));
+
+            QCOMPARE(parent.isVisible(), true);
+            QVERIFY(parent.windowHandle());
+            QCOMPARE(parent.windowHandle()->isVisible(), true);
+
+            QCOMPARE(parent.testAttribute(Qt::WA_WState_Visible), true);
+            QCOMPARE(parent.testAttribute(Qt::WA_WState_Hidden), false);
+            QCOMPARE(parent.testAttribute(Qt::WA_WState_ExplicitShowHide),
+                entry.target == Qt::Widget || wasExplicitShowHide);
+
+            QCOMPARE(child.isVisible(), true);
+            QCOMPARE(child.testAttribute(Qt::WA_WState_ExplicitShowHide), false);
+            QCOMPARE(child.testAttribute(Qt::WA_WState_Visible), true);
+            QCOMPARE(child.testAttribute(Qt::WA_WState_Hidden), false);
+
+        } else if (entry.action == QEvent::Hide) {
+
+            bool wasExplicitShowHide = parent.testAttribute(Qt::WA_WState_ExplicitShowHide);
+
+            if (entry.target == Qt::Widget)
+                parent.hide();
+            else
+                parent.windowHandle()->hide();
+
+            QCOMPARE(parent.isVisible(), false);
+            QVERIFY(parent.windowHandle());
+            QCOMPARE(parent.windowHandle()->isVisible(), false);
+
+            QCOMPARE(parent.testAttribute(Qt::WA_WState_Visible), false);
+            QCOMPARE(parent.testAttribute(Qt::WA_WState_Hidden), true);
+            QCOMPARE(parent.testAttribute(Qt::WA_WState_ExplicitShowHide),
+                entry.target == Qt::Widget || wasExplicitShowHide);
+
+            QCOMPARE(child.isVisible(), false);
+            QCOMPARE(child.testAttribute(Qt::WA_WState_ExplicitShowHide), false);
+            QCOMPARE(child.testAttribute(Qt::WA_WState_Visible), false);
+            QCOMPARE(child.testAttribute(Qt::WA_WState_Hidden), false);
+
+        } else if (entry.action == QEvent::Close) {
+
+            bool wasExplicitShowHide = parent.testAttribute(Qt::WA_WState_ExplicitShowHide);
+
+            if (entry.target == Qt::Widget)
+                parent.close();
+            else
+                parent.windowHandle()->close();
+
+            QCOMPARE(parent.isVisible(), false);
+            QVERIFY(parent.windowHandle());
+            QCOMPARE(parent.windowHandle()->isVisible(), false);
+
+            QCOMPARE(parent.testAttribute(Qt::WA_WState_Visible), false);
+            QCOMPARE(parent.testAttribute(Qt::WA_WState_Hidden), true);
+            QCOMPARE(parent.testAttribute(Qt::WA_WState_ExplicitShowHide),
+                entry.target == Qt::Widget || wasExplicitShowHide);
+
+            QCOMPARE(child.isVisible(), false);
+            QCOMPARE(child.testAttribute(Qt::WA_WState_ExplicitShowHide), false);
+            QCOMPARE(child.testAttribute(Qt::WA_WState_Visible), false);
+            QCOMPARE(child.testAttribute(Qt::WA_WState_Hidden), false);
+        }
+    }
+}
+
+void tst_QWidget_window::resetFocusObjectOnDestruction()
+{
+    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
+        QSKIP("QWindow::requestActivate() is not supported.");
+
+    QSignalSpy focusObjectChangedSpy(qApp, &QGuiApplication::focusObjectChanged);
+
+    // single top level widget that has focus
+    std::unique_ptr<QWidget> widget(new QWidget);
+    widget->setObjectName("Widget 1");
+    widget->setFocus();
+    widget->show();
+    QVERIFY(QTest::qWaitForWindowActive(widget.get()));
+
+    int activeCount = focusObjectChangedSpy.size();
+    widget.reset();
+    QVERIFY(focusObjectChangedSpy.size() > activeCount);
+    QCOMPARE(focusObjectChangedSpy.last().last().value<QObject*>(), nullptr);
+    focusObjectChangedSpy.clear();
+
+    // top level widget with focused child
+    widget.reset(new QWidget);
+    widget->setObjectName("Widget 2");
+    QWidget *child = new QWidget(widget.get());
+    child->setObjectName("Child widget");
+    child->setFocus();
+    widget->show();
+    QVERIFY(QTest::qWaitForWindowActive(widget.get()));
+
+    activeCount = focusObjectChangedSpy.size();
+    widget.reset();
+    // we might get more than one signal emission
+    QVERIFY(focusObjectChangedSpy.size() > activeCount);
+    QCOMPARE(focusObjectChangedSpy.last().last().value<QObject*>(), nullptr);
+}
+
+class CreateDestroyWidget : public QWidget
+{
+public:
+    using QWidget::create;
+    using QWidget::destroy;
+};
+
+void tst_QWidget_window::cleanupOnDestruction()
+{
+    CreateDestroyWidget widget;
+    QWidget child(&widget);
+
+    QWidget grandChild(&child);
+    // Ensure there's not a 1:1 native window hierarhcy that we could
+    // recurse during QWidget::destroy(), triggering the issue that
+    // we were failing to clean up when not destroyed via QWidget.
+    grandChild.setAttribute(Qt::WA_DontCreateNativeAncestors);
+    grandChild.winId();
+
+    widget.destroy();
+    widget.create();
+
+    widget.show();
 }
 
 QTEST_MAIN(tst_QWidget_window)

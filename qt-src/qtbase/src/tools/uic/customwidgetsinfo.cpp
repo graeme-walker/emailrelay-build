@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "customwidgetsinfo.h"
 #include "driver.h"
@@ -34,6 +9,8 @@
 #include <utility>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 CustomWidgetsInfo::CustomWidgetsInfo() = default;
 
@@ -58,7 +35,7 @@ void CustomWidgetsInfo::acceptCustomWidget(DomCustomWidget *node)
     m_customWidgets.insert(node->elementClass(), node);
 }
 
-bool CustomWidgetsInfo::extends(const QString &classNameIn, QLatin1String baseClassName) const
+bool CustomWidgetsInfo::extends(const QString &classNameIn, QAnyStringView baseClassName) const
 {
     if (classNameIn == baseClassName)
         return true;
@@ -101,10 +78,95 @@ bool CustomWidgetsInfo::isCustomWidgetContainer(const QString &className) const
     return false;
 }
 
-QString CustomWidgetsInfo::realClassName(const QString &className) const
+// FIXME in 7.0 - QTBUG-124241
+// Remove isAmbiguous logic when widget slots have been disambiguated.
+bool CustomWidgetsInfo::isAmbiguous(const QString &className, const QString &signature,
+                                    QMetaMethod::MethodType type) const
 {
-    if (className == QLatin1String("Line"))
-        return QLatin1String("QFrame");
+    using TypeMap = QHash<QString, QMetaMethod::MethodType>;
+    struct AmbiguousInClass {
+        QLatin1StringView className;
+        TypeMap methodMap;
+    };
+
+    static const QList<AmbiguousInClass> ambiguousList = {
+
+        {"QAction"_L1, {{"triggered"_L1, QMetaMethod::Signal}}},
+        {"QCommandLinkButton"_L1, {{"triggered"_L1, QMetaMethod::Signal},
+                                   {"clicked"_L1, QMetaMethod::Signal}}},
+        {"QPushButton"_L1, {{"triggered"_L1, QMetaMethod::Signal},
+                            {"clicked"_L1, QMetaMethod::Signal}}},
+        {"QCheckBox"_L1, {{"triggered"_L1, QMetaMethod::Signal},
+                          {"clicked"_L1, QMetaMethod::Signal}}},
+        {"QRadioButton"_L1, {{"triggered"_L1, QMetaMethod::Signal},
+                             {"clicked"_L1, QMetaMethod::Signal}}},
+        {"QToolButton"_L1,  {{"triggered"_L1, QMetaMethod::Signal},
+                            {"clicked"_L1, QMetaMethod::Signal}}},
+        {"QLabel"_L1, {{"setNum"_L1, QMetaMethod::Slot}}},
+        {"QGraphicsView"_L1, {{"invalidateScene"_L1, QMetaMethod::Slot}}},
+        {"QListView"_L1, {{"dataChanged"_L1, QMetaMethod::Slot}}},
+        {"QColumnView"_L1, {{"dataChanged"_L1, QMetaMethod::Slot}}},
+        {"QListWidget"_L1, {{"dataChanged"_L1, QMetaMethod::Slot},
+                           {"scrollToItem"_L1, QMetaMethod::Slot}}},
+        {"QTableView"_L1, {{"dataChanged"_L1, QMetaMethod::Slot}}},
+        {"QTableWidget"_L1, {{"dataChanged"_L1, QMetaMethod::Slot},
+                            {"scrollToItem"_L1, QMetaMethod::Slot}}},
+        {"QTreeView"_L1, {{"dataChanged"_L1, QMetaMethod::Slot},
+                         {"verticalScrollbarValueChanged"_L1, QMetaMethod::Slot},
+                         {"expandRecursively"_L1, QMetaMethod::Slot}}},
+        {"QTreeWidget"_L1, {{"dataChanged"_L1, QMetaMethod::Slot},
+                           {"verticalScrollbarValueChanged"_L1, QMetaMethod::Slot}
+                           ,{"expandRecursively"_L1, QMetaMethod::Slot}
+                           ,{"scrollToItem"_L1, QMetaMethod::Slot}}},
+        {"QUndoView"_L1, {{"dataChanged"_L1, QMetaMethod::Slot}}},
+        {"QLCDNumber"_L1, {{"display"_L1, QMetaMethod::Slot}}},
+        {"QMenuBar"_L1, {{"setVisible"_L1, QMetaMethod::Slot}}},
+        {"QTextBrowser"_L1, {{"setSource"_L1, QMetaMethod::Slot}}},
+
+        /*
+        The following widgets with ambiguities are not used in the widget designer:
+
+        {"QSplashScreen"_L1, {{"showMessage"_L1, QMetaMethod::Slot}}},
+        {"QCompleter"_L1, {{"activated"_L1, QMetaMethod::Signal},
+                          {"highlighted"_L1, QMetaMethod::Signal}}},
+        {"QSystemTrayIcon"_L1, {{"showMessage"_L1, QMetaMethod::Slot}}},
+        {"QStyledItemDelegate"_L1, {{"closeEditor"_L1, QMetaMethod::Signal}}},
+        {"QErrorMessage"_L1, {{"showMessage"_L1, QMetaMethod::Slot}}},
+        {"QGraphicsDropShadowEffect"_L1, {{"setOffset"_L1, QMetaMethod::Slot}}},
+        {"QGraphicsScene"_L1, {{"invalidate"_L1, QMetaMethod::Slot}}},
+        {"QItemDelegate"_L1, {{"closeEditor"_L1, QMetaMethod::Signal}}}
+        */
+    };
+
+    for (auto it = ambiguousList.constBegin(); it != ambiguousList.constEnd(); ++it) {
+        if (extends(className, it->className)) {
+            const qsizetype pos = signature.indexOf(u'(');
+            const QString method = signature.left(pos);
+            const auto methodIterator = it->methodMap.find(method);
+            return methodIterator != it->methodMap.constEnd() && type == methodIterator.value();
+        }
+    }
+    return false;
+}
+
+// Is it ambiguous, resulting in different signals for Python
+// "QAbstractButton::clicked(checked=false)"
+bool CustomWidgetsInfo::isAmbiguousSignal(const QString &className,
+                                          const QString &signalSignature) const
+{
+    return isAmbiguous(className, signalSignature, QMetaMethod::Signal);
+}
+
+bool CustomWidgetsInfo::isAmbiguousSlot(const QString &className,
+                                        const QString &signalSignature) const
+{
+    return isAmbiguous(className, signalSignature, QMetaMethod::Slot);
+}
+
+QString CustomWidgetsInfo::realClassName(const QString &className)
+{
+    if (className == "Line"_L1)
+        return u"QFrame"_s;
 
     return className;
 }
@@ -113,27 +175,27 @@ QString CustomWidgetsInfo::customWidgetAddPageMethod(const QString &name) const
 {
     if (DomCustomWidget *dcw = m_customWidgets.value(name, nullptr))
         return dcw->elementAddPageMethod();
-    return QString();
+    return {};
 }
 
 // add page methods for simple containers taking only the widget parameter
 QString CustomWidgetsInfo::simpleContainerAddPageMethod(const QString &name) const
 {
-    using AddPageMethod = std::pair<const char *, const char *>;
+    using AddPageMethod = std::pair<QString, QString>;
 
-    static AddPageMethod addPageMethods[] = {
-        {"QStackedWidget", "addWidget"},
-        {"QToolBar", "addWidget"},
-        {"QDockWidget", "setWidget"},
-        {"QScrollArea", "setWidget"},
-        {"QSplitter", "addWidget"},
-        {"QMdiArea", "addSubWindow"}
+    static const AddPageMethod addPageMethods[] = {
+        {u"QStackedWidget"_s, u"addWidget"_s},
+        {u"QToolBar"_s, u"addWidget"_s},
+        {u"QDockWidget"_s, u"setWidget"_s},
+        {u"QScrollArea"_s, u"setWidget"_s},
+        {u"QSplitter"_s, u"addWidget"_s},
+        {u"QMdiArea"_s, u"addSubWindow"_s}
     };
     for (const auto &m : addPageMethods) {
-        if (extends(name, QLatin1String(m.first)))
-            return QLatin1String(m.second);
+        if (extends(name, m.first))
+            return m.second;
     }
-    return QString();
+    return {};
 }
 
 QT_END_NAMESPACE

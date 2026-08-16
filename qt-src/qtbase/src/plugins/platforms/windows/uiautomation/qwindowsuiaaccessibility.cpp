@@ -1,46 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtGui/qtguiglobal.h>
 #if QT_CONFIG(accessibility)
 
 #include "qwindowsuiaaccessibility.h"
+#include "qwindowsuiautomation.h"
 #include "qwindowsuiamainprovider.h"
 #include "qwindowsuiautils.h"
 
@@ -50,14 +15,15 @@
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtCore/qt_windows.h>
 #include <qpa/qplatformintegration.h>
-#include <QtWindowsUIAutomationSupport/private/qwindowsuiawrapper_p.h>
 
 #include <QtCore/private/qwinregistry_p.h>
 
 QT_BEGIN_NAMESPACE
 
 using namespace QWindowsUiAutomation;
+using namespace Qt::Literals::StringLiterals;
 
+bool QWindowsUiaAccessibility::m_accessibleActive = false;
 
 QWindowsUiaAccessibility::QWindowsUiaAccessibility()
 {
@@ -72,6 +38,7 @@ bool QWindowsUiaAccessibility::handleWmGetObject(HWND hwnd, WPARAM wParam, LPARA
 {
     // Start handling accessibility internally
     QGuiApplicationPrivate::platformIntegration()->accessibility()->setActive(true);
+    m_accessibleActive = true;
 
     // Ignoring all requests while starting up / shutting down
     if (QCoreApplication::startingUp() || QCoreApplication::closingDown())
@@ -79,8 +46,8 @@ bool QWindowsUiaAccessibility::handleWmGetObject(HWND hwnd, WPARAM wParam, LPARA
 
     if (QWindow *window = QWindowsContext::instance()->findWindow(hwnd)) {
         if (QAccessibleInterface *accessible = window->accessibleRoot()) {
-            QWindowsUiaMainProvider *provider = QWindowsUiaMainProvider::providerForAccessible(accessible);
-            *lResult = QWindowsUiaWrapper::instance()->returnRawElementProvider(hwnd, wParam, lParam, provider);
+            auto provider = QWindowsUiaMainProvider::providerForAccessible(accessible);
+            *lResult = UiaReturnRawElementProvider(hwnd, wParam, lParam, provider.Get());
             return true;
         }
     }
@@ -112,8 +79,8 @@ static QString alertSound(const QObject *object)
 
 static QString soundFileName(const QString &soundName)
 {
-    const QString key = QStringLiteral("AppEvents\\Schemes\\Apps\\.Default\\")
-        + soundName + QStringLiteral("\\.Current");
+    const QString key = "AppEvents\\Schemes\\Apps\\.Default\\"_L1
+        + soundName + "\\.Current"_L1;
     return QWinRegistryKey(HKEY_CURRENT_USER, key).stringValue(L"");
 }
 
@@ -131,6 +98,7 @@ void QWindowsUiaAccessibility::notifyAccessibilityUpdate(QAccessibleEvent *event
     if (!event)
         return;
 
+    // Always handle system sound events
     switch (event->type()) {
         case QAccessible::PopupMenuStart:
             playSystemSound(QStringLiteral("MenuPopup"));
@@ -145,19 +113,23 @@ void QWindowsUiaAccessibility::notifyAccessibilityUpdate(QAccessibleEvent *event
             break;
     }
 
+    // Ignore events sent before the first UI Automation
+    // request or while QAccessible is being activated.
+    if (!m_accessibleActive)
+        return;
+
     QAccessibleInterface *accessible = event->accessibleInterface();
     if (!isActive() || !accessible || !accessible->isValid())
         return;
 
-    // Ensures QWindowsUiaWrapper is properly initialized.
-    if (!QWindowsUiaWrapper::instance()->ready())
-        return;
-
     // No need to do anything when nobody is listening.
-    if (!QWindowsUiaWrapper::instance()->clientsAreListening())
+    if (!UiaClientsAreListening())
         return;
 
     switch (event->type()) {
+    case QAccessible::Announcement:
+        QWindowsUiaMainProvider::raiseNotification(static_cast<QAccessibleAnnouncementEvent *>(event));
+        break;
     case QAccessible::Focus:
         QWindowsUiaMainProvider::notifyFocusChange(event);
         break;

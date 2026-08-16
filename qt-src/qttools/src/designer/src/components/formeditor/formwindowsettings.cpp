@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "formwindowsettings.h"
 #include "ui_formwindowsettings.h"
@@ -34,6 +9,7 @@
 
 #include <QtWidgets/qstyle.h>
 
+#include <QtCore/qcompare.h>
 #include <QtCore/qregularexpression.h>
 #include <QtCore/qdebug.h>
 
@@ -41,12 +17,12 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 namespace qdesigner_internal {
 
 // Data structure containing form dialog data providing comparison
 struct FormWindowData {
-    bool equals(const FormWindowData&) const;
-
     void fromFormWindow(FormWindowBase* fw);
     void applyToFormWindow(FormWindowBase* fw) const;
 
@@ -68,10 +44,11 @@ struct FormWindowData {
     Grid grid;
     bool idBasedTranslations{false};
     bool connectSlotsByName{true};
-};
 
-inline bool operator==(const FormWindowData &fd1, const FormWindowData &fd2) { return fd1.equals(fd2); }
-inline bool operator!=(const FormWindowData &fd1, const FormWindowData &fd2) { return !fd1.equals(fd2); }
+    friend bool comparesEqual(const FormWindowData &lhs,
+                              const FormWindowData &rhs) noexcept;
+    Q_DECLARE_EQUALITY_COMPARABLE(FormWindowData)
+};
 
 QDebug operator<<(QDebug str, const  FormWindowData &d)
 {
@@ -86,21 +63,21 @@ QDebug operator<<(QDebug str, const  FormWindowData &d)
     return str;
 }
 
-bool FormWindowData::equals(const FormWindowData &rhs) const
+bool comparesEqual(const FormWindowData &lhs, const FormWindowData &rhs) noexcept
 {
-    return layoutDefaultEnabled   == rhs.layoutDefaultEnabled &&
-           defaultMargin          == rhs.defaultMargin &&
-           defaultSpacing         == rhs.defaultSpacing &&
-           layoutFunctionsEnabled == rhs.layoutFunctionsEnabled &&
-           marginFunction         == rhs.marginFunction &&
-           spacingFunction        == rhs.spacingFunction &&
-           pixFunction            == rhs.pixFunction  &&
-           author                 == rhs.author &&
-           includeHints           == rhs.includeHints &&
-           hasFormGrid            == rhs.hasFormGrid &&
-           grid                   == rhs.grid &&
-           idBasedTranslations    == rhs.idBasedTranslations &&
-           connectSlotsByName     == rhs.connectSlotsByName;
+    return lhs.layoutDefaultEnabled   == rhs.layoutDefaultEnabled &&
+           lhs.defaultMargin          == rhs.defaultMargin &&
+           lhs.defaultSpacing         == rhs.defaultSpacing &&
+           lhs.layoutFunctionsEnabled == rhs.layoutFunctionsEnabled &&
+           lhs.marginFunction         == rhs.marginFunction &&
+           lhs.spacingFunction        == rhs.spacingFunction &&
+           lhs.pixFunction            == rhs.pixFunction  &&
+           lhs.author                 == rhs.author &&
+           lhs.includeHints           == rhs.includeHints &&
+           lhs.hasFormGrid            == rhs.hasFormGrid &&
+           lhs.grid                   == rhs.grid &&
+           lhs.idBasedTranslations    == rhs.idBasedTranslations &&
+           lhs.connectSlotsByName     == rhs.connectSlotsByName;
 }
 
 void FormWindowData::fromFormWindow(FormWindowBase* fw)
@@ -166,7 +143,7 @@ void FormWindowData::applyToFormWindow(FormWindowBase* fw) const
 
 FormWindowSettings::FormWindowSettings(QDesignerFormWindowInterface *parent) :
     QDialog(parent),
-    m_ui(new ::Ui::FormWindowSettings),
+    m_ui(new QT_PREPEND_NAMESPACE(Ui)::FormWindowSettings),
     m_formWindow(qobject_cast<FormWindowBase*>(parent)),
     m_oldData(new FormWindowData)
 {
@@ -175,8 +152,6 @@ FormWindowSettings::FormWindowSettings(QDesignerFormWindowInterface *parent) :
     m_ui->setupUi(this);
     m_ui->gridPanel->setCheckable(true);
     m_ui->gridPanel->setResetButtonVisible(false);
-
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 
     QString deviceProfileName = m_formWindow->deviceProfileName();
     if (deviceProfileName.isEmpty())
@@ -214,9 +189,9 @@ FormWindowData FormWindowSettings::data() const
 
     const QString hints = m_ui->includeHintsTextEdit->toPlainText();
     if (!hints.isEmpty()) {
-        rc.includeHints = hints.split(QLatin1Char('\n'));
+        rc.includeHints = hints.split(u'\n');
         // Purge out any lines consisting of blanks only
-        const QRegularExpression blankLine(QStringLiteral("^\\s*$"));
+        const QRegularExpression blankLine(u"^\\s*$"_s);
         Q_ASSERT(blankLine.isValid());
         rc.includeHints.erase(std::remove_if(rc.includeHints.begin(), rc.includeHints.end(),
                                              [blankLine](const QString &hint){ return blankLine.match(hint).hasMatch(); }),
@@ -248,7 +223,7 @@ void FormWindowSettings::setData(const FormWindowData &data)
     if (data.includeHints.isEmpty()) {
         m_ui->includeHintsTextEdit->clear();
     } else {
-        m_ui->includeHintsTextEdit->setText(data.includeHints.join(QLatin1Char('\n')));
+        m_ui->includeHintsTextEdit->setText(data.includeHints.join(u'\n'));
     }
 
     m_ui->gridPanel->setChecked(data.hasFormGrid);

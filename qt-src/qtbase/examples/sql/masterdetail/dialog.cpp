@@ -1,59 +1,25 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "dialog.h"
 
-int uniqueAlbumId;
-int uniqueArtistId;
+#include <QDialogButtonBox>
+#include <QDate>
+#include <QDomDocument>
+#include <QGroupBox>
+#include <QLabel>
+#include <QLineEdit>
+#include <QMessageBox>
+#include <QPushButton>
+#include <QSpinBox>
+#include <QSqlField>
+#include <QSqlRelationalTableModel>
+#include <QSqlRecord>
+#include <QVBoxLayout>
 
-Dialog::Dialog(QSqlRelationalTableModel *albums, QDomDocument details,
+int Dialog::s_artistId = 0;
+int Dialog::s_albumId = 0;
+Dialog::Dialog(QSqlRelationalTableModel *albums, const QDomDocument &details,
                QFile *output, QWidget *parent)
      : QDialog(parent)
 {
@@ -70,6 +36,12 @@ Dialog::Dialog(QSqlRelationalTableModel *albums, QDomDocument details,
     setLayout(layout);
 
     setWindowTitle(tr("Add Album"));
+}
+
+void Dialog::setInitialAlbumAndArtistId(int albumId, int artistId)
+{
+    s_albumId = albumId;
+    s_artistId = artistId;
 }
 
 void Dialog::submit()
@@ -117,9 +89,9 @@ int Dialog::addNewArtist(const QString &name)
 
     int id = generateArtistId();
 
-    QSqlField f1("id", QVariant::Int);
-    QSqlField f2("artist", QVariant::String);
-    QSqlField f3("albumcount", QVariant::Int);
+    QSqlField f1("id", QMetaType(QMetaType::Int));
+    QSqlField f2("artist", QMetaType(QMetaType::QString));
+    QSqlField f3("albumcount", QMetaType(QMetaType::Int));
 
     f1.setValue(QVariant(id));
     f2.setValue(QVariant(name));
@@ -137,10 +109,10 @@ int Dialog::addNewAlbum(const QString &title, int artistId)
     int id = generateAlbumId();
     QSqlRecord record;
 
-    QSqlField f1("albumid", QVariant::Int);
-    QSqlField f2("title", QVariant::String);
-    QSqlField f3("artistid", QVariant::Int);
-    QSqlField f4("year", QVariant::Int);
+    QSqlField f1("albumid", QMetaType(QMetaType::Int));
+    QSqlField f2("title", QMetaType(QMetaType::QString));
+    QSqlField f3("artistid", QMetaType(QMetaType::Int));
+    QSqlField f4("year", QMetaType(QMetaType::Int));
 
     f1.setValue(QVariant(id));
     f2.setValue(QVariant(title));
@@ -192,7 +164,7 @@ void Dialog::addTracks(int albumId, const QStringList &tracks)
 */
 }
 
-void Dialog::increaseAlbumCount(QModelIndex artistIndex)
+void Dialog::increaseAlbumCount(const QModelIndex &artistIndex)
 {
     QSqlTableModel *artistModel = model->relationModel(2);
 
@@ -201,6 +173,7 @@ void Dialog::increaseAlbumCount(QModelIndex artistIndex)
 
     int albumCount = albumCountIndex.data().toInt();
     artistModel->setData(albumCountIndex, QVariant(albumCount + 1));
+    artistModel->submitAll();
 }
 
 
@@ -266,7 +239,7 @@ QDialogButtonBox *Dialog::createButtons()
     return buttonBox;
 }
 
-QModelIndex Dialog::indexOfArtist(const QString &artist)
+QModelIndex Dialog::indexOfArtist(const QString &artist) const
 {
     QSqlTableModel *artistModel = model->relationModel(2);
 
@@ -281,12 +254,12 @@ QModelIndex Dialog::indexOfArtist(const QString &artist)
 
 int Dialog::generateArtistId()
 {
-    uniqueArtistId += 1;
-    return uniqueArtistId;
+    s_artistId += 1;
+    return s_artistId;
 }
 
 int Dialog::generateAlbumId()
 {
-    uniqueAlbumId += 1;
-    return uniqueAlbumId;
+    s_albumId += 1;
+    return s_albumId;
 }

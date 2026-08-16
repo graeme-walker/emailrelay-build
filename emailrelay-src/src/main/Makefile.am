@@ -264,7 +264,8 @@ if GCONFIG_WINDOWS
  emailrelay_keygen_LDFLAGS = -static
 endif
 emailrelay_keygen_LDADD = \
- $(top_builddir)/src/gssl/libgsslkeygen.a \
+ $(top_builddir)/src/gssl/libgssl.a \
+ $(top_builddir)/src/glib/libglib.a \
  $(GCONFIG_TLS_LIBS) \
  $(OS_LIBS)
 else
@@ -274,7 +275,8 @@ if GCONFIG_WINDOWS
 emailrelay_keygen_LDFLAGS = -static
 endif
 emailrelay_keygen_LDADD = \
-  $(top_builddir)/src/gssl/libgsslkeygen.a \
+  $(top_builddir)/src/gssl/libgssl.a \
+  $(top_builddir)/src/glib/libglib.a \
   $(GCONFIG_TLS_LIBS) \
   $(OS_LIBS)
 endif
@@ -331,4 +333,7 @@ strip:
 .PHONY: map
 map:
 	$(CXXLD) -Xlinker -Map=emailrelay.map $(AM_CXXFLAGS) $(CXXFLAGS) $(emailrelay_LDFLAGS) $(LDFLAGS) -o /tmp/emailrelay.tmp $(emailrelay_OBJECTS) $(emailrelay_LDADD) $(LIBS)
+if GCONFIG_WINDOWS
+	$(CXXLD) -Xlinker -Map=emailrelay-textmode.map $(AM_CXXFLAGS) $(CXXFLAGS) $(emailrelay_textmode_LDFLAGS) $(LDFLAGS) -o /tmp/emailrelay-textmode.tmp $(emailrelay_textmode_OBJECTS) $(emailrelay_textmode_LDADD) $(LIBS)
+endif
 

@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 //
 //  W A R N I N G
@@ -63,6 +27,8 @@
 #  include "dbus_minimal_p.h"
 #endif
 
+#include <atomic>
+
 #ifdef interface
 #  undef interface
 #endif
@@ -71,8 +37,8 @@ QT_BEGIN_NAMESPACE
 
 #if !defined QT_LINKED_LIBDBUS
 
-void (*qdbus_resolve_conditionally(const char *name))(); // doesn't print a warning
-void (*qdbus_resolve_me(const char *name))(); // prints a warning
+QFunctionPointer qdbus_resolve_conditionally(const char *name); // doesn't print a warning
+QFunctionPointer qdbus_resolve_me(const char *name); // prints a warning
 bool qdbus_loadLibDBus();
 
 //# define TRACE_DBUS_CALLS
@@ -88,7 +54,7 @@ struct TraceDBusCall
 
     static inline ThreadData &td()
     {
-        static thread_local ThreadData value;
+        Q_CONSTINIT static thread_local ThreadData value;
         return value;
     }
 
@@ -150,28 +116,34 @@ template <>           struct TraceReturn<void> { typedef void Type; };
 #  define DEBUGRET(ret)
 # endif
 
-# define DEFINEFUNC(ret, func, args, argcall, funcret)          \
-    typedef ret (* _q_PTR_##func) args;                         \
-    static inline ret q_##func args                             \
-    {                                                           \
-        static _q_PTR_##func ptr;                               \
-        DEBUGCALL(#func, argcall);                              \
-        if (!ptr)                                               \
-            ptr = (_q_PTR_##func) qdbus_resolve_me(#func);      \
-        funcret DEBUGRET(ret) ptr argcall;                      \
+# define DEFINEFUNC(ret, func, args, argcall, funcret)                 \
+    static inline ret q_##func args                                    \
+    {                                                                  \
+        using func_ptr = ret (*) args;                                 \
+        static std::atomic<func_ptr> atomic_ptr;                       \
+        func_ptr ptr = atomic_ptr.load(std::memory_order_relaxed);     \
+        DEBUGCALL(#func, argcall);                                     \
+        if (!ptr) {                                                    \
+            ptr = reinterpret_cast<func_ptr>(qdbus_resolve_me(#func)); \
+            atomic_ptr.store(ptr, std::memory_order_relaxed);          \
+        }                                                              \
+        funcret DEBUGRET(ret) ptr argcall;                             \
     }
 
-# define DEFINEFUNC_CONDITIONALLY(ret, func, args, argcall, funcret, failret)  \
-    typedef ret (* _q_PTR_##func) args;                               \
-    static inline ret q_##func args                                   \
-    {                                                                 \
-        static _q_PTR_##func ptr;                                     \
-        DEBUGCALL(#func, argcall);                                    \
-        if (!ptr)                                                     \
-            ptr = (_q_PTR_##func) qdbus_resolve_conditionally(#func); \
-        if (!ptr)                                                     \
-            failret;                                                  \
-        funcret DEBUGRET(ret) ptr argcall;                            \
+# define DEFINEFUNC_CONDITIONALLY(ret, func, args, argcall, funcret, failret)     \
+    static inline ret q_##func args                                               \
+    {                                                                             \
+        using func_ptr = ret (*) args;                                            \
+        static std::atomic<func_ptr> atomic_ptr;                                  \
+        func_ptr ptr = atomic_ptr.load(std::memory_order_relaxed);                \
+        DEBUGCALL(#func, argcall);                                                \
+        if (!ptr) {                                                               \
+            ptr = reinterpret_cast<func_ptr>(qdbus_resolve_conditionally(#func)); \
+            atomic_ptr.store(ptr, std::memory_order_relaxed);                     \
+        }                                                                         \
+        if (!ptr)                                                                 \
+            failret;                                                              \
+        funcret DEBUGRET(ret) ptr argcall;                                        \
     }
 
 #else // defined QT_LINKED_LIBDBUS

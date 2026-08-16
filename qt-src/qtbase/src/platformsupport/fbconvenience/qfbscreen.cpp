@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qfbscreen_p.h"
 #include "qfbcursor_p.h"
@@ -99,7 +63,7 @@ void QFbScreen::addWindow(QFbWindow *window)
     }
     setDirty(window->geometry());
     QWindow *w = topWindow();
-    QWindowSystemInterface::handleWindowActivated(w);
+    QWindowSystemInterface::handleFocusWindowChanged(w);
     topWindowChanged(w);
 }
 
@@ -108,7 +72,7 @@ void QFbScreen::removeWindow(QFbWindow *window)
     mWindowStack.removeOne(window);
     setDirty(window->geometry());
     QWindow *w = topWindow();
-    QWindowSystemInterface::handleWindowActivated(w);
+    QWindowSystemInterface::handleFocusWindowChanged(w);
     topWindowChanged(w);
 }
 
@@ -120,7 +84,7 @@ void QFbScreen::raise(QFbWindow *window)
     mWindowStack.move(index, 0);
     setDirty(window->geometry());
     QWindow *w = topWindow();
-    QWindowSystemInterface::handleWindowActivated(w);
+    QWindowSystemInterface::handleFocusWindowChanged(w);
     topWindowChanged(w);
 }
 
@@ -132,7 +96,7 @@ void QFbScreen::lower(QFbWindow *window)
     mWindowStack.move(index, mWindowStack.size() - 1);
     setDirty(window->geometry());
     QWindow *w = topWindow();
-    QWindowSystemInterface::handleWindowActivated(w);
+    QWindowSystemInterface::handleFocusWindowChanged(w);
     topWindowChanged(w);
 }
 
@@ -156,7 +120,7 @@ QWindow *QFbScreen::topLevelAt(const QPoint & p) const
 
 int QFbScreen::windowCount() const
 {
-    return mWindowStack.count();
+    return mWindowStack.size();
 }
 
 void QFbScreen::setDirty(const QRect &rect)
@@ -246,7 +210,7 @@ QRegion QFbScreen::doRedraw()
 
 QFbWindow *QFbScreen::windowForId(WId wid) const
 {
-    for (int i = 0; i < mWindowStack.count(); ++i) {
+    for (int i = 0; i < mWindowStack.size(); ++i) {
         if (mWindowStack[i]->winId() == wid)
             return mWindowStack[i];
     }
@@ -259,3 +223,5 @@ QFbScreen::Flags QFbScreen::flags() const
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qfbscreen_p.cpp"

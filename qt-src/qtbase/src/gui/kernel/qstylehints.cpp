@@ -1,43 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qstylehints.h>
+#include "qstylehints_p.h"
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformtheme.h>
 #include <private/qguiapplication_p.h>
@@ -79,25 +44,6 @@ static inline QVariant themeableHint(QPlatformTheme::ThemeHint th)
     return QPlatformTheme::defaultThemeHint(th);
 }
 
-class QStyleHintsPrivate : public QObjectPrivate
-{
-    Q_DECLARE_PUBLIC(QStyleHints)
-public:
-    int m_mouseDoubleClickInterval = -1;
-    int m_mousePressAndHoldInterval = -1;
-    int m_startDragDistance = -1;
-    int m_startDragTime = -1;
-    int m_keyboardInputInterval = -1;
-    int m_cursorFlashTime = -1;
-    int m_tabFocusBehavior = -1;
-    int m_uiEffects = -1;
-    int m_showShortcutsInContextMenus = -1;
-    int m_wheelScrollLines = -1;
-    int m_mouseQuickSelectionThreshold = -1;
-    int m_mouseDoubleClickDistance = -1;
-    int m_touchDoubleTapDistance = -1;
-};
-
 /*!
     \class QStyleHints
     \since 5.0
@@ -107,11 +53,10 @@ public:
     An object of this class, obtained from QGuiApplication, provides access to certain global
     user interface parameters of the current platform.
 
-    Access is read only; typically the platform itself provides the user a way to tune these
-    parameters.
-
-    Access to these parameters are useful when implementing custom user interface components, in that
-    they allow the components to exhibit the same behaviour and feel as other components.
+    Access to most settings is read only. The platform itself usually provides the user with
+    ways to tune these parameters. Authors of custom user interface components should read
+    relevant settings to allow the components to exhibit the same behavior and feel as other
+    components.
 
     \sa QGuiApplication::styleHints()
  */
@@ -159,7 +104,7 @@ int QStyleHints::mouseDoubleClickDistance() const
     Q_D(const QStyleHints);
     return d->m_mouseDoubleClickDistance >= 0 ?
                 d->m_mouseDoubleClickDistance :
-                themeableHint(QPlatformTheme::MouseDoubleClickDistance).toInt();
+                themeableHint(QPlatformTheme::MouseDoubleClickDistance, QPlatformIntegration::MouseDoubleClickDistance).toInt();
 }
 
 /*!
@@ -175,6 +120,63 @@ int QStyleHints::touchDoubleTapDistance() const
                 d->m_touchDoubleTapDistance :
                 themeableHint(QPlatformTheme::TouchDoubleTapDistance).toInt();
 }
+
+/*!
+    \property QStyleHints::colorScheme
+    \brief the color scheme used by the application.
+
+    By default, this follows the system's default color scheme (also known as appearance),
+    and changes when the system color scheme changes (e.g. during dusk or dawn).
+    Setting the color scheme to an explicit value will override the system setting and
+    ignore any changes to the system's color scheme. However, doing so is a hint to the
+    system, and overriding the color scheme is not supported on all platforms.
+
+    Resetting this property, or setting it to \l{Qt::ColorScheme::Unknown}, will remove
+    the override and make the application follow the system default again. The property
+    value will change to the color scheme the system currently has.
+
+    When this property changes, Qt will read the system palette and update the default
+    palette, but won't overwrite palette entries that have been explicitly set by the
+    application. When the colorSchemeChange() signal gets emitted, the old palette is
+    still in effect.
+
+    Application-specific colors should be selected to work well with the effective
+    palette, taking the current color scheme into account. To update application-
+    specific colors when the effective palette changes, handle
+    \l{QEvent::}{PaletteChange} or \l{QEvent::}{ApplicationPaletteChange} events.
+
+    \sa Qt::ColorScheme, QGuiApplication::palette(), QEvent::PaletteChange
+    \since 6.5
+*/
+Qt::ColorScheme QStyleHints::colorScheme() const
+{
+    Q_D(const QStyleHints);
+    return d->colorScheme();
+}
+
+/*!
+    \since 6.8
+
+    Sets the color scheme used by the application to an explicit \a scheme, or
+    revert to the system's current color scheme if \a scheme is Qt::ColorScheme::Unknown.
+*/
+void QStyleHints::setColorScheme(Qt::ColorScheme scheme)
+{
+    if (!QCoreApplication::instance()) {
+        qWarning("Must construct a QGuiApplication before accessing a platform theme hint.");
+        return;
+    }
+    if (QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme())
+        theme->requestColorScheme(scheme);
+}
+
+/*!
+    \fn void QStyleHints::unsetColorScheme()
+    \since 6.8
+
+    Restores the color scheme to the system's current color scheme.
+*/
+
 
 /*!
     Sets the \a mousePressAndHoldInterval.
@@ -322,14 +324,28 @@ int QStyleHints::keyboardInputInterval() const
            themeableHint(QPlatformTheme::KeyboardInputInterval, QPlatformIntegration::KeyboardInputInterval).toInt();
 }
 
+#if QT_DEPRECATED_SINCE(6, 5)
 /*!
     \property QStyleHints::keyboardAutoRepeatRate
     \brief the rate, in events per second,  in which additional repeated key
     presses will automatically be generated if a key is being held down.
+    \deprecated [6.5] Use keyboardAutoRepeatRateF() instead
 */
 int QStyleHints::keyboardAutoRepeatRate() const
 {
     return themeableHint(QPlatformTheme::KeyboardAutoRepeatRate, QPlatformIntegration::KeyboardAutoRepeatRate).toInt();
+}
+#endif
+
+/*!
+    \property QStyleHints::keyboardAutoRepeatRateF
+    \since 6.5
+    \brief the rate, in events per second, in which additional repeated key
+    presses will automatically be generated if a key is being held down.
+*/
+qreal QStyleHints::keyboardAutoRepeatRateF() const
+{
+    return themeableHint(QPlatformTheme::KeyboardAutoRepeatRate, QPlatformIntegration::KeyboardAutoRepeatRate).toReal();
 }
 
 /*!
@@ -406,6 +422,8 @@ bool QStyleHints::showIsMaximized() const
 
     Since Qt 5.13, the setShowShortcutsInContextMenus() function can be used to
     override the platform default.
+
+    \sa Qt::AA_DontShowShortcutsInContextMenus
 */
 bool QStyleHints::showShortcutsInContextMenus() const
 {
@@ -422,6 +440,40 @@ void QStyleHints::setShowShortcutsInContextMenus(bool s)
         d->m_showShortcutsInContextMenus = s ? 1 : 0;
         emit showShortcutsInContextMenusChanged(s);
     }
+}
+
+/*!
+    \property QStyleHints::contextMenuTrigger
+    \since 6.8
+    \brief mouse event used to trigger a context menu event.
+
+    The default on UNIX systems is to show context menu on mouse button press event, while on
+    Windows it is the mouse button release event. This property can be used to override the default
+    platform behavior.
+
+    \note Developers must use this property with great care, as it changes the default interaction
+    mode that their users will expect on the platform that they are running on.
+
+    \sa Qt::ContextMenuTrigger
+*/
+Qt::ContextMenuTrigger QStyleHints::contextMenuTrigger() const
+{
+    Q_D(const QStyleHints);
+    if (d->m_contextMenuTrigger == -1) {
+        return themeableHint(QPlatformTheme::ContextMenuOnMouseRelease).toBool()
+                   ? Qt::ContextMenuTrigger::Release
+                   : Qt::ContextMenuTrigger::Press;
+    }
+    return Qt::ContextMenuTrigger(d->m_contextMenuTrigger);
+}
+
+void QStyleHints::setContextMenuTrigger(Qt::ContextMenuTrigger contextMenuTrigger)
+{
+    Q_D(QStyleHints);
+    const Qt::ContextMenuTrigger currentTrigger = this->contextMenuTrigger();
+    d->m_contextMenuTrigger = int(contextMenuTrigger);
+    if (currentTrigger != contextMenuTrigger)
+        emit contextMenuTriggerChanged(contextMenuTrigger);
 }
 
 /*!
@@ -476,7 +528,7 @@ bool QStyleHints::useRtlExtensions() const
 */
 bool QStyleHints::setFocusOnTouchRelease() const
 {
-    return hint(QPlatformIntegration::SetFocusOnTouchRelease).toBool();
+    return themeableHint(QPlatformTheme::SetFocusOnTouchRelease, QPlatformIntegration::SetFocusOnTouchRelease).toBool();
 }
 
 /*!
@@ -620,4 +672,31 @@ int QStyleHints::mouseQuickSelectionThreshold() const
     return themeableHint(QPlatformTheme::MouseQuickSelectionThreshold, QPlatformIntegration::MouseQuickSelectionThreshold).toInt();
 }
 
+/*!
+   \internal
+   QStyleHintsPrivate::updateColorScheme - set a new color scheme.
+
+   This function is called by the QPA plugin when the system theme changes. This in
+   turn might be the result of an explicit request of a color scheme via setColorScheme.
+
+   Set \a colorScheme as the new color scheme of the QStyleHints.
+   The colorSchemeChanged signal will be emitted if present and new color scheme differ.
+ */
+void QStyleHintsPrivate::updateColorScheme(Qt::ColorScheme colorScheme)
+{
+    if (m_colorScheme == colorScheme)
+        return;
+    m_colorScheme = colorScheme;
+    Q_Q(QStyleHints);
+    emit q->colorSchemeChanged(colorScheme);
+}
+
+QStyleHintsPrivate *QStyleHintsPrivate::get(QStyleHints *q)
+{
+    Q_ASSERT(q);
+    return q->d_func();
+}
+
 QT_END_NAMESPACE
+
+#include "moc_qstylehints.cpp"

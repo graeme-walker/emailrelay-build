@@ -1,0 +1,25 @@
+version: 2
+tags: [git]
+accept_configuration:
+  condition: property
+  property: features
+  not_contains_value: Disable
+
+machine_type:
+  Build:
+    cores: 8
+  Test:
+    cores: 4
+
+instructions:
+
+  Build:
+    # to be turned on when the module source SBOM pass the license check
+    - type: EnvironmentVariable
+      variableName: VERIFY_SOURCE_SBOM
+      variableValue: "OFF"
+    - !include "{{qt/qtbase}}/coin_qtbase_build_template_v2.yaml"
+
+  Test:
+    - !include "{{qt/qtbase}}/coin_module_test_template_v3.yaml"
+    - !include "{{qt/qtbase}}/coin_qtbase_test_docs.yaml"

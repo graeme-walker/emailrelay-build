@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "http2frames_p.h"
 
@@ -171,6 +135,7 @@ FrameStatus Frame::validateHeader() const
         // 6.6 PUSH_PROMISE
         if (framePayloadSize < 4)
             return FrameStatus::sizeError;
+        break;
     default:
         // DATA/HEADERS/CONTINUATION will be verified
         // when we have payload.
@@ -233,7 +198,8 @@ quint32 Frame::dataSize() const
     Q_ASSERT(validatePayload() == FrameStatus::goodFrame);
 
     quint32 size = payloadSize();
-    if (const uchar pad = padding()) {
+    if (flags().testFlag(FrameFlag::PADDED)) {
+        const uchar pad = padding();
         // + 1 one for a byte with padding number itself:
         size -= pad + 1;
     }
@@ -269,7 +235,7 @@ const uchar *Frame::dataBegin() const
         return nullptr;
 
     const uchar *src = &buffer[0] + frameHeaderSize;
-    if (padding())
+    if (flags().testFlag(FrameFlag::PADDED))
         ++src;
 
     if (priority())
@@ -293,7 +259,7 @@ const uchar *Frame::hpackBlockBegin() const
     return begin;
 }
 
-FrameStatus FrameReader::read(QAbstractSocket &socket)
+FrameStatus FrameReader::read(QIODevice &socket)
 {
     if (offset < frameHeaderSize) {
         if (!readHeader(socket))
@@ -321,7 +287,7 @@ FrameStatus FrameReader::read(QAbstractSocket &socket)
     return frame.validatePayload();
 }
 
-bool FrameReader::readHeader(QAbstractSocket &socket)
+bool FrameReader::readHeader(QIODevice &socket)
 {
     Q_ASSERT(offset < frameHeaderSize);
 
@@ -337,7 +303,7 @@ bool FrameReader::readHeader(QAbstractSocket &socket)
     return offset == frameHeaderSize;
 }
 
-bool FrameReader::readPayload(QAbstractSocket &socket)
+bool FrameReader::readPayload(QIODevice &socket)
 {
     Q_ASSERT(offset < frame.buffer.size());
     Q_ASSERT(frame.buffer.size() > frameHeaderSize);
@@ -428,7 +394,7 @@ void FrameWriter::updatePayloadSize()
     setPayloadSize(size);
 }
 
-bool FrameWriter::write(QAbstractSocket &socket) const
+bool FrameWriter::write(QIODevice &socket) const
 {
     auto &buffer = frame.buffer;
     Q_ASSERT(buffer.size() >= frameHeaderSize);
@@ -442,7 +408,7 @@ bool FrameWriter::write(QAbstractSocket &socket) const
     return nWritten != -1 && size_type(nWritten) == buffer.size();
 }
 
-bool FrameWriter::writeHEADERS(QAbstractSocket &socket, quint32 sizeLimit)
+bool FrameWriter::writeHEADERS(QIODevice &socket, quint32 sizeLimit)
 {
     auto &buffer = frame.buffer;
     Q_ASSERT(buffer.size() >= frameHeaderSize);
@@ -492,7 +458,7 @@ bool FrameWriter::writeHEADERS(QAbstractSocket &socket, quint32 sizeLimit)
     return true;
 }
 
-bool FrameWriter::writeDATA(QAbstractSocket &socket, quint32 sizeLimit,
+bool FrameWriter::writeDATA(QIODevice &socket, quint32 sizeLimit,
                             const uchar *src, quint32 size)
 {
     // With DATA frame(s) we always have:

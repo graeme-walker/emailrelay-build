@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCBORSTREAMREADER_H
 #define QCBORSTREAMREADER_H
@@ -49,8 +13,8 @@
 
 QT_REQUIRE_CONFIG(cborstreamreader);
 
-// See qcborcommon.h for why we check
-#if defined(QT_X11_DEFINES_FOUND)
+/* X11 headers use these values too, but as defines */
+#if defined(False) && defined(True)
 #  undef True
 #  undef False
 #endif
@@ -113,7 +77,10 @@ public:
     void clear();
     void reset();
 
+#if QT_CORE_REMOVED_SINCE(6, 7)
     QCborError lastError();
+#endif
+    QCborError lastError() const;
 
     qint64 currentOffset() const;
 
@@ -153,7 +120,14 @@ public:
     bool enterContainer()               { Q_ASSERT(isContainer()); return _enterContainer_helper(); }
     bool leaveContainer();
 
+    bool readAndAppendToString(QString &dst)
+    { Q_ASSERT(isString()); return _readAndAppendToString_helper(dst); }
+    bool readAndAppendToUtf8String(QByteArray &dst)
+    { Q_ASSERT(isString()); return _readAndAppendToUtf8String_helper(dst); }
+    bool readAndAppendToByteArray(QByteArray &dst)
+    { Q_ASSERT(isByteArray()); return _readAndAppendToByteArray_helper(dst); }
     StringResult<QString> readString()      { Q_ASSERT(isString()); return _readString_helper(); }
+    StringResult<QByteArray> readUtf8String() { Q_ASSERT(isString()); return _readUtf8String_helper(); }
     StringResult<QByteArray> readByteArray(){ Q_ASSERT(isByteArray()); return _readByteArray_helper(); }
     qsizetype currentStringChunkSize() const{ Q_ASSERT(isString() || isByteArray()); return _currentStringChunkSize(); }
     StringResult<qsizetype> readStringChunk(char *ptr, qsizetype maxlen);
@@ -175,13 +149,38 @@ public:
             return -v - 1;
         return v;
     }
+    QString readAllString()
+    {
+        QString dst;
+        if (!readAndAppendToString(dst))
+            dst = QString{};
+        return dst;
+    }
+    QByteArray readAllUtf8String()
+    {
+        QByteArray dst;
+        if (!readAndAppendToUtf8String(dst))
+            dst = QByteArray{};
+        return dst;
+    }
+    QByteArray readAllByteArray()
+    {
+        QByteArray dst;
+        if (!readAndAppendToByteArray(dst))
+            dst = QByteArray{};
+        return dst;
+    }
 
 private:
     void preparse();
     bool _enterContainer_helper();
     StringResult<QString> _readString_helper();
+    StringResult<QByteArray> _readUtf8String_helper();
     StringResult<QByteArray> _readByteArray_helper();
     qsizetype _currentStringChunkSize() const;
+    bool _readAndAppendToString_helper(QString &);
+    bool _readAndAppendToUtf8String_helper(QByteArray &);
+    bool _readAndAppendToByteArray_helper(QByteArray &);
 
     template <typename FP> FP _toFloatingPoint() const noexcept
     {

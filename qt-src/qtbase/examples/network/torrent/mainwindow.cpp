@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <QtWidgets>
 
@@ -73,27 +26,27 @@ protected:
 };
 
 // TorrentViewDelegate is used to draw the progress bars.
-class TorrentViewDelegate : public QItemDelegate
+class TorrentViewDelegate : public QStyledItemDelegate
 {
     Q_OBJECT
 public:
-    inline TorrentViewDelegate(MainWindow *mainWindow) : QItemDelegate(mainWindow) {}
+    inline TorrentViewDelegate(MainWindow *mainWindow) : QStyledItemDelegate(mainWindow) {}
 
     void paint(QPainter *painter, const QStyleOptionViewItem &option,
                const QModelIndex &index ) const override
     {
         if (index.column() != 2) {
-            QItemDelegate::paint(painter, option, index);
+            QStyledItemDelegate::paint(painter, option, index);
             return;
         }
 
         // Set up a QStyleOptionProgressBar to precisely mimic the
         // environment of a progress bar.
         QStyleOptionProgressBar progressBarOption;
-        progressBarOption.state = QStyle::State_Enabled;
+        progressBarOption.state |= QStyle::State_Enabled;
         progressBarOption.direction = QApplication::layoutDirection();
         progressBarOption.rect = option.rect;
-        progressBarOption.fontMetrics = QApplication::fontMetrics();
+        progressBarOption.fontMetrics = QFontMetrics(QApplication::font());
         progressBarOption.minimum = 0;
         progressBarOption.maximum = 100;
         progressBarOption.textAlignment = Qt::AlignCenter;
@@ -127,19 +80,19 @@ MainWindow::MainWindow(QWidget *parent)
     setCentralWidget(torrentView);
 
     // Set header resize modes and initial section sizes
-    QFontMetrics fm = fontMetrics();
+    const QFontMetrics fm = torrentView->fontMetrics();
     QHeaderView *header = torrentView->header();
     header->resizeSection(0, fm.horizontalAdvance("typical-name-for-a-torrent.torrent"));
-    header->resizeSection(1, fm.horizontalAdvance(headers.at(1) + "  "));
-    header->resizeSection(2, fm.horizontalAdvance(headers.at(2) + "  "));
-    header->resizeSection(3, qMax(fm.horizontalAdvance(headers.at(3) + "  "), fm.horizontalAdvance(" 1234.0 KB/s ")));
-    header->resizeSection(4, qMax(fm.horizontalAdvance(headers.at(4) + "  "), fm.horizontalAdvance(" 1234.0 KB/s ")));
-    header->resizeSection(5, qMax(fm.horizontalAdvance(headers.at(5) + "  "), fm.horizontalAdvance(tr("Downloading") + "  ")));
+    header->resizeSection(1, fm.horizontalAdvance(headers.at(1) + "    "));
+    header->resizeSection(2, fm.horizontalAdvance(headers.at(2) + "    "));
+    header->resizeSection(3, qMax(fm.horizontalAdvance(headers.at(3) + "    "), fm.horizontalAdvance(" 1234.0 KB/s ")));
+    header->resizeSection(4, qMax(fm.horizontalAdvance(headers.at(4) + "    "), fm.horizontalAdvance(" 1234.0 KB/s ")));
+    header->resizeSection(5, qMax(fm.horizontalAdvance(headers.at(5) + "    "), fm.horizontalAdvance(tr("Downloading") + "  ")));
 
     // Create common actions
-    QAction *newTorrentAction = new QAction(QIcon(":/icons/bottom.png"), tr("Add &new torrent"), this);
-    pauseTorrentAction = new QAction(QIcon(":/icons/player_pause.png"), tr("&Pause torrent"), this);
-    removeTorrentAction = new QAction(QIcon(":/icons/player_stop.png"), tr("&Remove torrent"), this);
+    QAction *newTorrentAction = new QAction(QIcon(":/icons/bottom.svg"), tr("Add &new torrent"), this);
+    pauseTorrentAction = new QAction(QIcon(":/icons/player_pause.svg"), tr("&Pause torrent"), this);
+    removeTorrentAction = new QAction(QIcon(":/icons/player_stop.svg"), tr("&Remove torrent"), this);
 
     // File menu
     QMenu *fileMenu = menuBar()->addMenu(tr("&File"));
@@ -147,12 +100,12 @@ MainWindow::MainWindow(QWidget *parent)
     fileMenu->addAction(pauseTorrentAction);
     fileMenu->addAction(removeTorrentAction);
     fileMenu->addSeparator();
-    fileMenu->addAction(QIcon(":/icons/exit.png"), tr("E&xit"), this, &MainWindow::close);
+    fileMenu->addAction(QIcon(":/icons/exit.svg"), tr("E&xit"), this, &MainWindow::close);
 
     // Help menu
     QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));
-    helpMenu->addAction(tr("&About"), this, &MainWindow::about);
-    helpMenu->addAction(tr("About &Qt"), qApp, QApplication::aboutQt);
+    helpMenu->addAction(QIcon(":/icons/about.svg"), tr("&About"), this, &MainWindow::about);
+    helpMenu->addAction(QIcon(":/icons/about.svg"), tr("About &Qt"), qApp, QApplication::aboutQt);
 
     // Top toolbar
     QToolBar *topBar = new QToolBar(tr("Tools"));
@@ -162,8 +115,8 @@ MainWindow::MainWindow(QWidget *parent)
     topBar->addAction(removeTorrentAction);
     topBar->addAction(pauseTorrentAction);
     topBar->addSeparator();
-    downActionTool = topBar->addAction(QIcon(tr(":/icons/1downarrow.png")), tr("Move down"));
-    upActionTool = topBar->addAction(QIcon(tr(":/icons/1uparrow.png")), tr("Move up"));
+    downActionTool = topBar->addAction(QIcon(tr(":/icons/1downarrow.svg")), tr("Move down"));
+    upActionTool = topBar->addAction(QIcon(tr(":/icons/1uparrow.svg")), tr("Move up"));
 
     // Bottom toolbar
     QToolBar *bottomBar = new QToolBar(tr("Rate control"));
@@ -224,8 +177,7 @@ QSize MainWindow::sizeHint() const
     for (int i = 0; i < header->count() - 1; ++i)
         width += header->sectionSize(i);
 
-    return QSize(width, QMainWindow::sizeHint().height())
-        .expandedTo(QApplication::globalStrut());
+    return QSize(width, QMainWindow::sizeHint().height());
 }
 
 const TorrentClient *MainWindow::clientForRow(int row) const
@@ -359,7 +311,7 @@ bool MainWindow::addTorrent(const QString &fileName, const QString &destinationF
                             const QByteArray &resumeState)
 {
     // Check if the torrent is already being downloaded.
-    for (const Job &job : qAsConst(jobs)) {
+    for (const Job &job : std::as_const(jobs)) {
         if (job.torrentFileName == fileName && job.destinationDirectory == destinationFolder) {
             QMessageBox::warning(this, tr("Already downloading"),
                                  tr("The torrent file %1 is "
@@ -406,7 +358,7 @@ bool MainWindow::addTorrent(const QString &fileName, const QString &destinationF
     QTreeWidgetItem *item = new QTreeWidgetItem(torrentView);
 
     QString baseFileName = QFileInfo(fileName).fileName();
-    if (baseFileName.toLower().endsWith(".torrent"))
+    if (baseFileName.endsWith(u".torrent", Qt::CaseInsensitive))
         baseFileName.chop(8);
 
     item->setText(0, baseFileName);
@@ -510,10 +462,10 @@ void MainWindow::setActionsEnabled()
     pauseTorrentAction->setEnabled(item && pauseEnabled);
 
     if (client && client->state() == TorrentClient::Paused) {
-        pauseTorrentAction->setIcon(QIcon(":/icons/player_play.png"));
+        pauseTorrentAction->setIcon(QIcon(":/icons/player_play.svg"));
         pauseTorrentAction->setText(tr("Resume torrent"));
     } else {
-        pauseTorrentAction->setIcon(QIcon(":/icons/player_pause.png"));
+        pauseTorrentAction->setIcon(QIcon(":/icons/player_pause.svg"));
         pauseTorrentAction->setText(tr("Pause torrent"));
     }
 
@@ -623,7 +575,10 @@ void MainWindow::setDownloadLimit(int value)
 void MainWindow::about()
 {
     QLabel *icon = new QLabel;
-    icon->setPixmap(QPixmap(":/icons/peertopeer.png"));
+    QImage img(":/icons/peertopeer.svg");
+    QPixmap pm;
+    pm.convertFromImage(img);
+    icon->setPixmap(pm);
 
     QLabel *text = new QLabel;
     text->setWordWrap(true);
@@ -692,7 +647,7 @@ void MainWindow::closeEvent(QCloseEvent *)
     // them to signal that they have stopped.
     jobsToStop = 0;
     jobsStopped = 0;
-    for (const Job &job : qAsConst(jobs)) {
+    for (const Job &job : std::as_const(jobs)) {
         ++jobsToStop;
         TorrentClient *client = job.client;
         client->disconnect();

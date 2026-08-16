@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Copyright (C) 2019 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// Copyright (C) 2019 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QResource>
+#include <QtPlugin>
 #include <QtCore/QCoreApplication>
 #include <QtCore/QScopeGuard>
 #include <QtCore/private/qglobal_p.h>
@@ -38,8 +15,10 @@ class tst_QResourceEngine: public QObject
 
 public:
     tst_QResourceEngine()
-#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
-        : m_runtimeResourceRcc(QFileInfo(QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/runtime_resource.rcc")).absoluteFilePath())
+#ifdef Q_OS_ANDROID
+        : m_runtimeResourceRcc(
+            QFileInfo(QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
+                      + QStringLiteral("/runtime_resource.rcc")).absoluteFilePath())
 #else
         : m_runtimeResourceRcc(QFINDTESTDATA("runtime_resource.rcc"))
 #endif
@@ -57,33 +36,31 @@ private slots:
     void checkStructure();
     void searchPath_data();
     void searchPath();
-#if QT_DEPRECATED_SINCE(5, 13)
-    void searchPath_deprecated_data();
-    void searchPath_deprecated();
-#endif
     void doubleSlashInRoot();
+    void setLocale_data();
     void setLocale();
     void lastModified();
     void resourcesInStaticPlugins();
+    void qtResourceEmpty();
 
 private:
     const QString m_runtimeResourceRcc;
+    QByteArray m_runtimeResourceData;
 };
 
 
 void tst_QResourceEngine::initTestCase()
 {
-#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
+#ifdef Q_OS_ANDROID
     QString sourcePath(QStringLiteral(":/android_testdata/"));
     QString dataPath(QStandardPaths::writableLocation(QStandardPaths::CacheLocation));
 
     QDirIterator it(sourcePath, QDirIterator::Subdirectories);
     while (it.hasNext()) {
-        it.next();
-
-        QFileInfo fileInfo = it.fileInfo();
+        QFileInfo fileInfo = it.nextFileInfo();
         if (!fileInfo.isDir()) {
-            QString destination(dataPath + QLatin1Char('/') + fileInfo.filePath().mid(sourcePath.length()));
+            QString destination(dataPath + QLatin1Char('/')
+                                + fileInfo.filePath().mid(sourcePath.length()));
             QFileInfo destinationFileInfo(destination);
             if (!destinationFileInfo.exists()) {
                 QVERIFY(QDir().mkpath(destinationFileInfo.path()));
@@ -97,15 +74,27 @@ void tst_QResourceEngine::initTestCase()
 #endif
 
     QVERIFY(!m_runtimeResourceRcc.isEmpty());
+
+    QFile resourceFile(m_runtimeResourceRcc);
+    QVERIFY2(resourceFile.open(QIODevice::ReadOnly), qPrintable(resourceFile.errorString()));
+
+    // register once with the file name, which will attempt to use mmap()
+    // (uses QDynamicFileResourceRoot)
     QVERIFY(QResource::registerResource(m_runtimeResourceRcc));
-    QVERIFY(QResource::registerResource(m_runtimeResourceRcc, "/secondary_root/"));
+
+    // and register a second time with a gifted memory block
+    // (uses QDynamicBufferResourceRoot)
+    m_runtimeResourceData = resourceFile.readAll();
+    auto resourcePtr = reinterpret_cast<const uchar *>(m_runtimeResourceData.constData());
+    QVERIFY(QResource::registerResource(resourcePtr, "/secondary_root/"));
 }
 
 void tst_QResourceEngine::cleanupTestCase()
 {
     // make sure we don't leak memory
     QVERIFY(QResource::unregisterResource(m_runtimeResourceRcc));
-    QVERIFY(QResource::unregisterResource(m_runtimeResourceRcc, "/secondary_root/"));
+    auto resourcePtr = reinterpret_cast<const uchar *>(m_runtimeResourceData.constData());
+    QVERIFY(QResource::unregisterResource(resourcePtr, "/secondary_root/"));
 }
 
 void tst_QResourceEngine::compressedResource_data()
@@ -190,9 +179,10 @@ void tst_QResourceEngine::checkStructure_data()
 
     QStringList rootContents;
     rootContents << QLatin1String("aliasdir")
-#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
+#ifdef Q_OS_ANDROID
                  << QLatin1String("android_testdata")
 #endif
+                 << QLatin1String("empty")
                  << QLatin1String("otherdir")
                  << QLatin1String("runtime_resource")
                  << QLatin1String("searchpath1")
@@ -203,6 +193,7 @@ void tst_QResourceEngine::checkStructure_data()
 #if defined(BUILTIN_TESTDATA)
                  << QLatin1String("testqrc")
 #endif
+                 << QLatin1String("uncompresseddir")
                  << QLatin1String("withoutslashes");
 
     QTest::newRow("root dir")          << QString(":/")
@@ -235,56 +226,56 @@ void tst_QResourceEngine::checkStructure_data()
     for(int i = 0; i < roots.size(); ++i) {
         const QString root = roots.at(i);
 
-        QTest::addRow("%s prefix dir", qPrintable(root))  << QString(root + "test/abc/123/+++")
+        QTest::addRow("prefix dir on %s", qPrintable(root))  << QString(root + "test/abc/123/+++")
                                             << QByteArray()
                                             << (QStringList() << QLatin1String("currentdir.txt") << QLatin1String("currentdir2.txt") << QLatin1String("parentdir.txt"))
                                             << (QStringList() << QLatin1String("subdir"))
                                             << QLocale::c()
                                             << qlonglong(0);
 
-        QTest::addRow("%s parent to prefix", qPrintable(root))  << QString(root + "test/abc/123")
+        QTest::addRow("parent to prefix on %s", qPrintable(root))  << QString(root + "test/abc/123")
                                                   << QByteArray()
                                                   << QStringList()
                                                   << (QStringList() << QLatin1String("+++"))
                                                   << QLocale::c()
                                                   << qlonglong(0);
 
-        QTest::addRow("%s two parents prefix", qPrintable(root)) << QString(root + "test/abc")
+        QTest::addRow("two parents prefix on %s", qPrintable(root)) << QString(root + "test/abc")
                                                    << QByteArray()
                                                    << QStringList()
                                                    << QStringList(QLatin1String("123"))
                                                    << QLocale::c()
                                                    << qlonglong(0);
 
-        QTest::addRow("%s test dir ", qPrintable(root))          << QString(root + "test")
+        QTest::addRow("test dir  on %s", qPrintable(root))          << QString(root + "test")
                                                    << QByteArray()
                                                    << (QStringList() << QLatin1String("testdir.txt"))
                                                    << (QStringList() << QLatin1String("abc") << QLatin1String("test"))
                                                    << QLocale::c()
                                                    << qlonglong(0);
 
-        QTest::addRow("%s prefix no slashes", qPrintable(root)) << QString(root + "withoutslashes")
+        QTest::addRow("prefix no slashes on %s", qPrintable(root)) << QString(root + "withoutslashes")
                                                   << QByteArray()
                                                   << QStringList("blahblah.txt")
                                                   << QStringList()
                                                   << QLocale::c()
                                                   << qlonglong(0);
 
-        QTest::addRow("%s other dir", qPrintable(root))         << QString(root + "otherdir")
+        QTest::addRow("other dir on %s", qPrintable(root))         << QString(root + "otherdir")
                                                   << QByteArray()
                                                   << QStringList(QLatin1String("otherdir.txt"))
                                                   << QStringList()
                                                   << QLocale::c()
                                                   << qlonglong(0);
 
-        QTest::addRow("%s alias dir", qPrintable(root))         << QString(root + "aliasdir")
+        QTest::addRow("alias dir on %s", qPrintable(root))         << QString(root + "aliasdir")
                                                   << QByteArray()
                                                   << QStringList(QLatin1String("aliasdir.txt"))
                                                   << QStringList()
                                                   << QLocale::c()
                                                   << qlonglong(0);
 
-        QTest::addRow("%s second test dir", qPrintable(root))   << QString(root + "test/test")
+        QTest::addRow("second test dir on %s", qPrintable(root))   << QString(root + "test/test")
                                                   << QByteArray()
                                                   << (QStringList() << QLatin1String("test1.txt") << QLatin1String("test2.txt"))
                                                   << QStringList()
@@ -292,7 +283,7 @@ void tst_QResourceEngine::checkStructure_data()
                                                   << qlonglong(0);
 
         info = QFileInfo(QFINDTESTDATA("testqrc/test/test/test1.txt"));
-        QTest::addRow("%s test1 text", qPrintable(root))        << QString(root + "test/test/test1.txt")
+        QTest::addRow("test1 text on %s", qPrintable(root))        << QString(root + "test/test/test1.txt")
                                                   << QByteArray("abc\n")
                                                   << QStringList()
                                                   << QStringList()
@@ -300,7 +291,7 @@ void tst_QResourceEngine::checkStructure_data()
                                                   << qlonglong(info.size());
 
         info = QFileInfo(QFINDTESTDATA("testqrc/blahblah.txt"));
-        QTest::addRow("%s text no slashes", qPrintable(root))   << QString(root + "withoutslashes/blahblah.txt")
+        QTest::addRow("text no slashes on %s", qPrintable(root))   << QString(root + "withoutslashes/blahblah.txt")
                                                   << QByteArray("qwerty\n")
                                                   << QStringList()
                                                   << QStringList()
@@ -309,7 +300,7 @@ void tst_QResourceEngine::checkStructure_data()
 
 
         info = QFileInfo(QFINDTESTDATA("testqrc/test/test/test2.txt"));
-        QTest::addRow("%s test1 text", qPrintable(root))        << QString(root + "test/test/test2.txt")
+        QTest::addRow("test2 text on %s", qPrintable(root))        << QString(root + "test/test/test2.txt")
                                                   << QByteArray("def\n")
                                                   << QStringList()
                                                   << QStringList()
@@ -317,7 +308,7 @@ void tst_QResourceEngine::checkStructure_data()
                                                   << qlonglong(info.size());
 
         info = QFileInfo(QFINDTESTDATA("testqrc/currentdir.txt"));
-        QTest::addRow("%s currentdir text", qPrintable(root))   << QString(root + "test/abc/123/+++/currentdir.txt")
+        QTest::addRow("currentdir text on %s", qPrintable(root))   << QString(root + "test/abc/123/+++/currentdir.txt")
                                                   << QByteArray("\"This is the current dir\"\n")
                                                   << QStringList()
                                                   << QStringList()
@@ -325,7 +316,7 @@ void tst_QResourceEngine::checkStructure_data()
                                                   << qlonglong(info.size());
 
         info = QFileInfo(QFINDTESTDATA("testqrc/currentdir2.txt"));
-        QTest::addRow("%s currentdir text2", qPrintable(root))  << QString(root + "test/abc/123/+++/currentdir2.txt")
+        QTest::addRow("currentdir text2 on %s", qPrintable(root))  << QString(root + "test/abc/123/+++/currentdir2.txt")
                                                   << QByteArray("\"This is also the current dir\"\n")
                                                   << QStringList()
                                                   << QStringList()
@@ -333,7 +324,7 @@ void tst_QResourceEngine::checkStructure_data()
                                                   << qlonglong(info.size());
 
         info = QFileInfo(QFINDTESTDATA("parentdir.txt"));
-        QTest::addRow("%s parentdir text", qPrintable(root))    << QString(root + "test/abc/123/+++/parentdir.txt")
+        QTest::addRow("parentdir text on %s", qPrintable(root))    << QString(root + "test/abc/123/+++/parentdir.txt")
                                                   << QByteArray("abcdefgihklmnopqrstuvwxyz \n")
                                                   << QStringList()
                                                   << QStringList()
@@ -341,7 +332,7 @@ void tst_QResourceEngine::checkStructure_data()
                                                   << qlonglong(info.size());
 
         info = QFileInfo(QFINDTESTDATA("testqrc/subdir/subdir.txt"));
-        QTest::addRow("%s subdir text", qPrintable(root))       << QString(root + "test/abc/123/+++/subdir/subdir.txt")
+        QTest::addRow("subdir text on %s", qPrintable(root))       << QString(root + "test/abc/123/+++/subdir/subdir.txt")
                                                   << QByteArray("\"This is in the sub directory\"\n")
                                                   << QStringList()
                                                   << QStringList()
@@ -349,7 +340,7 @@ void tst_QResourceEngine::checkStructure_data()
                                                   << qlonglong(info.size());
 
         info = QFileInfo(QFINDTESTDATA("testqrc/test/testdir.txt"));
-        QTest::addRow("%s testdir text", qPrintable(root))      << QString(root + "test/testdir.txt")
+        QTest::addRow("testdir text on %s", qPrintable(root))      << QString(root + "test/testdir.txt")
                                                   << QByteArray("\"This is in the test directory\"\n")
                                                   << QStringList()
                                                   << QStringList()
@@ -357,7 +348,7 @@ void tst_QResourceEngine::checkStructure_data()
                                                   << qlonglong(info.size());
 
         info = QFileInfo(QFINDTESTDATA("testqrc/otherdir/otherdir.txt"));
-        QTest::addRow("%s otherdir text", qPrintable(root))     << QString(root + "otherdir/otherdir.txt")
+        QTest::addRow("otherdir text on %s", qPrintable(root))     << QString(root + "otherdir/otherdir.txt")
                                                   << QByteArray("\"This is the other dir\"\n")
                                                   << QStringList()
                                                   << QStringList()
@@ -365,7 +356,7 @@ void tst_QResourceEngine::checkStructure_data()
                                                   << qlonglong(info.size());
 
         info = QFileInfo(QFINDTESTDATA("testqrc/test/testdir2.txt"));
-        QTest::addRow("%s alias text", qPrintable(root))        << QString(root + "aliasdir/aliasdir.txt")
+        QTest::addRow("alias text on %s", qPrintable(root))        << QString(root + "aliasdir/aliasdir.txt")
                                                   << QByteArray("\"This is another file in this directory\"\n")
                                                   << QStringList()
                                                   << QStringList()
@@ -373,7 +364,7 @@ void tst_QResourceEngine::checkStructure_data()
                                                   << qlonglong(info.size());
 
         info = QFileInfo(QFINDTESTDATA("testqrc/aliasdir/aliasdir.txt"));
-        QTest::addRow("%s korean text", qPrintable(root))       << QString(root + "aliasdir/aliasdir.txt")
+        QTest::addRow("korean text on %s", qPrintable(root))       << QString(root + "aliasdir/aliasdir.txt")
                                                   << QByteArray("\"This is a korean text file\"\n")
                                                   << QStringList()
                                                   << QStringList()
@@ -381,7 +372,7 @@ void tst_QResourceEngine::checkStructure_data()
                                                   << qlonglong(info.size());
 
         info = QFileInfo(QFINDTESTDATA("testqrc/aliasdir/aliasdir.txt"));
-        QTest::addRow("%s korean text 2", qPrintable(root))     << QString(root + "aliasdir/aliasdir.txt")
+        QTest::addRow("korean text 2 on %s", qPrintable(root))     << QString(root + "aliasdir/aliasdir.txt")
                                                   << QByteArray("\"This is a korean text file\"\n")
                                                   << QStringList()
                                                   << QStringList()
@@ -389,7 +380,7 @@ void tst_QResourceEngine::checkStructure_data()
                                                   << qlonglong(info.size());
 
         info = QFileInfo(QFINDTESTDATA("testqrc/test/german.txt"));
-        QTest::addRow("%s german text", qPrintable(root))   << QString(root + "aliasdir/aliasdir.txt")
+        QTest::addRow("german text on %s", qPrintable(root))   << QString(root + "aliasdir/aliasdir.txt")
                                               << QByteArray("Deutsch\n")
                                               << QStringList()
                                               << QStringList()
@@ -397,7 +388,7 @@ void tst_QResourceEngine::checkStructure_data()
                                               << qlonglong(info.size());
 
         info = QFileInfo(QFINDTESTDATA("testqrc/test/german.txt"));
-        QTest::addRow("%s german text 2", qPrintable(root))   << QString(root + "aliasdir/aliasdir.txt")
+        QTest::addRow("german text 2 on %s", qPrintable(root))   << QString(root + "aliasdir/aliasdir.txt")
                                                 << QByteArray("Deutsch\n")
                                                 << QStringList()
                                                 << QStringList()
@@ -405,10 +396,18 @@ void tst_QResourceEngine::checkStructure_data()
                                                 << qlonglong(info.size());
 
         QFile file(QFINDTESTDATA("testqrc/aliasdir/compressme.txt"));
-        file.open(QFile::ReadOnly);
+        QVERIFY(file.open(QFile::ReadOnly));
         info = QFileInfo(QFINDTESTDATA("testqrc/aliasdir/compressme.txt"));
-        QTest::addRow("%s compressed text", qPrintable(root))   << QString(root + "aliasdir/aliasdir.txt")
-                                                  << file.readAll()
+        QByteArray compressmeContents = file.readAll();
+        QTest::addRow("compressed text on %s", qPrintable(root))   << QString(root + "aliasdir/aliasdir.txt")
+                                                  << compressmeContents
+                                                  << QStringList()
+                                                  << QStringList()
+                                                  << QLocale("de_CH")
+                                                  << qlonglong(info.size());
+
+        QTest::addRow("non-compressed text on %s", qPrintable(root))   << QString(root + "uncompresseddir/uncompressed.txt")
+                                                  << compressmeContents
                                                   << QStringList()
                                                   << QStringList()
                                                   << QLocale("de_CH")
@@ -486,13 +485,25 @@ void tst_QResourceEngine::checkStructure()
         // check that it is still valid after closing the file
         file.close();
         QCOMPARE(ba, contents);
+
+        // memory should be writable because we used MapPrivateOption
+        *ptr = '\0';
+
+        // but shouldn't affect the actual file or a new mapping
+        QFile file2(pathName);
+        QVERIFY(file2.open(QFile::ReadOnly));
+        QCOMPARE(file2.readAll(), contents);
+        ptr = file2.map(0, file.size(), QFile::MapPrivateOption);
+        QVERIFY2(ptr, qPrintable(file2.errorString()));
+        QByteArrayView bav(reinterpret_cast<const char *>(ptr), file.size());
+        QCOMPARE(bav, contents);
     }
     QLocale::setDefault(QLocale::system());
 }
 
 void tst_QResourceEngine::searchPath_data()
 {
-    auto searchPath = QFileInfo(QFINDTESTDATA("testqrc")).canonicalFilePath();
+    auto searchPath = QFileInfo(QFINDTESTDATA("testqrc/test.qrc")).canonicalPath();
 
     QTest::addColumn<QString>("searchPathPrefix");
     QTest::addColumn<QString>("searchPath");
@@ -540,48 +551,6 @@ void tst_QResourceEngine::searchPath()
     qf.close();
 }
 
-#if QT_DEPRECATED_SINCE(5, 13)
-
-void tst_QResourceEngine::searchPath_deprecated_data()
-{
-    QTest::addColumn<QString>("searchPath");
-    QTest::addColumn<QString>("file");
-    QTest::addColumn<QByteArray>("expected");
-
-    QTest::newRow("no_search_path")  << QString()
-                                  << ":search_file.txt"
-                                  << QByteArray("root\n");
-    QTest::newRow("path1")  << "/searchpath1"
-                         << ":search_file.txt"
-                         << QByteArray("path1\n");
-    QTest::newRow("no_search_path2")  << QString()
-                                  << ":/search_file.txt"
-                                  << QByteArray("root\n");
-    QTest::newRow("path2")  << "/searchpath2"
-                         << ":search_file.txt"
-                         << QByteArray("path2\n");
-}
-
-void tst_QResourceEngine::searchPath_deprecated()
-{
-    QFETCH(QString, searchPath);
-    QFETCH(QString, file);
-    QFETCH(QByteArray, expected);
-
-    if(!searchPath.isEmpty())
-        QDir::addResourceSearchPath(searchPath);
-    QFile qf(file);
-    QVERIFY(qf.open(QFile::ReadOnly));
-    QByteArray actual = qf.readAll();
-
-    actual.replace('\r', "");
-
-    QCOMPARE(actual, expected);
-    qf.close();
-}
-
-#endif
-
 void tst_QResourceEngine::checkUnregisterResource_data()
 {
     QTest::addColumn<QString>("rcc_file");
@@ -608,6 +577,15 @@ void tst_QResourceEngine::checkUnregisterResource()
     QVERIFY(QFile::exists(file_check));
     QVERIFY(QResource::unregisterResource(rcc_file, root));
     QVERIFY(!QFile::exists(file_check));
+    {
+        // QTBUG-86088
+        QVERIFY(QResource::registerResource(rcc_file, root));
+        QFile file(file_check);
+        QVERIFY(file.open(QFile::ReadOnly));
+        QVERIFY(!QResource::unregisterResource(rcc_file, root));
+        file.close();
+        QVERIFY(!QFile::exists(file_check));
+    }
     QVERIFY(QResource::registerResource(rcc_file, root));
     QVERIFY(QFile::exists(file_check));
     QFileInfo fileInfo(file_check);
@@ -624,13 +602,22 @@ void tst_QResourceEngine::doubleSlashInRoot()
     QVERIFY(QFile::exists("://secondary_root/runtime_resource/search_file.txt"));
 }
 
+void tst_QResourceEngine::setLocale_data()
+{
+    QTest::addColumn<QString>("prefix");
+    QTest::newRow("built-in") << QString();
+    QTest::newRow("runtime") << "/runtime_resource/";
+}
+
 void tst_QResourceEngine::setLocale()
 {
+    QFETCH(QString, prefix);
     QLocale::setDefault(QLocale::c());
 
     // default constructed QResource gets the default locale
     QResource resource;
-    resource.setFileName("aliasdir/aliasdir.txt");
+    resource.setFileName(prefix + "aliasdir/aliasdir.txt");
+    QVERIFY(resource.isValid());
     QCOMPARE(resource.compressionAlgorithm(), QResource::NoCompression);
 
     // change the default locale and make sure it doesn't affect the resource
@@ -667,6 +654,14 @@ void tst_QResourceEngine::resourcesInStaticPlugins()
     // the plugin via moc generated Q_INIT_RESOURCE calls in a
     // Q_CONSTRUCTOR_FUNCTION.
     QVERIFY(QFile::exists(":/staticplugin/main.cpp"));
+}
+
+void tst_QResourceEngine::qtResourceEmpty()
+{
+    QFile f(":/empty/world.txt");
+    QVERIFY(f.exists());
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    QVERIFY(f.readAll().isEmpty());
 }
 
 QTEST_MAIN(tst_QResourceEngine)

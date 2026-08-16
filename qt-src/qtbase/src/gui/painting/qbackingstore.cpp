@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qbackingstore.h>
 #include <qwindow.h>
@@ -61,11 +25,33 @@ public:
     {
     }
 
+    // Returns the DPR for the backing store. This is the DPR for the QWindow,
+    // possibly rounded up to the nearest integer.
+    qreal backingStoreDevicePixelRatio() const
+    {
+        // Note: keep in sync with QWidget::metric()!
+        qreal windowDpr = window->devicePixelRatio();
+        return downscale ? std::ceil(windowDpr) : windowDpr;
+    }
+
+    // Returns the factor used for converting from device independent to native
+    // backing store sizes. Normally this is just the gui scale factor, however
+    // if the backing store rounds the DPR up to the nearest integer then we also
+    // need to account for the factor introduced by that rounding.
+    qreal deviceIndependentToNativeFactor() const
+    {
+        const qreal roundingFactor = backingStoreDevicePixelRatio() / window->devicePixelRatio();
+        const qreal guiFactor = QHighDpiScaling::factor(window);
+        return roundingFactor * guiFactor;
+    }
+
     QWindow *window;
     QPlatformBackingStore *platformBackingStore = nullptr;
     QScopedPointer<QImage> highDpiBackingstore;
     QRegion staticContents;
     QSize size;
+    QSize nativeSize;
+    bool downscale = qEnvironmentVariableIntValue("QT_WIDGETS_HIGHDPI_DOWNSCALE") > 0;
 };
 
 /*!
@@ -130,12 +116,13 @@ QWindow* QBackingStore::window() const
 
 void QBackingStore::beginPaint(const QRegion &region)
 {
-    if (d_ptr->highDpiBackingstore &&
-        d_ptr->highDpiBackingstore->devicePixelRatio() != d_ptr->window->devicePixelRatio())
+    const qreal toNativeFactor = d_ptr->deviceIndependentToNativeFactor();
+
+    if (d_ptr->nativeSize != QHighDpi::scale(size(), toNativeFactor))
         resize(size());
 
     QPlatformBackingStore *platformBackingStore = handle();
-    platformBackingStore->beginPaint(QHighDpi::toNativeLocalRegion(region, d_ptr->window));
+    platformBackingStore->beginPaint(QHighDpi::scale(region, toNativeFactor));
 
     // When QtGui is applying a high-dpi scale factor the backing store
     // creates a "large" backing store image. This image needs to be
@@ -144,23 +131,20 @@ void QBackingStore::beginPaint(const QRegion &region)
     // the image data to avoid having the new devicePixelRatio be propagated
     // back to the platform plugin.
     QPaintDevice *device = platformBackingStore->paintDevice();
-    if (QHighDpiScaling::isActive() && device->devType() == QInternal::Image) {
+    if (!qFuzzyCompare(toNativeFactor, qreal(1)) && device->devType() == QInternal::Image) {
         QImage *source = static_cast<QImage *>(device);
         const bool needsNewImage = d_ptr->highDpiBackingstore.isNull()
-            || source->data_ptr() != d_ptr->highDpiBackingstore->data_ptr()
+            || source->constBits() != d_ptr->highDpiBackingstore->constBits()
             || source->size() != d_ptr->highDpiBackingstore->size()
-            || source->devicePixelRatio() != d_ptr->highDpiBackingstore->devicePixelRatio();
-        if (needsNewImage) {
-            qCDebug(lcScaling) << "QBackingStore::beginPaint new backingstore for" << d_ptr->window;
-            qCDebug(lcScaling) << "  source size" << source->size() << "dpr" << source->devicePixelRatio();
+            || source->bytesPerLine() != d_ptr->highDpiBackingstore->bytesPerLine()
+            || source->format() != d_ptr->highDpiBackingstore->format();
+        if (needsNewImage)
             d_ptr->highDpiBackingstore.reset(
                 new QImage(source->bits(), source->width(), source->height(), source->bytesPerLine(), source->format()));
 
-            qreal targetDevicePixelRatio = d_ptr->window->devicePixelRatio();
-            d_ptr->highDpiBackingstore->setDevicePixelRatio(targetDevicePixelRatio);
-            qCDebug(lcScaling) <<"  destination size" << d_ptr->highDpiBackingstore->size()
-                               << "dpr" << targetDevicePixelRatio;
-        }
+        d_ptr->highDpiBackingstore->setDevicePixelRatio(d_ptr->backingStoreDevicePixelRatio());
+    } else {
+        d_ptr->highDpiBackingstore.reset();
     }
 }
 
@@ -174,7 +158,7 @@ QPaintDevice *QBackingStore::paintDevice()
 {
     QPaintDevice *device = handle()->paintDevice();
 
-    if (QHighDpiScaling::isActive() && device->devType() == QInternal::Image)
+    if (!qFuzzyCompare(d_ptr->deviceIndependentToNativeFactor(), qreal(1)) && device->devType() == QInternal::Image)
         return d_ptr->highDpiBackingstore.data();
 
     return device;
@@ -194,17 +178,6 @@ void QBackingStore::endPaint()
         qWarning("QBackingStore::endPaint() called with active painter; did you forget to destroy it or call QPainter::end() on it?");
 
     handle()->endPaint();
-}
-
-static bool isRasterSurface(QWindow *window)
-{
-    switch (window->surfaceType()) {
-    case QSurface::RasterSurface:
-    case QSurface::RasterGLSurface:
-        return true;
-    default:
-        return false;
-    };
 }
 
 /*!
@@ -233,24 +206,22 @@ void QBackingStore::flush(const QRegion &region, QWindow *window, const QPoint &
         return;
     }
 
-    if (!isRasterSurface(window)) {
-        qWarning() << "Attempted flush to non-raster surface" << window << "of type" << window->surfaceType()
-            << (window->inherits("QWidgetWindow") ? "(consider using Qt::WA_PaintOnScreen to exclude "
-                                                   "from backingstore sync)" : "");
-        return;
-    }
-
-#ifdef QBACKINGSTORE_DEBUG
-    if (window && window->isTopLevel() && !qt_window_private(window)->receivedExpose) {
-        qWarning().nospace() << "QBackingStore::flush() called with non-exposed window "
-            << window << ", behavior is undefined";
-    }
-#endif
-
     Q_ASSERT(window == topLevelWindow || topLevelWindow->isAncestorOf(window, QWindow::ExcludeTransients));
 
-    handle()->flush(window, QHighDpi::toNativeLocalRegion(region, window),
-                                            QHighDpi::toNativeLocalPosition(offset, window));
+    const qreal toNativeFactor = d_ptr->deviceIndependentToNativeFactor();
+
+    QRegion nativeRegion = QHighDpi::scale(region, toNativeFactor);
+    QPoint nativeOffset;
+    if (!offset.isNull()) {
+        nativeOffset = QHighDpi::scale(offset, toNativeFactor);
+        // Under fractional DPR, rounding of region and offset may accumulate to an off-by-one
+        QPoint topLeft = region.boundingRect().topLeft() + offset;
+        QPoint nativeTopLeft = QHighDpi::scale(topLeft, toNativeFactor);
+        QPoint diff = nativeTopLeft - (nativeRegion.boundingRect().topLeft() + nativeOffset);
+        Q_ASSERT(qMax(qAbs(diff.x()), qAbs(diff.y())) <= 1);
+        nativeRegion.translate(diff);
+    }
+    handle()->flush(window, nativeRegion, nativeOffset);
 }
 
 /*!
@@ -260,8 +231,10 @@ void QBackingStore::flush(const QRegion &region, QWindow *window, const QPoint &
 */
 void QBackingStore::resize(const QSize &size)
 {
+    const qreal factor = d_ptr->deviceIndependentToNativeFactor();
     d_ptr->size = size;
-    handle()->resize(QHighDpi::toNativePixels(size, d_ptr->window), d_ptr->staticContents);
+    d_ptr->nativeSize = QHighDpi::scale(size, factor);
+    handle()->resize(d_ptr->nativeSize, QHighDpi::scale(d_ptr->staticContents, factor));
 }
 
 /*!
@@ -283,13 +256,13 @@ bool QBackingStore::scroll(const QRegion &area, int dx, int dy)
     // Disable scrolling for non-integer scroll deltas. For this case
     // the existing rendered pixels can't be re-used, and we return
     // false to signal that a repaint is needed.
-    const qreal nativeDx = QHighDpi::toNativePixels(qreal(dx), d_ptr->window);
-    const qreal nativeDy = QHighDpi::toNativePixels(qreal(dy), d_ptr->window);
+    const qreal toNativeFactor = d_ptr->deviceIndependentToNativeFactor();
+    const qreal nativeDx = QHighDpi::scale(qreal(dx), toNativeFactor);
+    const qreal nativeDy = QHighDpi::scale(qreal(dy), toNativeFactor);
     if (qFloor(nativeDx) != nativeDx || qFloor(nativeDy) != nativeDy)
         return false;
 
-    return handle()->scroll(QHighDpi::toNativeLocalRegion(area, d_ptr->window),
-                                               nativeDx, nativeDy);
+    return handle()->scroll(QHighDpi::scale(area, toNativeFactor), nativeDx, nativeDy);
 }
 
 /*!
@@ -297,6 +270,13 @@ bool QBackingStore::scroll(const QRegion &area, int dx, int dy)
 */
 void QBackingStore::setStaticContents(const QRegion &region)
 {
+    [[maybe_unused]] static const bool didCheckPlatformSupport = []{
+        const auto *integration = QGuiApplicationPrivate::platformIntegration();
+        if (!integration->hasCapability(QPlatformIntegration::BackingStoreStaticContents))
+            qWarning("QBackingStore::setStaticContents(): Platform does not support static contents");
+        return true;
+    }();
+
     d_ptr->staticContents = region;
 }
 
@@ -320,32 +300,34 @@ bool QBackingStore::hasStaticContents() const
 void Q_GUI_EXPORT qt_scrollRectInImage(QImage &img, const QRect &rect, const QPoint &offset)
 {
     // make sure we don't detach
-    uchar *mem = const_cast<uchar*>(const_cast<const QImage &>(img).bits());
+    uchar *mem = const_cast<uchar*>(img.constBits());
 
-    int lineskip = img.bytesPerLine();
+    qsizetype lineskip = img.bytesPerLine();
     int depth = img.depth() >> 3;
 
     const QRect imageRect(0, 0, img.width(), img.height());
-    const QRect r = rect & imageRect & imageRect.translated(-offset);
-    const QPoint p = rect.topLeft() + offset;
-
-    if (r.isEmpty())
+    const QRect sourceRect = rect.intersected(imageRect).intersected(imageRect.translated(-offset));
+    if (sourceRect.isEmpty())
         return;
+
+    const QRect destRect = sourceRect.translated(offset);
+    Q_ASSERT_X(imageRect.contains(destRect), "qt_scrollRectInImage",
+        "The sourceRect should already account for clipping, both pre and post scroll");
 
     const uchar *src;
     uchar *dest;
 
-    if (r.top() < p.y()) {
-        src = mem + r.bottom() * lineskip + r.left() * depth;
-        dest = mem + (p.y() + r.height() - 1) * lineskip + p.x() * depth;
+    if (sourceRect.top() < destRect.top()) {
+        src = mem + sourceRect.bottom() * lineskip + sourceRect.left() * depth;
+        dest = mem + (destRect.top() + sourceRect.height() - 1) * lineskip + destRect.left() * depth;
         lineskip = -lineskip;
     } else {
-        src = mem + r.top() * lineskip + r.left() * depth;
-        dest = mem + p.y() * lineskip + p.x() * depth;
+        src = mem + sourceRect.top() * lineskip + sourceRect.left() * depth;
+        dest = mem + destRect.top() * lineskip + destRect.left() * depth;
     }
 
-    const int w = r.width();
-    int h = r.height();
+    const int w = sourceRect.width();
+    int h = sourceRect.height();
     const int bytes = w * depth;
 
     // overlapping segments?

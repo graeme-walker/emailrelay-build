@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QDebug>
 #include <QTextDocument>
@@ -37,7 +12,7 @@
 #include <QBuffer>
 #include <qtest.h>
 
-Q_DECLARE_METATYPE(QVector<QTextLayout::FormatRange>)
+Q_DECLARE_METATYPE(QList<QTextLayout::FormatRange>)
 
 class tst_QText: public QObject
 {
@@ -50,7 +25,9 @@ public:
 
 private slots:
     void loadHtml_data();
+#ifndef QT_NO_TEXTHTMLPARSER
     void loadHtml();
+#endif
 
     void shaping_data();
     void shaping();
@@ -72,9 +49,11 @@ private slots:
     void paintLayoutToPixmap();
     void paintLayoutToPixmap_painterFill();
 
+#ifndef QT_NO_TEXTHTMLPARSER
     void document();
     void paintDocToPixmap();
     void paintDocToPixmap_painterFill();
+#endif
 
 private:
     QSize setupTextLayout(QTextLayout *layout, bool wrap = true, int wrapWidth = 100);
@@ -101,6 +80,7 @@ void tst_QText::loadHtml_data()
         + parag;
 }
 
+#ifndef QT_NO_TEXTHTMLPARSER
 void tst_QText::loadHtml()
 {
     QFETCH(QString, source);
@@ -109,6 +89,7 @@ void tst_QText::loadHtml()
         doc.setHtml(source);
     }
 }
+#endif
 
 void tst_QText::shaping_data()
 {
@@ -122,10 +103,10 @@ void tst_QText::shaping_data()
     QFile file(testFile);
     QVERIFY(file.open(QFile::ReadOnly));
     QByteArray data = file.readAll();
-    QVERIFY(data.count() > 1000);
+    QVERIFY(data.size() > 1000);
     QStringList list = QString::fromUtf8(data.data()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-    QVERIFY(list.count() %2 == 0); // even amount as we have title and then content.
-    for (int i=0; i < list.count(); i+=2) {
+    QVERIFY(list.size() % 2 == 0); // even amount as we have title and then content.
+    for (int i = 0; i < list.size(); i += 2) {
         QTest::newRow(list.at(i).toLatin1()) << list.at(i+1);
     }
 }
@@ -319,13 +300,13 @@ void tst_QText::layout()
 void tst_QText::formattedLayout_data()
 {
     QTest::addColumn<QString>("text");
-    QTest::addColumn<QVector<QTextLayout::FormatRange> >("ranges");
+    QTest::addColumn<QList<QTextLayout::FormatRange>>("ranges");
 
     QTextCharFormat format;
     format.setForeground(QColor("steelblue"));
 
     {
-        QVector<QTextLayout::FormatRange> ranges;
+        QList<QTextLayout::FormatRange> ranges;
 
         QTextLayout::FormatRange formatRange;
         formatRange.format = format;
@@ -336,7 +317,7 @@ void tst_QText::formattedLayout_data()
         QTest::newRow("short-single") << m_shortLorem << ranges;
     }
     {
-        QVector<QTextLayout::FormatRange> ranges;
+        QList<QTextLayout::FormatRange> ranges;
 
         QString text = m_lorem.repeated(100);
         const int width = 1;
@@ -355,7 +336,7 @@ void tst_QText::formattedLayout_data()
 void tst_QText::formattedLayout()
 {
     QFETCH(QString, text);
-    QFETCH(QVector<QTextLayout::FormatRange>, ranges);
+    QFETCH(QList<QTextLayout::FormatRange>, ranges);
 
     QTextLayout layout(text);
     layout.setFormats(ranges);
@@ -396,10 +377,11 @@ void tst_QText::paintLayoutToPixmap_painterFill()
     }
 }
 
+#ifndef QT_NO_TEXTHTMLPARSER
 void tst_QText::document()
 {
     QTextDocument *doc = new QTextDocument;
-    Q_UNUSED(doc)
+    Q_UNUSED(doc);
 
     QBENCHMARK {
         QTextDocument *doc = new QTextDocument;
@@ -438,6 +420,7 @@ void tst_QText::paintDocToPixmap_painterFill()
         doc->drawContents(&p);
     }
 }
+#endif
 
 QTEST_MAIN(tst_QText)
 

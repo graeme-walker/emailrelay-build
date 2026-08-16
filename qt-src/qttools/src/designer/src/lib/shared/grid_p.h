@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 //
 //  W A R N I N G
@@ -42,6 +17,7 @@
 
 #include "shared_global_p.h"
 
+#include <QtCore/qcompare.h>
 #include <QtCore/qvariant.h>
 
 QT_BEGIN_NAMESPACE
@@ -86,11 +62,15 @@ public:
     int widgetHandleAdjustX(int x) const;
     int widgetHandleAdjustY(int y) const;
 
-    inline bool operator==(const Grid &rhs) const { return equals(rhs); }
-    inline bool operator!=(const Grid &rhs) const { return !equals(rhs); }
-
 private:
-    bool equals(const Grid &rhs) const;
+    friend bool comparesEqual(const Grid &lhs, const Grid &rhs) noexcept
+    {
+        return lhs.m_visible == rhs.m_visible
+            && lhs.m_snapX == rhs.m_snapX && lhs.m_snapY == rhs.m_snapY
+            && lhs.m_deltaX == rhs.m_deltaX && lhs.m_deltaY == rhs.m_deltaY;
+    }
+    Q_DECLARE_EQUALITY_COMPARABLE(Grid)
+
     int snapValue(int value, int grid) const;
     bool m_visible;
     bool m_snapX;

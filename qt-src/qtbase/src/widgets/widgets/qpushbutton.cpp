@@ -1,46 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qapplication.h"
 #include "qbitmap.h"
-#include "qdesktopwidget.h"
-#include <private/qdesktopwidget_p.h>
 #if QT_CONFIG(dialog)
 #include <private/qdialog_p.h>
 #endif
@@ -62,7 +24,7 @@
 #include "qdialogbuttonbox.h"
 #endif
 
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 #include "qaccessible.h"
 #endif
 
@@ -82,7 +44,7 @@ QT_BEGIN_NAMESPACE
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image windows-pushbutton.png
+    \image fusion-pushbutton.png
 
     The push button, or command button, is perhaps the most commonly
     used widget in any graphical user interface. Push (click) a button
@@ -173,7 +135,7 @@ QT_BEGIN_NAMESPACE
     and other API, and QPushButton provides GUI logic.
     See QAbstractButton for more information about the API.
 
-    \sa QToolButton, QRadioButton, QCheckBox, {fowler}{GUI Design Handbook: Push Button}
+    \sa QToolButton, QRadioButton, QCheckBox
 */
 
 /*!
@@ -332,6 +294,8 @@ void QPushButton::initStyleOption(QStyleOptionButton *option) const
         option->state |= QStyle::State_On;
     if (!d->flat && !d->down)
         option->state |= QStyle::State_Raised;
+    if (underMouse() && hasMouseTracking())
+        option->state.setFlag(QStyle::State_MouseOver, d->hovering);
     option->text = d->text;
     option->icon = d->icon;
     option->iconSize = iconSize();
@@ -352,7 +316,7 @@ void QPushButton::setAutoDefault(bool enable)
 bool QPushButton::autoDefault() const
 {
     Q_D(const QPushButton);
-    if(d->autoDefault == QPushButtonPrivate::Auto)
+    if (d->autoDefault == QPushButtonPrivate::Auto)
         return ( d->dialogParent() != nullptr );
     return d->autoDefault;
 }
@@ -370,7 +334,7 @@ void QPushButton::setDefault(bool enable)
     }
 #endif
     update();
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     QAccessible::State s;
     s.defaultButton = true;
     QAccessibleStateChangeEvent event(this, s);
@@ -418,17 +382,16 @@ QSize QPushButton::sizeHint() const
         s = QStringLiteral("XXXX");
     QFontMetrics fm = fontMetrics();
     QSize sz = fm.size(Qt::TextShowMnemonic, s);
-    if(!empty || !w)
+    if (!empty || !w)
         w += sz.width();
-    if(!empty || !h)
+    if (!empty || !h)
         h = qMax(h, sz.height());
     opt.rect.setSize(QSize(w, h)); // PM_MenuButtonIndicator depends on the height
 #if QT_CONFIG(menu)
     if (menu())
         w += style()->pixelMetric(QStyle::PM_MenuButtonIndicator, &opt, this);
 #endif
-    d->sizeHint = (style()->sizeFromContents(QStyle::CT_PushButton, &opt, QSize(w, h), this).
-                  expandedTo(QApplication::globalStrut()));
+    d->sizeHint = style()->sizeFromContents(QStyle::CT_PushButton, &opt, QSize(w, h), this);
     return d->sizeHint;
 }
 
@@ -512,6 +475,27 @@ void QPushButton::focusOutEvent(QFocusEvent *e)
 /*!
     \reimp
 */
+void QPushButton::mouseMoveEvent(QMouseEvent *e)
+{
+    Q_D(QPushButton);
+
+    if (testAttribute(Qt::WA_Hover)) {
+        bool hit = false;
+        if (underMouse())
+            hit = hitButton(e->position().toPoint());
+
+        if (hit != d->hovering) {
+            update(rect());
+            d->hovering = hit;
+        }
+    }
+
+    QAbstractButton::mouseMoveEvent(e);
+}
+
+/*!
+    \reimp
+*/
 bool QPushButton::hitButton(const QPoint &pos) const
 {
     QStyleOptionButton option;
@@ -541,7 +525,8 @@ void QPushButton::setMenu(QMenu* menu)
         return;
 
     if (menu && !d->menu) {
-        connect(this, SIGNAL(pressed()), this, SLOT(_q_popupPressed()), Qt::UniqueConnection);
+        QObjectPrivate::connect(this, &QPushButton::pressed,
+                                d, &QPushButtonPrivate::popupPressed, Qt::UniqueConnection);
     }
     if (d->menu)
         removeAction(d->menu->menuAction());
@@ -578,10 +563,10 @@ void QPushButton::showMenu()
     if (!d || !d->menu)
         return;
     setDown(true);
-    d->_q_popupPressed();
+    d->popupPressed();
 }
 
-void QPushButtonPrivate::_q_popupPressed()
+void QPushButtonPrivate::popupPressed()
 {
     Q_Q(QPushButton);
     if (!down || !menu)
@@ -591,17 +576,14 @@ void QPushButtonPrivate::_q_popupPressed()
 
     QPoint menuPos = adjustedMenuPosition();
 
-    QPointer<QPushButton> guard(q);
-    QMenuPrivate::get(menu)->causedPopup.widget = guard;
+    QMenuPrivate::get(menu)->causedPopup.widget = q;
 
     //Because of a delay in menu effects, we must keep track of the
     //menu visibility to avoid flicker on button release
     menuOpen = true;
-    menu->exec(menuPos);
-    if (guard) {
-        menuOpen = false;
-        q->setDown(false);
-    }
+    QObject::connect(menu, &QMenu::aboutToHide,
+                     q, [q, this]{ menuOpen = false; q->setDown(false); }, Qt::SingleShotConnection);
+    menu->popup(menuPos);
 }
 
 QPoint QPushButtonPrivate::adjustedMenuPosition()
@@ -623,7 +605,7 @@ QPoint QPushButtonPrivate::adjustedMenuPosition()
     QPoint globalPos = q->mapToGlobal(rect.topLeft());
     int x = globalPos.x();
     int y = globalPos.y();
-    const QRect availableGeometry = QDesktopWidgetPrivate::availableGeometry(q);
+    const QRect availableGeometry = QWidgetPrivate::availableScreenGeometry(q, q->mapToGlobal(rect.center()));
     if (horizontal) {
         if (globalPos.y() + rect.height() + menuSize.height() <= availableGeometry.bottom()) {
             y += rect.height();
@@ -644,6 +626,13 @@ QPoint QPushButtonPrivate::adjustedMenuPosition()
 }
 
 #endif // QT_CONFIG(menu)
+
+void QPushButtonPrivate::init()
+{
+    Q_Q(QPushButton);
+    q->setAttribute(Qt::WA_MacShowFocusRect);
+    resetLayoutItemMargins();
+}
 
 void QPushButtonPrivate::resetLayoutItemMargins()
 {

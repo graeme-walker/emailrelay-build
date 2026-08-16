@@ -3,8 +3,10 @@
  *
  * This file was part of the Independent JPEG Group's software:
  * Copyright (C) 1991-1998, Thomas G. Lane.
+ * Lossless JPEG Modifications:
+ * Copyright (C) 1999, Ken Murchison.
  * libjpeg-turbo Modifications:
- * Copyright (C) 2012, 2015, D. R. Commander.
+ * Copyright (C) 2012, 2015, 2022, 2024, D. R. Commander.
  * For conditions of distribution and use, see the accompanying README.ijg
  * file.
  *
@@ -151,7 +153,7 @@ typedef my_marker_reader *my_marker_ptr;
 #define INPUT_BYTE(cinfo, V, action) \
   MAKESTMT( MAKE_BYTE_AVAIL(cinfo, action); \
             bytes_in_buffer--; \
-            V = GETJOCTET(*next_input_byte++); )
+            V = *next_input_byte++; )
 
 /* As above, but read two bytes interpreted as an unsigned 16-bit integer.
  * V should be declared unsigned int or perhaps JLONG.
@@ -159,10 +161,10 @@ typedef my_marker_reader *my_marker_ptr;
 #define INPUT_2BYTES(cinfo, V, action) \
   MAKESTMT( MAKE_BYTE_AVAIL(cinfo, action); \
             bytes_in_buffer--; \
-            V = ((unsigned int)GETJOCTET(*next_input_byte++)) << 8; \
+            V = ((unsigned int)(*next_input_byte++)) << 8; \
             MAKE_BYTE_AVAIL(cinfo, action); \
             bytes_in_buffer--; \
-            V += GETJOCTET(*next_input_byte++); )
+            V += *next_input_byte++; )
 
 
 /*
@@ -237,7 +239,8 @@ get_soi(j_decompress_ptr cinfo)
 
 
 LOCAL(boolean)
-get_sof(j_decompress_ptr cinfo, boolean is_prog, boolean is_arith)
+get_sof(j_decompress_ptr cinfo, boolean is_prog, boolean is_lossless,
+        boolean is_arith)
 /* Process a SOFn marker */
 {
   JLONG length;
@@ -245,7 +248,11 @@ get_sof(j_decompress_ptr cinfo, boolean is_prog, boolean is_arith)
   jpeg_component_info *compptr;
   INPUT_VARS(cinfo);
 
+  if (cinfo->marker->saw_SOF)
+    ERREXIT(cinfo, JERR_SOF_DUPLICATE);
+
   cinfo->progressive_mode = is_prog;
+  cinfo->master->lossless = is_lossless;
   cinfo->arith_code = is_arith;
 
   INPUT_2BYTES(cinfo, length, return FALSE);
@@ -260,9 +267,6 @@ get_sof(j_decompress_ptr cinfo, boolean is_prog, boolean is_arith)
   TRACEMS4(cinfo, 1, JTRC_SOF, cinfo->unread_marker,
            (int)cinfo->image_width, (int)cinfo->image_height,
            cinfo->num_components);
-
-  if (cinfo->marker->saw_SOF)
-    ERREXIT(cinfo, JERR_SOF_DUPLICATE);
 
   /* We don't support files in which the image height is initially specified */
   /* as 0 and is later redefined by DNL.  As long as we have to check that,  */
@@ -473,7 +477,7 @@ get_dht(j_decompress_ptr cinfo)
     for (i = 0; i < count; i++)
       INPUT_BYTE(cinfo, huffval[i], return FALSE);
 
-    MEMZERO(&huffval[count], (256 - count) * sizeof(UINT8));
+    memset(&huffval[count], 0, (256 - count) * sizeof(UINT8));
 
     length -= count;
 
@@ -491,8 +495,8 @@ get_dht(j_decompress_ptr cinfo)
     if (*htblptr == NULL)
       *htblptr = jpeg_alloc_huff_table((j_common_ptr)cinfo);
 
-    MEMCOPY((*htblptr)->bits, bits, sizeof((*htblptr)->bits));
-    MEMCOPY((*htblptr)->huffval, huffval, sizeof((*htblptr)->huffval));
+    memcpy((*htblptr)->bits, bits, sizeof((*htblptr)->bits));
+    memcpy((*htblptr)->huffval, huffval, sizeof((*htblptr)->huffval));
   }
 
   if (length != 0)
@@ -608,18 +612,18 @@ examine_app0(j_decompress_ptr cinfo, JOCTET *data, unsigned int datalen,
   JLONG totallen = (JLONG)datalen + remaining;
 
   if (datalen >= APP0_DATA_LEN &&
-      GETJOCTET(data[0]) == 0x4A &&
-      GETJOCTET(data[1]) == 0x46 &&
-      GETJOCTET(data[2]) == 0x49 &&
-      GETJOCTET(data[3]) == 0x46 &&
-      GETJOCTET(data[4]) == 0) {
+      data[0] == 0x4A &&
+      data[1] == 0x46 &&
+      data[2] == 0x49 &&
+      data[3] == 0x46 &&
+      data[4] == 0) {
     /* Found JFIF APP0 marker: save info */
     cinfo->saw_JFIF_marker = TRUE;
-    cinfo->JFIF_major_version = GETJOCTET(data[5]);
-    cinfo->JFIF_minor_version = GETJOCTET(data[6]);
-    cinfo->density_unit = GETJOCTET(data[7]);
-    cinfo->X_density = (GETJOCTET(data[8]) << 8) + GETJOCTET(data[9]);
-    cinfo->Y_density = (GETJOCTET(data[10]) << 8) + GETJOCTET(data[11]);
+    cinfo->JFIF_major_version = data[5];
+    cinfo->JFIF_minor_version = data[6];
+    cinfo->density_unit = data[7];
+    cinfo->X_density = (data[8] << 8) + data[9];
+    cinfo->Y_density = (data[10] << 8) + data[11];
     /* Check version.
      * Major version must be 1, anything else signals an incompatible change.
      * (We used to treat this as an error, but now it's a nonfatal warning,
@@ -634,24 +638,22 @@ examine_app0(j_decompress_ptr cinfo, JOCTET *data, unsigned int datalen,
              cinfo->JFIF_major_version, cinfo->JFIF_minor_version,
              cinfo->X_density, cinfo->Y_density, cinfo->density_unit);
     /* Validate thumbnail dimensions and issue appropriate messages */
-    if (GETJOCTET(data[12]) | GETJOCTET(data[13]))
-      TRACEMS2(cinfo, 1, JTRC_JFIF_THUMBNAIL,
-               GETJOCTET(data[12]), GETJOCTET(data[13]));
+    if (data[12] | data[13])
+      TRACEMS2(cinfo, 1, JTRC_JFIF_THUMBNAIL, data[12], data[13]);
     totallen -= APP0_DATA_LEN;
-    if (totallen !=
-        ((JLONG)GETJOCTET(data[12]) * (JLONG)GETJOCTET(data[13]) * (JLONG)3))
+    if (totallen != ((JLONG)data[12] * (JLONG)data[13] * (JLONG)3))
       TRACEMS1(cinfo, 1, JTRC_JFIF_BADTHUMBNAILSIZE, (int)totallen);
   } else if (datalen >= 6 &&
-             GETJOCTET(data[0]) == 0x4A &&
-             GETJOCTET(data[1]) == 0x46 &&
-             GETJOCTET(data[2]) == 0x58 &&
-             GETJOCTET(data[3]) == 0x58 &&
-             GETJOCTET(data[4]) == 0) {
+             data[0] == 0x4A &&
+             data[1] == 0x46 &&
+             data[2] == 0x58 &&
+             data[3] == 0x58 &&
+             data[4] == 0) {
     /* Found JFIF "JFXX" extension APP0 marker */
     /* The library doesn't actually do anything with these,
      * but we try to produce a helpful trace message.
      */
-    switch (GETJOCTET(data[5])) {
+    switch (data[5]) {
     case 0x10:
       TRACEMS1(cinfo, 1, JTRC_THUMB_JPEG, (int)totallen);
       break;
@@ -662,8 +664,7 @@ examine_app0(j_decompress_ptr cinfo, JOCTET *data, unsigned int datalen,
       TRACEMS1(cinfo, 1, JTRC_THUMB_RGB, (int)totallen);
       break;
     default:
-      TRACEMS2(cinfo, 1, JTRC_JFIF_EXTENSION,
-               GETJOCTET(data[5]), (int)totallen);
+      TRACEMS2(cinfo, 1, JTRC_JFIF_EXTENSION, data[5], (int)totallen);
       break;
     }
   } else {
@@ -684,16 +685,16 @@ examine_app14(j_decompress_ptr cinfo, JOCTET *data, unsigned int datalen,
   unsigned int version, flags0, flags1, transform;
 
   if (datalen >= APP14_DATA_LEN &&
-      GETJOCTET(data[0]) == 0x41 &&
-      GETJOCTET(data[1]) == 0x64 &&
-      GETJOCTET(data[2]) == 0x6F &&
-      GETJOCTET(data[3]) == 0x62 &&
-      GETJOCTET(data[4]) == 0x65) {
+      data[0] == 0x41 &&
+      data[1] == 0x64 &&
+      data[2] == 0x6F &&
+      data[3] == 0x62 &&
+      data[4] == 0x65) {
     /* Found Adobe APP14 marker */
-    version = (GETJOCTET(data[5]) << 8) + GETJOCTET(data[6]);
-    flags0 = (GETJOCTET(data[7]) << 8) + GETJOCTET(data[8]);
-    flags1 = (GETJOCTET(data[9]) << 8) + GETJOCTET(data[10]);
-    transform = GETJOCTET(data[11]);
+    version = (data[5] << 8) + data[6];
+    flags0 = (data[7] << 8) + data[8];
+    flags1 = (data[9] << 8) + data[10];
+    transform = data[11];
     TRACEMS4(cinfo, 1, JTRC_ADOBE, version, flags0, flags1, transform);
     cinfo->saw_Adobe_marker = TRUE;
     cinfo->Adobe_transform = (UINT8)transform;
@@ -818,13 +819,11 @@ save_marker(j_decompress_ptr cinfo)
   /* Done reading what we want to read */
   if (cur_marker != NULL) {     /* will be NULL if bogus length word */
     /* Add new marker to end of list */
-    if (cinfo->marker_list == NULL) {
-      cinfo->marker_list = cur_marker;
+    if (cinfo->marker_list == NULL || cinfo->master->marker_list_end == NULL) {
+      cinfo->marker_list = cinfo->master->marker_list_end = cur_marker;
     } else {
-      jpeg_saved_marker_ptr prev = cinfo->marker_list;
-      while (prev->next != NULL)
-        prev = prev->next;
-      prev->next = cur_marker;
+      cinfo->master->marker_list_end->next = cur_marker;
+      cinfo->master->marker_list_end = cur_marker;
     }
     /* Reset pointer & calc remaining data length */
     data = cur_marker->data;
@@ -993,32 +992,40 @@ read_markers(j_decompress_ptr cinfo)
 
     case M_SOF0:                /* Baseline */
     case M_SOF1:                /* Extended sequential, Huffman */
-      if (!get_sof(cinfo, FALSE, FALSE))
+      if (!get_sof(cinfo, FALSE, FALSE, FALSE))
         return JPEG_SUSPENDED;
       break;
 
     case M_SOF2:                /* Progressive, Huffman */
-      if (!get_sof(cinfo, TRUE, FALSE))
+      if (!get_sof(cinfo, TRUE, FALSE, FALSE))
+        return JPEG_SUSPENDED;
+      break;
+
+    case M_SOF3:                /* Lossless, Huffman */
+      if (!get_sof(cinfo, FALSE, TRUE, FALSE))
         return JPEG_SUSPENDED;
       break;
 
     case M_SOF9:                /* Extended sequential, arithmetic */
-      if (!get_sof(cinfo, FALSE, TRUE))
+      if (!get_sof(cinfo, FALSE, FALSE, TRUE))
         return JPEG_SUSPENDED;
       break;
 
     case M_SOF10:               /* Progressive, arithmetic */
-      if (!get_sof(cinfo, TRUE, TRUE))
+      if (!get_sof(cinfo, TRUE, FALSE, TRUE))
+        return JPEG_SUSPENDED;
+      break;
+
+    case M_SOF11:               /* Lossless, arithmetic */
+      if (!get_sof(cinfo, FALSE, TRUE, TRUE))
         return JPEG_SUSPENDED;
       break;
 
     /* Currently unsupported SOFn types */
-    case M_SOF3:                /* Lossless, Huffman */
     case M_SOF5:                /* Differential sequential, Huffman */
     case M_SOF6:                /* Differential progressive, Huffman */
     case M_SOF7:                /* Differential lossless, Huffman */
     case M_JPG:                 /* Reserved for JPEG extensions */
-    case M_SOF11:               /* Lossless, arithmetic */
     case M_SOF13:               /* Differential sequential, arithmetic */
     case M_SOF14:               /* Differential progressive, arithmetic */
     case M_SOF15:               /* Differential lossless, arithmetic */

@@ -1,36 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
-#include <QtTest/QtTest>
-
+#include <QTest>
+#include <QSignalSpy>
+#include <QTimer>
 
 #include <qdatetime.h>
+
+using namespace std::chrono_literals;
+using namespace Qt::StringLiterals;
 
 class tst_QSignalSpy : public QObject
 {
@@ -57,6 +36,7 @@ private slots:
     void spyFunctionPointerWithBasicArgs();
     void spyFunctionPointerWithPointers();
     void spyFunctionPointerWithQtClasses();
+    void spyFunctionPointerWithCustomClass();
     void spyFunctionPointerWithBasicQtClasses();
     void spyFunctionPointerWithQtTypedefs();
 
@@ -70,7 +50,11 @@ private slots:
 
     void spyOnMetaMethod_invalid();
     void spyOnMetaMethod_invalid_data();
+
+    void signalSpyDoesNotRaceOnCrossThreadSignal();
 };
+
+struct CustomType {};
 
 class QtTestObject: public QObject
 {
@@ -99,15 +83,15 @@ void tst_QSignalSpy::spyWithoutArgs()
     QtTestObject obj;
 
     QSignalSpy spy(&obj, SIGNAL(sig0()));
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     emit obj.sig0();
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     emit obj.sig0();
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 
     QList<QVariant> args = spy.takeFirst();
-    QCOMPARE(args.count(), 0);
+    QCOMPARE(args.size(), 0);
 }
 
 void tst_QSignalSpy::spyWithBasicArgs()
@@ -116,10 +100,10 @@ void tst_QSignalSpy::spyWithBasicArgs()
     QSignalSpy spy(&obj, SIGNAL(sig1(int,int)));
 
     emit obj.sig1(1, 2);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     QList<QVariant> args = spy.takeFirst();
-    QCOMPARE(args.count(), 2);
+    QCOMPARE(args.size(), 2);
     QCOMPARE(args.at(0).toInt(), 1);
     QCOMPARE(args.at(1).toInt(), 2);
 
@@ -127,7 +111,7 @@ void tst_QSignalSpy::spyWithBasicArgs()
 
     emit obj.sigLong(1l, 2l);
     args = spyl.takeFirst();
-    QCOMPARE(args.count(), 2);
+    QCOMPARE(args.size(), 2);
     QCOMPARE(qvariant_cast<long>(args.at(0)), 1l);
     QCOMPARE(qvariant_cast<long>(args.at(1)), 2l);
 }
@@ -144,13 +128,15 @@ void tst_QSignalSpy::spyWithPointers()
     int i2 = 2;
 
     emit obj.sig2(&i1, &i2);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     QList<QVariant> args = spy.takeFirst();
-    QCOMPARE(args.count(), 2);
+    QCOMPARE(args.size(), 2);
     QCOMPARE(*static_cast<int * const *>(args.at(0).constData()), &i1);
     QCOMPARE(*static_cast<int * const *>(args.at(1).constData()), &i2);
 }
+
+struct CustomType2;
 
 class QtTestObject2: public QObject
 {
@@ -163,6 +149,8 @@ signals:
     void sig3(QObject *o);
     void sig4(QChar c);
     void sig5(const QVariant &v);
+    void sig6(CustomType );
+    void sig7(CustomType2 *);
 };
 
 void tst_QSignalSpy::spyWithBasicQtClasses()
@@ -171,15 +159,15 @@ void tst_QSignalSpy::spyWithBasicQtClasses()
 
     QSignalSpy spy(&obj, SIGNAL(sig(QString)));
     emit obj.sig(QString("bubu"));
-    QCOMPARE(spy.count(), 1);
-    QCOMPARE(spy.at(0).count(), 1);
+    QCOMPARE(spy.size(), 1);
+    QCOMPARE(spy.at(0).size(), 1);
     QCOMPARE(spy.at(0).at(0).toString(), QString("bubu"));
 
     QSignalSpy spy2(&obj, SIGNAL(sig5(QVariant)));
     QVariant val(45);
     emit obj.sig5(val);
-    QCOMPARE(spy2.count(), 1);
-    QCOMPARE(spy2.at(0).count(), 1);
+    QCOMPARE(spy2.size(), 1);
+    QCOMPARE(spy2.at(0).size(), 1);
     QCOMPARE(spy2.at(0).at(0), val);
     QCOMPARE(qvariant_cast<QVariant>(spy2.at(0).at(0)), val);
 }
@@ -192,8 +180,8 @@ void tst_QSignalSpy::spyWithQtClasses()
     QSignalSpy spy(&obj, SIGNAL(sig2(QDateTime)));
     QDateTime dt = QDateTime::currentDateTime();
     emit obj.sig2(dt);
-    QCOMPARE(spy.count(), 1);
-    QCOMPARE(spy.at(0).count(), 1);
+    QCOMPARE(spy.size(), 1);
+    QCOMPARE(spy.at(0).size(), 1);
     QCOMPARE(spy.at(0).at(0).typeName(), "QDateTime");
     QCOMPARE(*static_cast<const QDateTime *>(spy.at(0).at(0).constData()), dt);
     QCOMPARE(spy.at(0).at(0).toDateTime(), dt);
@@ -264,7 +252,7 @@ void tst_QSignalSpy::wait_signalEmittedTooLate()
     QTimer::singleShot(500, this, SIGNAL(sigFoo()));
     QSignalSpy spy(this, SIGNAL(sigFoo()));
     QVERIFY(!spy.wait(200));
-    QTRY_COMPARE(spy.count(), 1);
+    QTRY_COMPARE(spy.size(), 1);
 }
 
 void tst_QSignalSpy::wait_signalEmittedMultipleTimes()
@@ -273,13 +261,13 @@ void tst_QSignalSpy::wait_signalEmittedMultipleTimes()
     QTimer::singleShot(800, this, SIGNAL(sigFoo()));
     QSignalSpy spy(this, SIGNAL(sigFoo()));
     QVERIFY(spy.wait());
-    QCOMPARE(spy.count(), 1); // we don't wait for the second signal...
+    QCOMPARE(spy.size(), 1); // we don't wait for the second signal...
     QVERIFY(spy.wait());
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
     QVERIFY(!spy.wait(1));
     QTimer::singleShot(10, this, SIGNAL(sigFoo()));
     QVERIFY(spy.wait());
-    QCOMPARE(spy.count(), 3);
+    QCOMPARE(spy.size(), 3);
 }
 
 void tst_QSignalSpy::spyFunctionPointerWithoutArgs()
@@ -287,15 +275,15 @@ void tst_QSignalSpy::spyFunctionPointerWithoutArgs()
     QtTestObject obj;
 
     QSignalSpy spy(&obj, &QtTestObject::sig0);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     emit obj.sig0();
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     emit obj.sig0();
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 
     QList<QVariant> args = spy.takeFirst();
-    QCOMPARE(args.count(), 0);
+    QCOMPARE(args.size(), 0);
 }
 
 void tst_QSignalSpy::spyFunctionPointerWithBasicArgs()
@@ -304,10 +292,10 @@ void tst_QSignalSpy::spyFunctionPointerWithBasicArgs()
     QSignalSpy spy(&obj, &QtTestObject::sig1);
 
     emit obj.sig1(1, 2);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     QList<QVariant> args = spy.takeFirst();
-    QCOMPARE(args.count(), 2);
+    QCOMPARE(args.size(), 2);
     QCOMPARE(args.at(0).toInt(), 1);
     QCOMPARE(args.at(1).toInt(), 2);
 
@@ -315,7 +303,7 @@ void tst_QSignalSpy::spyFunctionPointerWithBasicArgs()
 
     emit obj.sigLong(1l, 2l);
     args = spyl.takeFirst();
-    QCOMPARE(args.count(), 2);
+    QCOMPARE(args.size(), 2);
     QCOMPARE(qvariant_cast<long>(args.at(0)), 1l);
     QCOMPARE(qvariant_cast<long>(args.at(1)), 2l);
 }
@@ -332,10 +320,10 @@ void tst_QSignalSpy::spyFunctionPointerWithPointers()
     int i2 = 2;
 
     emit obj.sig2(&i1, &i2);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     QList<QVariant> args = spy.takeFirst();
-    QCOMPARE(args.count(), 2);
+    QCOMPARE(args.size(), 2);
     QCOMPARE(*static_cast<int * const *>(args.at(0).constData()), &i1);
     QCOMPARE(*static_cast<int * const *>(args.at(1).constData()), &i2);
 }
@@ -346,15 +334,15 @@ void tst_QSignalSpy::spyFunctionPointerWithBasicQtClasses()
 
     QSignalSpy spy(&obj, &QtTestObject2::sig);
     emit obj.sig(QString("bubu"));
-    QCOMPARE(spy.count(), 1);
-    QCOMPARE(spy.at(0).count(), 1);
+    QCOMPARE(spy.size(), 1);
+    QCOMPARE(spy.at(0).size(), 1);
     QCOMPARE(spy.at(0).at(0).toString(), QString("bubu"));
 
     QSignalSpy spy2(&obj, &QtTestObject2::sig5);
     QVariant val(45);
     emit obj.sig5(val);
-    QCOMPARE(spy2.count(), 1);
-    QCOMPARE(spy2.at(0).count(), 1);
+    QCOMPARE(spy2.size(), 1);
+    QCOMPARE(spy2.at(0).size(), 1);
     QCOMPARE(spy2.at(0).at(0), val);
     QCOMPARE(qvariant_cast<QVariant>(spy2.at(0).at(0)), val);
 }
@@ -366,8 +354,8 @@ void tst_QSignalSpy::spyFunctionPointerWithQtClasses()
     QSignalSpy spy(&obj, &QtTestObject2::sig2);
     QDateTime dt = QDateTime::currentDateTime();
     emit obj.sig2(dt);
-    QCOMPARE(spy.count(), 1);
-    QCOMPARE(spy.at(0).count(), 1);
+    QCOMPARE(spy.size(), 1);
+    QCOMPARE(spy.at(0).size(), 1);
     QCOMPARE(spy.at(0).at(0).typeName(), "QDateTime");
     QCOMPARE(*static_cast<const QDateTime *>(spy.at(0).at(0).constData()), dt);
     QCOMPARE(spy.at(0).at(0).toDateTime(), dt);
@@ -381,6 +369,23 @@ void tst_QSignalSpy::spyFunctionPointerWithQtClasses()
     QSignalSpy spy3(&obj, &QtTestObject2::sig4);
     emit obj.sig4(QChar('A'));
     QCOMPARE(qvariant_cast<QChar>(spy3.value(0).value(0)), QChar('A'));
+}
+
+void tst_QSignalSpy::spyFunctionPointerWithCustomClass()
+{
+    QtTestObject2 obj;
+    {
+        QSignalSpy spy(&obj, &QtTestObject2::sig6);
+        emit obj.sig6({});
+        QCOMPARE(spy.size(), 1);
+        QCOMPARE(spy.at(0).size(), 1);
+        QCOMPARE(spy.at(0).at(0).typeName(), "CustomType");
+    }
+
+    {
+        QTest::ignoreMessage(QtMsgType::QtWarningMsg, "QSignalSpy: Unable to handle parameter '' of type 'CustomType2*' of method 'sig7', use qRegisterMetaType to register it.");
+        QSignalSpy spy(&obj, &QtTestObject2::sig7);
+    }
 }
 
 void tst_QSignalSpy::spyFunctionPointerWithQtTypedefs()
@@ -419,7 +424,7 @@ void tst_QSignalSpy::waitFunctionPointer_signalEmittedTooLate()
     QSignalSpy spy(this, &tst_QSignalSpy::sigFoo);
     QVERIFY(!spy.wait(200));
     QTest::qWait(400);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 }
 
 void tst_QSignalSpy::waitFunctionPointer_signalEmittedMultipleTimes()
@@ -428,13 +433,13 @@ void tst_QSignalSpy::waitFunctionPointer_signalEmittedMultipleTimes()
     QTimer::singleShot(800, this, SIGNAL(sigFoo()));
     QSignalSpy spy(this, &tst_QSignalSpy::sigFoo);
     QVERIFY(spy.wait());
-    QCOMPARE(spy.count(), 1); // we don't wait for the second signal...
+    QCOMPARE(spy.size(), 1); // we don't wait for the second signal...
     QVERIFY(spy.wait());
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
     QVERIFY(!spy.wait(1));
     QTimer::singleShot(10, this, SIGNAL(sigFoo()));
     QVERIFY(spy.wait());
-    QCOMPARE(spy.count(), 3);
+    QCOMPARE(spy.size(), 3);
 }
 
 void tst_QSignalSpy::spyOnMetaMethod()
@@ -453,35 +458,67 @@ void tst_QSignalSpy::spyOnMetaMethod()
     QVERIFY(spy.isValid());
 
     obj.setObjectName("A new object name");
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 }
 
 Q_DECLARE_METATYPE(QMetaMethod);
 void tst_QSignalSpy::spyOnMetaMethod_invalid()
 {
+    QFETCH(const QByteArray, message);
     QFETCH(QObject*, object);
     QFETCH(QMetaMethod, signal);
 
+    QTest::ignoreMessage(QtWarningMsg, message.data());
     QSignalSpy spy(object, signal);
     QVERIFY(!spy.isValid());
 }
 
 void tst_QSignalSpy::spyOnMetaMethod_invalid_data()
 {
+    QTest::addColumn<QByteArray>("message");
     QTest::addColumn<QObject*>("object");
     QTest::addColumn<QMetaMethod>("signal");
 
     QTest::addRow("Invalid object")
+        << "QSignalSpy: Cannot spy on a null object"_ba
         << static_cast<QObject*>(nullptr)
         << QMetaMethod();
 
     QTest::addRow("Empty signal")
+        << "QSignalSpy: Null signal is not valid"_ba
         << new QObject(this)
         << QMetaMethod();
 
     QTest::addRow("Method is not a signal")
+        << "QSignalSpy: Not a signal: 'deleteLater()'"_ba
         << new QObject(this)
         << QObject::staticMetaObject.method(QObject::staticMetaObject.indexOfMethod("deleteLater()"));
+}
+
+class EmitSignal_Thread : public QThread
+{
+    Q_OBJECT
+public:
+    void run() override
+    {
+        emit valueChanged(42, u"is the answer"_s);
+    }
+
+Q_SIGNALS:
+    void valueChanged(int value, const QString &str);
+};
+
+void tst_QSignalSpy::signalSpyDoesNotRaceOnCrossThreadSignal()
+{
+    EmitSignal_Thread thread;
+    QSignalSpy valueChangedSpy(&thread, &EmitSignal_Thread::valueChanged);
+    QVERIFY(valueChangedSpy.isValid());
+
+    thread.start();
+    QVERIFY(valueChangedSpy.wait(5s));
+    QCOMPARE(valueChangedSpy[0][0].toInt(), 42);
+    QCOMPARE(valueChangedSpy[0][1].toString(), u"is the answer"_s);
+    QVERIFY(thread.wait(5s));
 }
 
 QTEST_MAIN(tst_QSignalSpy)

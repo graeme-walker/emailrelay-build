@@ -407,7 +407,7 @@
 //  -------------
 //
 // This file is not part of the Qt API.  It exists for the convenience
-// of Qt Designer.  This header
+// of Qt Widgets Designer. This header
 // file may change from version to version without notice, or even be removed.
 //
 // We mean it.
@@ -421,7 +421,6 @@
 #include &lt;qlist.h&gt;
 #include &lt;qstring.h&gt;
 #include &lt;qstringlist.h&gt;
-#include &lt;qvector.h&gt;
 #include &lt;qxmlstream.h&gt;
 #include &lt;qglobal.h&gt;
 

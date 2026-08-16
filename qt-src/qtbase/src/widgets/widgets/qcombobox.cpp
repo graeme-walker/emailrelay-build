@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcombobox.h"
 
@@ -44,13 +8,11 @@
 #include <qpa/qplatformmenu.h>
 #include <qlineedit.h>
 #include <qapplication.h>
-#include <qdesktopwidget.h>
-#include <private/qdesktopwidget_p.h>
 #include <qlistview.h>
 #if QT_CONFIG(tableview)
 #include <qtableview.h>
 #endif
-#include <qitemdelegate.h>
+#include <qabstractitemdelegate.h>
 #include <qmap.h>
 #if QT_CONFIG(menu)
 #include <qmenu.h>
@@ -83,24 +45,30 @@
 # include <private/qeffects_p.h>
 #endif
 #include <private/qstyle_p.h>
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 #include "qaccessible.h"
 #endif
+#include <array>
+
+#include <QtCore/qpointer.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 QComboBoxPrivate::QComboBoxPrivate()
     : QWidgetPrivate(),
       shownOnce(false),
-      autoCompletion(true),
       duplicatesEnabled(false),
       frame(true),
-      inserting(false)
+      inserting(false),
+      hidingPopup(false)
 {
 }
 
 QComboBoxPrivate::~QComboBoxPrivate()
 {
+    disconnectModel();
 #ifdef Q_OS_MAC
     cleanupNativePopup();
 #endif
@@ -143,7 +111,7 @@ QStyleOptionMenuItem QComboMenuDelegate::getStyleOption(const QStyleOptionViewIt
     else
         menuOption.menuItemType = QStyleOptionMenuItem::Normal;
 
-    QVariant variant = index.model()->data(index, Qt::DecorationRole);
+    const QVariant variant = index.data(Qt::DecorationRole);
     switch (variant.userType()) {
     case QMetaType::QIcon:
         menuOption.icon = qvariant_cast<QIcon>(variant);
@@ -161,9 +129,8 @@ QStyleOptionMenuItem QComboMenuDelegate::getStyleOption(const QStyleOptionViewIt
         menuOption.palette.setBrush(QPalette::All, QPalette::Window,
                                     qvariant_cast<QBrush>(index.data(Qt::BackgroundRole)));
     }
-    menuOption.text = index.model()->data(index, Qt::DisplayRole).toString()
-                           .replace(QLatin1Char('&'), QLatin1String("&&"));
-    menuOption.tabWidth = 0;
+    menuOption.text = index.data(Qt::DisplayRole).toString().replace(u'&', "&&"_L1);
+    menuOption.reservedShortcutWidth = 0;
     menuOption.maxIconWidth =  option.decorationSize.width() + 4;
     menuOption.menuRect = option.rect;
     menuOption.rect = option.rect;
@@ -237,7 +204,7 @@ bool QComboMenuDelegate::editorEvent(QEvent *event, QAbstractItemModel *model,
 }
 
 #if QT_CONFIG(completer)
-void QComboBoxPrivate::_q_completerActivated(const QModelIndex &index)
+void QComboBoxPrivate::completerActivated(const QModelIndex &index)
 {
     Q_Q(QComboBox);
 #if QT_CONFIG(proxymodel)
@@ -263,15 +230,6 @@ void QComboBoxPrivate::_q_completerActivated(const QModelIndex &index)
         }
     }
 #endif
-
-#  ifdef QT_KEYPAD_NAVIGATION
-    if ( QApplicationPrivate::keypadNavigationEnabled()
-         && q->isEditable()
-         && q->completer()
-         && q->completer()->completionMode() == QCompleter::UnfilteredPopupCompletion ) {
-        q->setEditFocus(false);
-    }
-#  endif // QT_KEYPAD_NAVIGATION
 }
 #endif // QT_CONFIG(completer)
 
@@ -286,7 +244,7 @@ void QComboBoxPrivate::updateArrow(QStyle::StateFlag state)
     q->update(q->rect());
 }
 
-void QComboBoxPrivate::_q_modelReset()
+void QComboBoxPrivate::modelReset()
 {
     Q_Q(QComboBox);
     if (lineEdit) {
@@ -298,7 +256,7 @@ void QComboBoxPrivate::_q_modelReset()
     q->update();
 }
 
-void QComboBoxPrivate::_q_modelDestroyed()
+void QComboBoxPrivate::modelDestroyed()
 {
     model = QAbstractItemModelPrivate::staticEmptyModel();
 }
@@ -322,11 +280,12 @@ void QComboBoxPrivate::trySetValidIndex()
         setCurrentIndex(QModelIndex());
 }
 
-QRect QComboBoxPrivate::popupGeometry(int screen) const
+QRect QComboBoxPrivate::popupGeometry(const QPoint &globalPosition) const
 {
+    Q_Q(const QComboBox);
     return QStylePrivate::useFullScreenForPopup()
-        ? QDesktopWidgetPrivate::screenGeometry(screen)
-        : QDesktopWidgetPrivate::availableGeometry(screen);
+        ? QWidgetPrivate::screenGeometry(q, globalPosition)
+        : QWidgetPrivate::availableScreenGeometry(q, globalPosition);
 }
 
 bool QComboBoxPrivate::updateHoverControl(const QPoint &pos)
@@ -385,16 +344,6 @@ int QComboBoxPrivate::computeWidthHint() const
     return tmp.width();
 }
 
-#if QT_DEPRECATED_SINCE(5, 15)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-static constexpr QComboBox::SizeAdjustPolicy deprecatedAdjustToMinimumContentsLength()
-{
-    return QComboBox::AdjustToMinimumContentsLength;
-}
-QT_WARNING_POP
-#endif
-
 QSize QComboBoxPrivate::recomputeSizeHint(QSize &sh) const
 {
     Q_Q(const QComboBox);
@@ -410,7 +359,7 @@ QSize QComboBoxPrivate::recomputeSizeHint(QSize &sh) const
             case QComboBox::AdjustToContents:
             case QComboBox::AdjustToContentsOnFirstShow:
                 if (count == 0) {
-                    sh.rwidth() = 7 * fm.horizontalAdvance(QLatin1Char('x'));
+                    sh.rwidth() = 7 * fm.horizontalAdvance(u'x');
                 } else {
                     for (int i = 0; i < count; ++i) {
                         if (!q->itemIcon(i).isNull()) {
@@ -422,10 +371,6 @@ QSize QComboBoxPrivate::recomputeSizeHint(QSize &sh) const
                     }
                 }
                 break;
-            case deprecatedAdjustToMinimumContentsLength():
-                for (int i = 0; i < count && !hasIcon; ++i)
-                    hasIcon = !q->itemIcon(i).isNull();
-                break;
             case QComboBox::AdjustToMinimumContentsLengthWithIcon:
                 ;
             }
@@ -434,7 +379,7 @@ QSize QComboBoxPrivate::recomputeSizeHint(QSize &sh) const
                 hasIcon = !q->itemIcon(i).isNull();
         }
         if (minimumContentsLength > 0)
-            sh.setWidth(qMax(sh.width(), minimumContentsLength * fm.horizontalAdvance(QLatin1Char('X')) + (hasIcon ? iconSize.width() + 4 : 0)));
+            sh.setWidth(qMax(sh.width(), minimumContentsLength * fm.horizontalAdvance(u'X') + (hasIcon ? iconSize.width() + 4 : 0)));
         if (!placeholderText.isEmpty())
             sh.setWidth(qMax(sh.width(), fm.boundingRect(placeholderText).width()));
 
@@ -450,7 +395,7 @@ QSize QComboBoxPrivate::recomputeSizeHint(QSize &sh) const
         q->initStyleOption(&opt);
         sh = q->style()->sizeFromContents(QStyle::CT_ComboBox, &opt, sh, q);
     }
-    return sh.expandedTo(QApplication::globalStrut());
+    return sh;
 }
 
 void QComboBoxPrivate::adjustComboBoxSize()
@@ -547,21 +492,27 @@ QComboBoxPrivateContainer::QComboBoxPrivateContainer(QAbstractItemView *itemView
         setLineWidth(1);
     }
 
-    setFrameStyle(combo->style()->styleHint(QStyle::SH_ComboBox_PopupFrameStyle, &opt, combo));
-
     if (top) {
         layout->insertWidget(0, top);
-        connect(top, SIGNAL(doScroll(int)), this, SLOT(scrollItemView(int)));
+        connect(top, &QComboBoxPrivateScroller::doScroll,
+                this, &QComboBoxPrivateContainer::scrollItemView);
     }
     if (bottom) {
         layout->addWidget(bottom);
-        connect(bottom, SIGNAL(doScroll(int)), this, SLOT(scrollItemView(int)));
+        connect(bottom, &QComboBoxPrivateScroller::doScroll,
+                this, &QComboBoxPrivateContainer::scrollItemView);
     }
 
     // Some styles (Mac) have a margin at the top and bottom of the popup.
     layout->insertSpacing(0, 0);
     layout->addSpacing(0);
-    updateTopBottomMargin();
+    updateStyleSettings();
+}
+
+QComboBoxPrivateContainer::~QComboBoxPrivateContainer()
+{
+    disconnect(view, &QAbstractItemView::destroyed,
+               this, &QComboBoxPrivateContainer::viewDestroyed);
 }
 
 void QComboBoxPrivateContainer::scrollItemView(int action)
@@ -644,13 +595,13 @@ void QComboBoxPrivateContainer::setItemView(QAbstractItemView *itemView)
         view->removeEventFilter(this);
         view->viewport()->removeEventFilter(this);
 #if QT_CONFIG(scrollbar)
-        disconnect(view->verticalScrollBar(), SIGNAL(valueChanged(int)),
-                   this, SLOT(updateScrollers()));
-        disconnect(view->verticalScrollBar(), SIGNAL(rangeChanged(int,int)),
-                   this, SLOT(updateScrollers()));
+        disconnect(view->verticalScrollBar(), &QScrollBar::valueChanged,
+                   this, &QComboBoxPrivateContainer::updateScrollers);
+        disconnect(view->verticalScrollBar(), &QScrollBar::rangeChanged,
+                   this, &QComboBoxPrivateContainer::updateScrollers);
 #endif
-        disconnect(view, SIGNAL(destroyed()),
-                   this, SLOT(viewDestroyed()));
+        disconnect(view, &QAbstractItemView::destroyed,
+                   this, &QComboBoxPrivateContainer::viewDestroyed);
 
         if (isAncestorOf(view))
             delete view;
@@ -681,13 +632,13 @@ void QComboBoxPrivateContainer::setItemView(QAbstractItemView *itemView)
     view->setLineWidth(0);
     view->setEditTriggers(QAbstractItemView::NoEditTriggers);
 #if QT_CONFIG(scrollbar)
-    connect(view->verticalScrollBar(), SIGNAL(valueChanged(int)),
-            this, SLOT(updateScrollers()));
-    connect(view->verticalScrollBar(), SIGNAL(rangeChanged(int,int)),
-            this, SLOT(updateScrollers()));
+    connect(view->verticalScrollBar(), &QScrollBar::valueChanged,
+            this, &QComboBoxPrivateContainer::updateScrollers);
+    connect(view->verticalScrollBar(), &QScrollBar::rangeChanged,
+            this, &QComboBoxPrivateContainer::updateScrollers);
 #endif
-    connect(view, SIGNAL(destroyed()),
-            this, SLOT(viewDestroyed()));
+    connect(view, &QAbstractItemView::destroyed,
+            this, &QComboBoxPrivateContainer::viewDestroyed);
 }
 
 /*!
@@ -744,14 +695,20 @@ void QComboBoxPrivateContainer::updateTopBottomMargin()
     boxLayout->invalidate();
 }
 
+void QComboBoxPrivateContainer::updateStyleSettings()
+{
+    // add scroller arrows if style needs them
+    QStyleOptionComboBox opt = comboStyleOption();
+    view->setMouseTracking(combo->style()->styleHint(QStyle::SH_ComboBox_ListMouseTracking, &opt, combo) ||
+                           combo->style()->styleHint(QStyle::SH_ComboBox_Popup, &opt, combo));
+    setFrameStyle(combo->style()->styleHint(QStyle::SH_ComboBox_PopupFrameStyle, &opt, combo));
+    updateTopBottomMargin();
+}
+
 void QComboBoxPrivateContainer::changeEvent(QEvent *e)
 {
-    if (e->type() == QEvent::StyleChange) {
-        QStyleOptionComboBox opt = comboStyleOption();
-        view->setMouseTracking(combo->style()->styleHint(QStyle::SH_ComboBox_ListMouseTracking, &opt, combo) ||
-                               combo->style()->styleHint(QStyle::SH_ComboBox_Popup, &opt, combo));
-        setFrameStyle(combo->style()->styleHint(QStyle::SH_ComboBox_PopupFrameStyle, &opt, combo));
-    }
+    if (e->type() == QEvent::StyleChange)
+        updateStyleSettings();
 
     QFrame::changeEvent(e);
 }
@@ -768,8 +725,9 @@ bool QComboBoxPrivateContainer::eventFilter(QObject *o, QEvent *e)
 #ifdef QT_KEYPAD_NAVIGATION
         case Qt::Key_Select:
 #endif
-            if (view->currentIndex().isValid() && (view->currentIndex().flags() & Qt::ItemIsEnabled) ) {
+            if (view->currentIndex().isValid() && view->currentIndex().flags().testFlag(Qt::ItemIsEnabled)) {
                 combo->hidePopup();
+                keyEvent->accept();
                 emit itemSelected(view->currentIndex());
             }
             return true;
@@ -779,11 +737,13 @@ bool QComboBoxPrivateContainer::eventFilter(QObject *o, QEvent *e)
             Q_FALLTHROUGH();
         case Qt::Key_F4:
             combo->hidePopup();
+            keyEvent->accept();
+            emit itemSelected(view->currentIndex());
             return true;
         default:
 #if QT_CONFIG(shortcut)
-            if (keyEvent->matches(QKeySequence::Cancel)) {
-                combo->hidePopup();
+            if (keyEvent->matches(QKeySequence::Cancel) && isVisible()) {
+                keyEvent->accept();
                 return true;
             }
 #endif
@@ -795,10 +755,10 @@ bool QComboBoxPrivateContainer::eventFilter(QObject *o, QEvent *e)
         if (isVisible()) {
             QMouseEvent *m = static_cast<QMouseEvent *>(e);
             QWidget *widget = static_cast<QWidget *>(o);
-            QPoint vector = widget->mapToGlobal(m->pos()) - initialClickPosition;
+            QPoint vector = widget->mapToGlobal(m->position().toPoint()) - initialClickPosition;
             if (vector.manhattanLength() > 9 && blockMouseReleaseTimer.isActive())
                 blockMouseReleaseTimer.stop();
-            QModelIndex indexUnderMouse = view->indexAt(m->pos());
+            QModelIndex indexUnderMouse = view->indexAt(m->position().toPoint());
             if (indexUnderMouse.isValid()
                      && !QComboBoxDelegate::isSeparator(indexUnderMouse)) {
                 view->setCurrentIndex(indexUnderMouse);
@@ -812,10 +772,10 @@ bool QComboBoxPrivateContainer::eventFilter(QObject *o, QEvent *e)
         bool ignoreEvent = maybeIgnoreMouseButtonRelease && popupTimer.elapsed() < QApplication::doubleClickInterval();
 
         QMouseEvent *m = static_cast<QMouseEvent *>(e);
-        if (isVisible() && view->rect().contains(m->pos()) && view->currentIndex().isValid()
+        if (isVisible() && view->rect().contains(m->position().toPoint()) && view->currentIndex().isValid()
             && !blockMouseReleaseTimer.isActive() && !ignoreEvent
-            && (view->currentIndex().flags() & Qt::ItemIsEnabled)
-            && (view->currentIndex().flags() & Qt::ItemIsSelectable)) {
+            && (view->currentIndex().flags().testFlag(Qt::ItemIsEnabled))
+            && (view->currentIndex().flags().testFlag(Qt::ItemIsSelectable))) {
             combo->hidePopup();
             emit itemSelected(view->currentIndex());
             return true;
@@ -853,7 +813,7 @@ void QComboBoxPrivateContainer::mousePressEvent(QMouseEvent *e)
     opt.subControls = QStyle::SC_All;
     opt.activeSubControls = QStyle::SC_ComboBoxArrow;
     QStyle::SubControl sc = combo->style()->hitTestComplexControl(QStyle::CC_ComboBox, &opt,
-                                                           combo->mapFromGlobal(e->globalPos()),
+                                                           combo->mapFromGlobal(e->globalPosition().toPoint()),
                                                            combo);
     if ((combo->isEditable() && sc == QStyle::SC_ComboBoxArrow)
         || (!combo->isEditable() && sc != QStyle::SC_None))
@@ -864,7 +824,7 @@ void QComboBoxPrivateContainer::mousePressEvent(QMouseEvent *e)
 void QComboBoxPrivateContainer::mouseReleaseEvent(QMouseEvent *e)
 {
     Q_UNUSED(e);
-    if (!blockMouseReleaseTimer.isActive()){
+    if (!blockMouseReleaseTimer.isActive()) {
         combo->hidePopup();
         emit resetButton();
     }
@@ -905,8 +865,8 @@ QStyleOptionComboBox QComboBoxPrivateContainer::comboStyleOption() const
 
     \value AdjustToContents              The combobox will always adjust to the contents
     \value AdjustToContentsOnFirstShow   The combobox will adjust to its contents the first time it is shown.
-    \omitvalue AdjustToMinimumContentsLength
-    \value AdjustToMinimumContentsLengthWithIcon The combobox will adjust to \l minimumContentsLength plus space for an icon. For performance reasons use this policy on large models.
+    \value AdjustToMinimumContentsLengthWithIcon The combobox will adjust to \l minimumContentsLength plus space for an icon.
+                                         For performance reasons use this policy on large models.
 */
 
 /*!
@@ -917,20 +877,8 @@ QStyleOptionComboBox QComboBoxPrivateContainer::comboStyleOption() const
     when the choice is not changed. If you need to know when the
     choice actually changes, use signal currentIndexChanged() or
     currentTextChanged().
-
 */
 
-/*!
-    \fn void QComboBox::activated(const QString &text)
-
-    This signal is sent when the user chooses an item in the combobox.
-    The item's \a text is passed. Note that this signal is sent even
-    when the choice is not changed. If you need to know when the
-    choice actually changes, use signal currentIndexChanged() or
-    currentTextChanged().
-
-    \obsolete Use QComboBox::textActivated() instead
-*/
 /*!
     \fn void QComboBox::textActivated(const QString &text)
     \since 5.14
@@ -950,14 +898,6 @@ QStyleOptionComboBox QComboBoxPrivateContainer::comboStyleOption() const
 */
 
 /*!
-    \fn void QComboBox::highlighted(const QString &text)
-
-    This signal is sent when an item in the combobox popup list is
-    highlighted by the user. The item's \a text is passed.
-
-    \obsolete Use textHighlighted() instead
-*/
-/*!
     \fn void QComboBox::textHighlighted(const QString &text)
     \since 5.14
 
@@ -976,23 +916,14 @@ QStyleOptionComboBox QComboBoxPrivateContainer::comboStyleOption() const
 */
 
 /*!
-    \fn void QComboBox::currentIndexChanged(const QString &text)
-    \since 4.1
-
-    This signal is sent whenever the currentIndex in the combobox
-    changes either through user interaction or programmatically.  The
-    item's \a text is passed.
-
-    \obsolete Use currentIndexChanged(int) and get the text from
-    the itemText(int) method.
-*/
-
-/*!
     \fn void QComboBox::currentTextChanged(const QString &text)
     \since 5.0
 
-    This signal is sent whenever currentText changes. The new value
-    is passed as \a text.
+    This signal is emitted whenever currentText changes.
+    The new value is passed as \a text.
+
+    \note It is not emitted, if currentText remains the same,
+    even if currentIndex changes.
 */
 
 /*!
@@ -1018,38 +949,33 @@ QComboBox::QComboBox(QComboBoxPrivate &dd, QWidget *parent)
 
 /*!
     \class QComboBox
-    \brief The QComboBox widget is a combined button and popup list.
+    \brief The QComboBox widget combines a button with a dropdown list.
 
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image windows-combobox.png
+    \table
+       \row
+          \li \inlineimage collapsed_combobox.png
+              \caption Collapsed QCombobox
+          \li
+              \inlineimage expanded_combobox.png
+              \caption Expanded QCombobox
+    \endtable
 
-    A QComboBox provides a means of presenting a list of options to the user
-    in a way that takes up the minimum amount of screen space.
+    \section1 Display Features
+    A QComboBox is a compact way to present a list of options to the user.
 
-    A combobox is a selection widget that displays the current item,
-    and can pop up a list of selectable items. A combobox may be editable,
-    allowing the user to modify each item in the list.
+    A combobox is a selection widget that shows the current item,
+    and pops up a list of selectable items when clicked. Comboboxes can
+    contain pixmaps as well as strings if the insertItem() and setItemText()
+    functions are suitably overloaded.
 
-    Comboboxes can contain pixmaps as well as strings; the
-    insertItem() and setItemText() functions are suitably overloaded.
-    For editable comboboxes, the function clearEditText() is provided,
+    \section1 Editing Features
+    A combobox may be editable, allowing the user to modify each item in the
+    list. For editable comboboxes, the function clearEditText() is provided,
     to clear the displayed string without changing the combobox's
     contents.
-
-    There are three signals emitted if the current item of a combobox
-    changes, currentIndexChanged(), currentTextChanged() and activated().
-    currentIndexChanged() and currentTextChanged() are always emitted
-    regardless if the change
-    was done programmatically or by user interaction, while
-    activated() is only emitted when the change is caused by user
-    interaction. The highlighted() signal is emitted when the user
-    highlights an item in the combobox popup list. All three signals
-    exist in two versions, one with a QString argument and one with an
-    \c int argument. If the user selects or highlights a pixmap, only
-    the \c int signals are emitted. Whenever the text of an editable
-    combobox is changed the editTextChanged() signal is emitted.
 
     When the user enters a new string in an editable combobox, the
     widget may or may not insert it, and it can insert it in several
@@ -1073,21 +999,36 @@ QComboBox::QComboBox(QComboBoxPrivate &dd, QWidget *parent)
     setCompleter() and whether or not the user can add duplicates
     is set with setDuplicatesEnabled().
 
-    QComboBox uses the \l{Model/View Programming}{model/view
-    framework} for its popup list and to store its items.  By default
-    a QStandardItemModel stores the items and a QListView subclass
-    displays the popuplist. You can access the model and view directly
-    (with model() and view()), but QComboBox also provides functions
-    to set and get item data (e.g., setItemData() and itemText()). You
-    can also set a new model and view (with setModel() and setView()).
-    For the text and icon in the combobox label, the data in the model
-    that has the Qt::DisplayRole and Qt::DecorationRole is used.  Note
-    that you cannot alter the \l{QAbstractItemView::}{SelectionMode}
-    of the view(), e.g., by using
+    \section1 Signals
+    There are three signals emitted if the current item of a combobox
+    changes: currentIndexChanged(), currentTextChanged(), and activated().
+    currentIndexChanged() and currentTextChanged() are always emitted
+    regardless if the change
+    was done programmatically or by user interaction, while
+    activated() is only emitted when the change is caused by user
+    interaction. The highlighted() signal is emitted when the user
+    highlights an item in the combobox popup list. All three signals
+    exist in two versions, one with a QString argument and one with an
+    \c int argument. If the user selects or highlights a pixmap, only
+    the \c int signals are emitted. Whenever the text of an editable
+    combobox is changed, the editTextChanged() signal is emitted.
+
+    \section1 Model/View Framework
+
+    QComboBox uses the \l{Model/View Programming}{model/view framework} for its
+    popup list and to store its items. By default a QStandardItemModel stores
+    the items and a QListView subclass displays the popuplist. You can access
+    the model and view directly (with model() and view()), but QComboBox also
+    provides functions to set and get item data, for example, setItemData() and
+    itemText(). You can also set a new model and view (with setModel()
+    and setView()). For the text and icon in the combobox label, the data in
+    the model that has the Qt::DisplayRole and Qt::DecorationRole is used.
+
+    \note You cannot alter the \l{QAbstractItemView::}{SelectionMode}
+    of the view(), for example, by using
     \l{QAbstractItemView::}{setSelectionMode()}.
 
-    \sa QLineEdit, QSpinBox, QRadioButton, QButtonGroup,
-        {fowler}{GUI Design Handbook: Combo Box, Drop-Down List Box}
+    \sa QLineEdit, QSpinBox, QRadioButton, QButtonGroup
 */
 
 void QComboBoxPrivate::init()
@@ -1121,27 +1062,30 @@ QComboBoxPrivateContainer* QComboBoxPrivate::viewContainer()
 
     Q_Q(QComboBox);
     container = new QComboBoxPrivateContainer(new QComboBoxListView(q), q);
+    disconnectModel();
     container->itemView()->setModel(model);
+    connectModel();
     container->itemView()->setTextElideMode(Qt::ElideMiddle);
     updateDelegate(true);
     updateLayoutDirection();
     updateViewContainerPaletteAndOpacity();
-    QObject::connect(container, SIGNAL(itemSelected(QModelIndex)),
-                     q, SLOT(_q_itemSelected(QModelIndex)));
-    QObject::connect(container->itemView()->selectionModel(),
-                     SIGNAL(currentChanged(QModelIndex,QModelIndex)),
-                     q, SLOT(_q_emitHighlighted(QModelIndex)));
-    QObject::connect(container, SIGNAL(resetButton()), q, SLOT(_q_resetButton()));
+    QObjectPrivate::connect(container, &QComboBoxPrivateContainer::itemSelected,
+                            this, &QComboBoxPrivate::itemSelected);
+    QObjectPrivate::connect(container->itemView()->selectionModel(),
+                            &QItemSelectionModel::currentChanged,
+                            this, &QComboBoxPrivate::emitHighlighted);
+    QObjectPrivate::connect(container, &QComboBoxPrivateContainer::resetButton,
+                            this, &QComboBoxPrivate::resetButton);
     return container;
 }
 
 
-void QComboBoxPrivate::_q_resetButton()
+void QComboBoxPrivate::resetButton()
 {
     updateArrow(QStyle::State_None);
 }
 
-void QComboBoxPrivate::_q_dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight)
+void QComboBoxPrivate::dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight)
 {
     Q_Q(QComboBox);
     if (inserting || topLeft.parent() != root)
@@ -1159,17 +1103,17 @@ void QComboBoxPrivate::_q_dataChanged(const QModelIndex &topLeft, const QModelIn
             lineEdit->setText(text);
             updateLineEditGeometry();
         } else {
-            emit q->currentTextChanged(text);
+            updateCurrentText(text);
         }
         q->update();
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
         QAccessibleValueChangeEvent event(q, text);
         QAccessible::updateAccessibility(&event);
 #endif
     }
 }
 
-void QComboBoxPrivate::_q_rowsInserted(const QModelIndex &parent, int start, int end)
+void QComboBoxPrivate::rowsInserted(const QModelIndex &parent, int start, int end)
 {
     Q_Q(QComboBox);
     if (inserting || parent != root)
@@ -1184,20 +1128,31 @@ void QComboBoxPrivate::_q_rowsInserted(const QModelIndex &parent, int start, int
     // set current index if combo was previously empty and there is no placeholderText
     if (start == 0 && (end - start + 1) == q->count() && !currentIndex.isValid() &&
         placeholderText.isEmpty()) {
+#if QT_CONFIG(accessibility)
+        // This might have been called by the model emitting rowInserted(), at which
+        // point the view won't have updated the accessibility bridge yet about its new
+        // dimensions. Do it now so that the change of the selection matches the row
+        // indexes of the accessibility bridge's representation.
+        if (container && container->itemView()) {
+            QAccessibleTableModelChangeEvent event(container->itemView(),
+                                                   QAccessibleTableModelChangeEvent::ModelReset);
+            QAccessible::updateAccessibility(&event);
+        }
+#endif
         q->setCurrentIndex(0);
         // need to emit changed if model updated index "silently"
     } else if (currentIndex.row() != indexBeforeChange) {
         q->update();
-        _q_emitCurrentIndexChanged(currentIndex);
+        emitCurrentIndexChanged(currentIndex);
     }
 }
 
-void QComboBoxPrivate::_q_updateIndexBeforeChange()
+void QComboBoxPrivate::updateIndexBeforeChange()
 {
     indexBeforeChange = currentIndex.row();
 }
 
-void QComboBoxPrivate::_q_rowsRemoved(const QModelIndex &parent, int /*start*/, int /*end*/)
+void QComboBoxPrivate::rowsRemoved(const QModelIndex &parent, int /*start*/, int /*end*/)
 {
     Q_Q(QComboBox);
     if (parent != root)
@@ -1207,6 +1162,12 @@ void QComboBoxPrivate::_q_rowsRemoved(const QModelIndex &parent, int /*start*/, 
         sizeHint = QSize();
         adjustComboBoxSize();
         q->updateGeometry();
+    }
+
+    // model has removed the last row
+    if (model->rowCount(root) == 0) {
+        setCurrentIndex(QModelIndex());
+        return;
     }
 
     // model has changed the currentIndex
@@ -1220,7 +1181,7 @@ void QComboBoxPrivate::_q_rowsRemoved(const QModelIndex &parent, int /*start*/, 
             updateLineEditGeometry();
         }
         q->update();
-        _q_emitCurrentIndexChanged(currentIndex);
+        emitCurrentIndexChanged(currentIndex);
     }
 }
 
@@ -1287,8 +1248,12 @@ void QComboBox::initStyleOption(QStyleOptionComboBox *option) const
         option->activeSubControls = d->hoverControl;
     }
     option->currentText = currentText();
-    if (d->currentIndex.isValid())
+    if (d->currentIndex.isValid()) {
         option->currentIcon = d->itemIcon(d->currentIndex);
+        QVariant alignment = d->model->data(d->currentIndex, Qt::TextAlignmentRole);
+        if (alignment.isValid())
+            option->textAlignment = static_cast<Qt::Alignment>(alignment.toUInt());
+    }
     option->iconSize = iconSize();
     if (d->container && d->container->isVisible())
         option->state |= QStyle::State_On;
@@ -1304,7 +1269,7 @@ void QComboBoxPrivate::updateLineEditGeometry()
     q->initStyleOption(&opt);
     QRect editRect = q->style()->subControlRect(QStyle::CC_ComboBox, &opt,
                                                 QStyle::SC_ComboBoxEditField, q);
-    if (!q->itemIcon(q->currentIndex()).isNull()) {
+    if (currentIndex.isValid() && !q->itemIcon(q->currentIndex()).isNull()) {
         QRect comboRect(editRect);
         editRect.setWidth(editRect.width() - q->iconSize().width() - 4);
         editRect = QStyle::alignedRect(q->layoutDirection(), Qt::AlignRight,
@@ -1325,7 +1290,7 @@ Qt::MatchFlags QComboBoxPrivate::matchFlags() const
 }
 
 
-void QComboBoxPrivate::_q_editingFinished()
+void QComboBoxPrivate::editingFinished()
 {
     Q_Q(QComboBox);
     if (!lineEdit)
@@ -1357,13 +1322,13 @@ void QComboBoxPrivate::_q_editingFinished()
 
 }
 
-void QComboBoxPrivate::_q_returnPressed()
+void QComboBoxPrivate::returnPressed()
 {
     Q_Q(QComboBox);
 
     // The insertion code below does not apply when the policy is QComboBox::NoInsert.
     // In case a completer is installed, item activation via the completer is handled
-    // in _q_completerActivated(). Otherwise _q_editingFinished() updates the current
+    // in completerActivated(). Otherwise editingFinished() updates the current
     // index as appropriate.
     if (insertPolicy == QComboBox::NoInsert)
         return;
@@ -1405,7 +1370,7 @@ void QComboBoxPrivate::_q_returnPressed()
             break;
         case QComboBox::InsertAlphabetically:
             index = 0;
-            for (int i=0; i< q->count(); i++, index++ ) {
+            for (int i = 0; i < q->count(); ++i, ++index) {
                 if (text.toLower() < q->itemText(i).toLower())
                     break;
             }
@@ -1421,7 +1386,7 @@ void QComboBoxPrivate::_q_returnPressed()
     }
 }
 
-void QComboBoxPrivate::_q_itemSelected(const QModelIndex &item)
+void QComboBoxPrivate::itemSelected(const QModelIndex &item)
 {
     Q_Q(QComboBox);
     if (item != currentIndex) {
@@ -1441,15 +1406,9 @@ void QComboBoxPrivate::emitActivated(const QModelIndex &index)
     QString text(itemText(index));
     emit q->activated(index.row());
     emit q->textActivated(text);
-#if QT_DEPRECATED_SINCE(5, 15)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-    emit q->activated(text);
-QT_WARNING_POP
-#endif
 }
 
-void QComboBoxPrivate::_q_emitHighlighted(const QModelIndex &index)
+void QComboBoxPrivate::emitHighlighted(const QModelIndex &index)
 {
     Q_Q(QComboBox);
     if (!index.isValid())
@@ -1457,29 +1416,17 @@ void QComboBoxPrivate::_q_emitHighlighted(const QModelIndex &index)
     QString text(itemText(index));
     emit q->highlighted(index.row());
     emit q->textHighlighted(text);
-#if QT_DEPRECATED_SINCE(5, 15)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-    emit q->highlighted(text);
-QT_WARNING_POP
-#endif
 }
 
-void QComboBoxPrivate::_q_emitCurrentIndexChanged(const QModelIndex &index)
+void QComboBoxPrivate::emitCurrentIndexChanged(const QModelIndex &index)
 {
     Q_Q(QComboBox);
     const QString text = itemText(index);
     emit q->currentIndexChanged(index.row());
-#if QT_DEPRECATED_SINCE(5, 13)
-    QT_WARNING_PUSH
-    QT_WARNING_DISABLE_DEPRECATED
-    emit q->currentIndexChanged(text);
-    QT_WARNING_POP
-#endif
     // signal lineEdit.textChanged already connected to signal currentTextChanged, so don't emit double here
     if (!lineEdit)
-        emit q->currentTextChanged(text);
-#ifndef QT_NO_ACCESSIBILITY
+        updateCurrentText(text);
+#if QT_CONFIG(accessibility)
     QAccessibleValueChangeEvent event(q, text);
     QAccessible::updateAccessibility(&event);
 #endif
@@ -1504,11 +1451,13 @@ QComboBox::~QComboBox()
     Q_D(QComboBox);
 
     QT_TRY {
-        disconnect(d->model, SIGNAL(destroyed()),
-                this, SLOT(_q_modelDestroyed()));
+        d->disconnectModel();
     } QT_CATCH(...) {
         ; // objects can't throw in destructor
     }
+
+    // Dispose of container before QComboBox goes away
+    delete d->container;
 }
 
 /*!
@@ -1539,7 +1488,7 @@ void QComboBox::setMaxVisibleItems(int maxItems)
 
 /*!
     \property QComboBox::count
-    \brief the number of items in the combobox
+    \brief the number of items in the combobox.
 
     By default, for an empty combo box, this property has a value of 0.
 */
@@ -1551,7 +1500,7 @@ int QComboBox::count() const
 
 /*!
     \property QComboBox::maxCount
-    \brief the maximum number of items allowed in the combobox
+    \brief the maximum number of items allowed in the combobox.
 
     \note If you set the maximum number to be less then the current
     amount of items in the combobox, the extra items will be
@@ -1582,108 +1531,9 @@ int QComboBox::maxCount() const
     return d->maxCount;
 }
 
-#if QT_CONFIG(completer)
-#if QT_DEPRECATED_SINCE(5, 13)
-
-/*!
-    \property QComboBox::autoCompletion
-    \brief whether the combobox provides auto-completion for editable items
-    \since 4.1
-    \obsolete
-
-    Use setCompleter() instead.
-
-    By default, this property is \c true.
-
-    \sa editable
-*/
-
-/*!
-    \obsolete
-
-    Use completer() instead.
-*/
-bool QComboBox::autoCompletion() const
-{
-    Q_D(const QComboBox);
-    return d->autoCompletion;
-}
-
-/*!
-    \obsolete
-
-    Use setCompleter() instead.
-*/
-void QComboBox::setAutoCompletion(bool enable)
-{
-    Q_D(QComboBox);
-
-#ifdef QT_KEYPAD_NAVIGATION
-    if (Q_UNLIKELY(QApplicationPrivate::keypadNavigationEnabled() && !enable && isEditable()))
-        qWarning("QComboBox::setAutoCompletion: auto completion is mandatory when combo box editable");
-#endif
-
-    d->autoCompletion = enable;
-    if (!d->lineEdit)
-        return;
-    if (enable) {
-        if (d->lineEdit->completer())
-            return;
-        d->completer = new QCompleter(d->model, d->lineEdit);
-        connect(d->completer, SIGNAL(activated(QModelIndex)), this, SLOT(_q_completerActivated(QModelIndex)));
-        d->completer->setCaseSensitivity(d->autoCompletionCaseSensitivity);
-        d->completer->setCompletionMode(QCompleter::InlineCompletion);
-        d->completer->setCompletionColumn(d->modelColumn);
-        d->lineEdit->setCompleter(d->completer);
-        d->completer->setWidget(this);
-    } else {
-        d->lineEdit->setCompleter(nullptr);
-    }
-}
-
-/*!
-    \property QComboBox::autoCompletionCaseSensitivity
-    \brief whether string comparisons are case-sensitive or case-insensitive for auto-completion
-    \obsolete
-
-    By default, this property is Qt::CaseInsensitive.
-
-    Use setCompleter() instead. Case sensitivity of the auto completion can be
-    changed using QCompleter::setCaseSensitivity().
-
-    \sa autoCompletion
-*/
-
-/*!
-    \obsolete
-
-    Use setCompleter() and QCompleter::setCaseSensitivity() instead.
-*/
-Qt::CaseSensitivity QComboBox::autoCompletionCaseSensitivity() const
-{
-    Q_D(const QComboBox);
-    return d->autoCompletionCaseSensitivity;
-}
-
-/*!
-    \obsolete
-
-    Use setCompleter() and QCompleter::setCaseSensitivity() instead.
-*/
-void QComboBox::setAutoCompletionCaseSensitivity(Qt::CaseSensitivity sensitivity)
-{
-    Q_D(QComboBox);
-    d->autoCompletionCaseSensitivity = sensitivity;
-    if (d->lineEdit && d->lineEdit->completer())
-        d->lineEdit->completer()->setCaseSensitivity(sensitivity);
-}
-#endif  //  QT_DEPRECATED_SINCE(5, 13)
-
-#endif // QT_CONFIG(completer)
-
 /*!
     \property QComboBox::duplicatesEnabled
-    \brief whether the user can enter duplicate items into the combobox
+    \brief whether the user can enter duplicate items into the combobox.
 
     Note that it is always possible to programmatically insert duplicate items into the
     combobox.
@@ -1729,7 +1579,7 @@ int QComboBox::findData(const QVariant &data, int role, Qt::MatchFlags flags) co
 /*!
     \property QComboBox::insertPolicy
     \brief the policy used to determine where user-inserted items should
-    appear in the combobox
+    appear in the combobox.
 
     The default value is \l InsertAtBottom, indicating that new items will appear
     at the bottom of the list of items.
@@ -1752,7 +1602,7 @@ void QComboBox::setInsertPolicy(InsertPolicy policy)
 /*!
     \property QComboBox::sizeAdjustPolicy
     \brief the policy describing how the size of the combobox changes
-    when the content changes
+    when the content changes.
 
     The default value is \l AdjustToContentsOnFirstShow.
 
@@ -1803,8 +1653,7 @@ void QComboBox::setMinimumContentsLength(int characters)
     d->minimumContentsLength = characters;
 
     if (d->sizeAdjustPolicy == AdjustToContents
-            || d->sizeAdjustPolicy == deprecatedAdjustToMinimumContentsLength()
-            || d->sizeAdjustPolicy == AdjustToMinimumContentsLengthWithIcon) {
+        || d->sizeAdjustPolicy == AdjustToMinimumContentsLengthWithIcon) {
         d->sizeHint = QSize();
         d->adjustComboBoxSize();
         updateGeometry();
@@ -1844,7 +1693,7 @@ void QComboBox::setIconSize(const QSize &size)
 
 /*!
     \property QComboBox::placeholderText
-    \brief Sets a \a placeholderText text shown when no valid index is set
+    \brief Sets a \a placeholderText text shown when no valid index is set.
 
     The \a placeholderText will be shown when an invalid index is set. The
     text is not accessible in the dropdown list. When this function is called
@@ -1866,7 +1715,7 @@ void QComboBox::setPlaceholderText(const QString &placeholderText)
 
     d->placeholderText = placeholderText;
     if (currentIndex() == -1) {
-      if (d->placeholderText.isEmpty() && currentIndex() == -1)
+      if (d->placeholderText.isEmpty())
         setCurrentIndex(0);
       else
         update();
@@ -1883,7 +1732,7 @@ QString QComboBox::placeholderText() const
 
 /*!
     \property QComboBox::editable
-    \brief whether the combo box can be edited by the user
+    \brief whether the combo box can be edited by the user.
 
     By default, this property is \c false. The effect of editing depends
     on the insert policy.
@@ -1922,6 +1771,8 @@ void QComboBoxPrivate::updateDelegate(bool force)
 
 QIcon QComboBoxPrivate::itemIcon(const QModelIndex &index) const
 {
+    if (!index.isValid())
+        return {};
     QVariant decoration = model->data(index, Qt::DecorationRole);
     if (decoration.userType() == QMetaType::QPixmap)
         return QIcon(qvariant_cast<QPixmap>(decoration));
@@ -1943,6 +1794,7 @@ void QComboBox::setEditable(bool editable)
             view()->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
         }
         QLineEdit *le = new QLineEdit(this);
+        le->setPalette(palette());
         setLineEdit(le);
     } else {
         if (style()->styleHint(QStyle::SH_ComboBox_Popup, &opt, this)) {
@@ -1967,6 +1819,9 @@ void QComboBox::setEditable(bool editable)
     Sets the line \a edit to use instead of the current line edit widget.
 
     The combo box takes ownership of the line edit.
+
+    \note Since the combobox's line edit owns the QCompleter, any previous
+    call to setCompleter() will no longer have any effect.
 */
 void QComboBox::setLineEdit(QLineEdit *edit)
 {
@@ -1988,38 +1843,42 @@ void QComboBox::setLineEdit(QLineEdit *edit)
 #endif
     if (d->lineEdit->parent() != this)
         d->lineEdit->setParent(this);
-    connect(d->lineEdit, SIGNAL(returnPressed()), this, SLOT(_q_returnPressed()));
-    connect(d->lineEdit, SIGNAL(editingFinished()), this, SLOT(_q_editingFinished()));
-    connect(d->lineEdit, SIGNAL(textChanged(QString)), this, SIGNAL(editTextChanged(QString)));
-    connect(d->lineEdit, SIGNAL(textChanged(QString)), this, SIGNAL(currentTextChanged(QString)));
-    connect(d->lineEdit, SIGNAL(cursorPositionChanged(int,int)), this, SLOT(updateMicroFocus()));
-    connect(d->lineEdit, SIGNAL(selectionChanged()), this, SLOT(updateMicroFocus()));
-    connect(d->lineEdit->d_func()->control, SIGNAL(updateMicroFocus()), this, SLOT(updateMicroFocus()));
+    QObjectPrivate::connect(d->lineEdit, &QLineEdit::returnPressed,
+                            d, &QComboBoxPrivate::returnPressed);
+    QObjectPrivate::connect(d->lineEdit, &QLineEdit::editingFinished,
+                            d, &QComboBoxPrivate::editingFinished);
+    connect(d->lineEdit, &QLineEdit::textChanged, this, &QComboBox::editTextChanged);
+    connect(d->lineEdit, &QLineEdit::textChanged, this, &QComboBox::currentTextChanged);
+    QObjectPrivate::connect(d->lineEdit, &QLineEdit::cursorPositionChanged,
+                            d, &QComboBoxPrivate::updateMicroFocus);
+    QObjectPrivate::connect(d->lineEdit, &QLineEdit::selectionChanged,
+                            d, &QComboBoxPrivate::updateMicroFocus);
+    QObjectPrivate::connect(d->lineEdit->d_func()->control, &QWidgetLineControl::updateMicroFocus,
+                            d, &QComboBoxPrivate::updateMicroFocus);
     d->lineEdit->setFrame(false);
     d->lineEdit->setContextMenuPolicy(Qt::NoContextMenu);
     d->updateFocusPolicy();
     d->lineEdit->setFocusProxy(this);
     d->lineEdit->setAttribute(Qt::WA_MacShowFocusRect, false);
-#if QT_DEPRECATED_SINCE(5, 13)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
+
 #if QT_CONFIG(completer)
-    setAutoCompletion(d->autoCompletion);
+    // create a default completer
+    if (!d->lineEdit->completer()) {
+        QCompleter *completer = new QCompleter(d->model, d->lineEdit);
+        completer->setCaseSensitivity(Qt::CaseInsensitive);
+        completer->setCompletionMode(QCompleter::InlineCompletion);
+        completer->setCompletionColumn(d->modelColumn);
 
 #ifdef QT_KEYPAD_NAVIGATION
-    if (QApplicationPrivate::keypadNavigationEnabled()) {
         // Editable combo boxes will have a completer that is set to UnfilteredPopupCompletion.
         // This means that when the user enters edit mode they are immediately presented with a
         // list of possible completions.
-        setAutoCompletion(true);
-        if (d->completer) {
-            d->completer->setCompletionMode(QCompleter::UnfilteredPopupCompletion);
-            connect(d->completer, SIGNAL(activated(QModelIndex)), this, SLOT(_q_completerActivated()));
-        }
+        if (QApplicationPrivate::keypadNavigationEnabled())
+            completer->setCompletionMode(QCompleter::UnfilteredPopupCompletion);
+#endif
+        // sets up connections
+        setCompleter(completer);
     }
-#endif
-#endif
-QT_WARNING_POP
 #endif
 
     setAttribute(Qt::WA_InputMethodEnabled);
@@ -2084,7 +1943,8 @@ const QValidator *QComboBox::validator() const
     By default, for an editable combo box, a QCompleter that
     performs case insensitive inline completion is automatically created.
 
-    \note The completer is removed when the \l editable property becomes \c false.
+    \note The completer is removed when the \l editable property becomes \c false,
+    or when the line edit is replaced by a call to setLineEdit().
     Setting a completer on a QComboBox that is not editable will be ignored.
 */
 void QComboBox::setCompleter(QCompleter *c)
@@ -2096,7 +1956,8 @@ void QComboBox::setCompleter(QCompleter *c)
     }
     d->lineEdit->setCompleter(c);
     if (c) {
-        connect(c, SIGNAL(activated(QModelIndex)), this, SLOT(_q_completerActivated(QModelIndex)));
+        QObjectPrivate::connect(c, QOverload<const QModelIndex &>::of(&QCompleter::activated),
+                                d, &QComboBoxPrivate::completerActivated);
         c->setWidget(this);
     }
 }
@@ -2131,6 +1992,9 @@ QAbstractItemDelegate *QComboBox::itemDelegate() const
     Sets the item \a delegate for the popup list view.
     The combobox takes ownership of the delegate.
 
+    Any existing delegate will be removed, but not deleted. QComboBox
+    does not take ownership of \a delegate.
+
     \warning You should not share the same instance of a delegate between comboboxes,
     widget mappers or views. Doing so can cause incorrect or unintuitive editing behavior
     since each view connected to a given delegate may receive the
@@ -2145,7 +2009,6 @@ void QComboBox::setItemDelegate(QAbstractItemDelegate *delegate)
         qWarning("QComboBox::setItemDelegate: cannot set a 0 delegate");
         return;
     }
-    delete view()->itemDelegate();
     view()->setItemDelegate(delegate);
 }
 
@@ -2167,7 +2030,10 @@ QAbstractItemModel *QComboBox::model() const
     Sets the model to be \a model. \a model must not be \nullptr.
     If you want to clear the contents of a model, call clear().
 
-    \sa clear()
+    \note If the combobox is editable, then the \a model will also be
+    set on the completer of the line edit.
+
+    \sa clear() setCompleter()
 */
 void QComboBox::setModel(QAbstractItemModel *model)
 {
@@ -2182,61 +2048,61 @@ void QComboBox::setModel(QAbstractItemModel *model)
         return;
 
 #if QT_CONFIG(completer)
-    if (d->lineEdit && d->lineEdit->completer()
-        && d->lineEdit->completer() == d->completer)
+    if (d->lineEdit && d->lineEdit->completer())
         d->lineEdit->completer()->setModel(model);
 #endif
-    if (d->model) {
-        disconnect(d->model, SIGNAL(dataChanged(QModelIndex,QModelIndex)),
-                   this, SLOT(_q_dataChanged(QModelIndex,QModelIndex)));
-        disconnect(d->model, SIGNAL(rowsAboutToBeInserted(QModelIndex,int,int)),
-                   this, SLOT(_q_updateIndexBeforeChange()));
-        disconnect(d->model, SIGNAL(rowsInserted(QModelIndex,int,int)),
-                   this, SLOT(_q_rowsInserted(QModelIndex,int,int)));
-        disconnect(d->model, SIGNAL(rowsAboutToBeRemoved(QModelIndex,int,int)),
-                   this, SLOT(_q_updateIndexBeforeChange()));
-        disconnect(d->model, SIGNAL(rowsRemoved(QModelIndex,int,int)),
-                   this, SLOT(_q_rowsRemoved(QModelIndex,int,int)));
-        disconnect(d->model, SIGNAL(destroyed()),
-                   this, SLOT(_q_modelDestroyed()));
-        disconnect(d->model, SIGNAL(modelAboutToBeReset()),
-                   this, SLOT(_q_updateIndexBeforeChange()));
-        disconnect(d->model, SIGNAL(modelReset()),
-                   this, SLOT(_q_modelReset()));
-        if (d->model->QObject::parent() == this)
-            delete d->model;
+    d->disconnectModel();
+    if (d->model && d->model->QObject::parent() == this) {
+        delete d->model;
+        d->model = nullptr;
     }
 
     d->model = model;
 
-    connect(model, SIGNAL(dataChanged(QModelIndex,QModelIndex)),
-            this, SLOT(_q_dataChanged(QModelIndex,QModelIndex)));
-    connect(model, SIGNAL(rowsAboutToBeInserted(QModelIndex,int,int)),
-            this, SLOT(_q_updateIndexBeforeChange()));
-    connect(model, SIGNAL(rowsInserted(QModelIndex,int,int)),
-            this, SLOT(_q_rowsInserted(QModelIndex,int,int)));
-    connect(model, SIGNAL(rowsAboutToBeRemoved(QModelIndex,int,int)),
-            this, SLOT(_q_updateIndexBeforeChange()));
-    connect(model, SIGNAL(rowsRemoved(QModelIndex,int,int)),
-            this, SLOT(_q_rowsRemoved(QModelIndex,int,int)));
-    connect(model, SIGNAL(destroyed()),
-            this, SLOT(_q_modelDestroyed()));
-    connect(model, SIGNAL(modelAboutToBeReset()),
-            this, SLOT(_q_updateIndexBeforeChange()));
-    connect(model, SIGNAL(modelReset()),
-            this, SLOT(_q_modelReset()));
-
     if (d->container) {
         d->container->itemView()->setModel(model);
-        connect(d->container->itemView()->selectionModel(),
-                SIGNAL(currentChanged(QModelIndex,QModelIndex)),
-                this, SLOT(_q_emitHighlighted(QModelIndex)), Qt::UniqueConnection);
+        QObjectPrivate::connect(d->container->itemView()->selectionModel(),
+                                &QItemSelectionModel::currentChanged,
+                                d, &QComboBoxPrivate::emitHighlighted, Qt::UniqueConnection);
     }
+
+    d->connectModel();
 
     setRootModelIndex(QModelIndex());
 
     d->trySetValidIndex();
     d->modelChanged();
+}
+
+void QComboBoxPrivate::connectModel()
+{
+    if (!model)
+        return;
+
+    modelConnections = {
+        QObjectPrivate::connect(model, &QAbstractItemModel::dataChanged,
+                                this, &QComboBoxPrivate::dataChanged),
+        QObjectPrivate::connect(model, &QAbstractItemModel::rowsAboutToBeInserted,
+                                this, &QComboBoxPrivate::updateIndexBeforeChange),
+        QObjectPrivate::connect(model, &QAbstractItemModel::rowsInserted,
+                                this, &QComboBoxPrivate::rowsInserted),
+        QObjectPrivate::connect(model, &QAbstractItemModel::rowsAboutToBeRemoved,
+                                this, &QComboBoxPrivate::updateIndexBeforeChange),
+        QObjectPrivate::connect(model, &QAbstractItemModel::rowsRemoved,
+                                this, &QComboBoxPrivate::rowsRemoved),
+        QObjectPrivate::connect(model, &QObject::destroyed,
+                                this, &QComboBoxPrivate::modelDestroyed),
+        QObjectPrivate::connect(model, &QAbstractItemModel::modelAboutToBeReset,
+                                this, &QComboBoxPrivate::updateIndexBeforeChange),
+        QObjectPrivate::connect(model, &QAbstractItemModel::modelReset,
+                                this, &QComboBoxPrivate::modelReset)
+    };
+}
+
+void QComboBoxPrivate::disconnectModel()
+{
+    for (auto &connection : modelConnections)
+        QObject::disconnect(connection);
 }
 
 /*!
@@ -2284,7 +2150,7 @@ int QComboBox::currentIndex() const
 void QComboBox::setCurrentIndex(int index)
 {
     Q_D(QComboBox);
-    QModelIndex mi = d->model->index(index, d->modelColumn, d->root);
+    QModelIndex mi = index >= 0 ? d->model->index(index, d->modelColumn, d->root) : QModelIndex();
     d->setCurrentIndex(mi);
 }
 
@@ -2321,9 +2187,24 @@ void QComboBoxPrivate::setCurrentIndex(const QModelIndex &mi)
         }
         updateLineEditGeometry();
     }
-    if (indexChanged) {
+    // If the model was reset to an empty one, currentIndex will be invalidated
+    // (because it's a QPersistentModelIndex), but the index change will never
+    // be advertised. So an explicit check for this condition is needed.
+    // The variable used for that check has to be reset when a previously valid
+    // index becomes invalid.
+    const bool modelResetToEmpty = !normalized.isValid() && indexBeforeChange != -1;
+    if (modelResetToEmpty)
+        indexBeforeChange = -1;
+
+    if (indexChanged || modelResetToEmpty) {
+        QItemSelectionModel::SelectionFlags selectionMode = QItemSelectionModel::ClearAndSelect;
+        if (q->view()->selectionBehavior() == QAbstractItemView::SelectRows)
+            selectionMode.setFlag(QItemSelectionModel::Rows);
+        if (auto *model = q->view()->selectionModel())
+            model->setCurrentIndex(currentIndex, selectionMode);
+
         q->update();
-        _q_emitCurrentIndexChanged(currentIndex);
+        emitCurrentIndexChanged(currentIndex);
     }
 }
 
@@ -2387,7 +2268,7 @@ QIcon QComboBox::itemIcon(int index) const
 
 /*!
    Returns the data for the given \a role in the given \a index in the
-   combobox, or QVariant::Invalid if there is no data for this role.
+   combobox, or an invalid QVariant if there is no data for this role.
 */
 QVariant QComboBox::itemData(int index, int role) const
 {
@@ -2452,7 +2333,7 @@ void QComboBox::insertItem(int index, const QIcon &icon, const QString &text, co
                 if (!values.isEmpty()) d->model->setItemData(item, values);
             }
             d->inserting = false;
-            d->_q_rowsInserted(d->root, index, index);
+            d->rowsInserted(d->root, index, index);
             ++itemCount;
         } else {
             d->inserting = false;
@@ -2479,7 +2360,7 @@ void QComboBox::insertItems(int index, const QStringList &list)
     if (list.isEmpty())
         return;
     index = qBound(0, index, count());
-    int insertCount = qMin(d->maxCount - index, list.count());
+    int insertCount = qMin(d->maxCount - index, list.size());
     if (insertCount <= 0)
         return;
     // For the common case where we are using the built in QStandardItemModel
@@ -2500,7 +2381,7 @@ void QComboBox::insertItems(int index, const QStringList &list)
                 d->model->setData(item, list.at(i), Qt::EditRole);
             }
             d->inserting = false;
-            d->_q_rowsInserted(d->root, index, index + insertCount - 1);
+            d->rowsInserted(d->root, index, index + insertCount - 1);
         } else {
             d->inserting = false;
         }
@@ -2610,8 +2491,11 @@ void QComboBox::setView(QAbstractItemView *itemView)
         return;
     }
 
-    if (itemView->model() != d->model)
+    if (itemView->model() != d->model) {
+        d->disconnectModel();
         itemView->setModel(d->model);
+        d->connectModel();
+    }
     d->viewContainer()->setItemView(itemView);
 }
 
@@ -2643,12 +2527,13 @@ void QComboBoxPrivate::cleanupNativePopup()
     if (!m_platformMenu)
         return;
 
+    m_platformMenu->setVisible(false);
     int count = int(m_platformMenu->tag());
     for (int i = 0; i < count; ++i)
         m_platformMenu->menuItemAt(i)->deleteLater();
 
     delete m_platformMenu;
-    m_platformMenu = 0;
+    m_platformMenu = nullptr;
 }
 
 /*!
@@ -2671,7 +2556,7 @@ bool QComboBoxPrivate::showNativePopup()
     int itemsCount = q->count();
     m_platformMenu->setTag(quintptr(itemsCount));
 
-    QPlatformMenuItem *currentItem = 0;
+    QPlatformMenuItem *currentItem = nullptr;
     int currentIndex = q->currentIndex();
 
     for (int i = 0; i < itemsCount; ++i) {
@@ -2680,15 +2565,17 @@ bool QComboBoxPrivate::showNativePopup()
         QVariant textVariant = model->data(rowIndex, Qt::EditRole);
         item->setText(textVariant.toString());
         QVariant iconVariant = model->data(rowIndex, Qt::DecorationRole);
+        const Qt::ItemFlags itemFlags = model->flags(rowIndex);
         if (iconVariant.canConvert<QIcon>())
             item->setIcon(iconVariant.value<QIcon>());
         item->setCheckable(true);
         item->setChecked(i == currentIndex);
+        item->setEnabled(itemFlags & Qt::ItemIsEnabled);
         if (!currentItem || i == currentIndex)
             currentItem = item;
 
         IndexSetter setter = { i, q };
-        QObject::connect(item, &QPlatformMenuItem::activated, setter);
+        QObject::connect(item, &QPlatformMenuItem::activated, q, setter);
 
         m_platformMenu->insertMenuItem(item, 0);
         m_platformMenu->syncMenuItem(item);
@@ -2703,15 +2590,18 @@ bool QComboBoxPrivate::showNativePopup()
     else if (q->testAttribute(Qt::WA_MacMiniSize))
         offset = QPoint(-2, 6);
 
+    [[maybe_unused]] QPointer<QComboBox> guard(q);
     const QRect targetRect = QRect(tlw->mapFromGlobal(q->mapToGlobal(offset)), QSize());
     m_platformMenu->showPopup(tlw, QHighDpi::toNativePixels(targetRect, tlw), currentItem);
 
 #ifdef Q_OS_MACOS
-    // The Cocoa popup will swallow any mouse release event.
-    // We need to fake one here to un-press the button.
-    QMouseEvent mouseReleased(QEvent::MouseButtonRelease, q->pos(), Qt::LeftButton,
-                              Qt::MouseButtons(Qt::LeftButton), Qt::KeyboardModifiers());
-    QCoreApplication::sendEvent(q, &mouseReleased);
+    if (guard) {
+        // The Cocoa popup will swallow any mouse release event.
+        // We need to fake one here to un-press the button.
+        QMouseEvent mouseReleased(QEvent::MouseButtonRelease, q->pos(), q->mapToGlobal(QPoint(0, 0)),
+                                Qt::LeftButton, Qt::MouseButtons(Qt::LeftButton), {});
+        QCoreApplication::sendEvent(q, &mouseReleased);
+    }
 #endif
 
     return true;
@@ -2749,30 +2639,17 @@ void QComboBox::showPopup()
         return;
 #endif // Q_OS_MAC
 
-#ifdef QT_KEYPAD_NAVIGATION
-#if QT_CONFIG(completer)
-    if (QApplicationPrivate::keypadNavigationEnabled() && d->completer) {
-        // editable combo box is line edit plus completer
-        setEditFocus(true);
-        d->completer->complete(); // show popup
-        return;
-    }
-#endif
-#endif
-
-    // set current item and select it
-    view()->selectionModel()->setCurrentIndex(d->currentIndex,
-                                              QItemSelectionModel::ClearAndSelect);
     QComboBoxPrivateContainer* container = d->viewContainer();
     QRect listRect(style->subControlRect(QStyle::CC_ComboBox, &opt,
                                          QStyle::SC_ComboBoxListBoxPopup, this));
-    QRect screen = d->popupGeometry(QDesktopWidgetPrivate::screenNumber(this));
+    QRect screen = d->popupGeometry(mapToGlobal(listRect.topLeft()));
 
     QPoint below = mapToGlobal(listRect.bottomLeft());
     int belowHeight = screen.bottom() - below.y();
     QPoint above = mapToGlobal(listRect.topLeft());
     int aboveHeight = above.y() - screen.y();
     bool boundToScreen = !window()->testAttribute(Qt::WA_DontShowOnScreen);
+    const auto listView = qobject_cast<QListView *>(d->viewContainer()->itemView());
 
     {
         int listHeight = 0;
@@ -2787,6 +2664,8 @@ void QComboBox::showPopup()
         while (!toCheck.isEmpty()) {
             QModelIndex parent = toCheck.pop();
             for (int i = 0, end = d->model->rowCount(parent); i < end; ++i) {
+                if (listView && listView->isRowHidden(i))
+                    continue;
                 QModelIndex idx = d->model->index(i, d->modelColumn, parent);
                 if (!idx.isValid())
                     continue;
@@ -2859,8 +2738,14 @@ void QComboBox::showPopup()
         // Position horizontally.
         listRect.moveLeft(above.x());
 
-        // Position vertically so the curently selected item lines up
-        // with the combo box.
+        // Position vertically so the currently selected item lines up
+        // with the combo box. In order to do that, make sure that the item
+        // view is scrolled to the top first, otherwise calls to view()->visualRect()
+        // will return the geometry the selected item had the last time the popup
+        // was visible (and perhaps scrolled). And this will not match the geometry
+        // it will actually have when we resize the container to fit all the items
+        // further down in this function.
+        view()->scrollToTop();
         const QRect currentItemRect = view()->visualRect(view()->currentIndex());
         const int offset = listRect.top() - currentItemRect.top();
         listRect.moveTop(above.y() + offset - listRect.top());
@@ -2893,13 +2778,15 @@ void QComboBox::showPopup()
         QGuiApplication::inputMethod()->reset();
     }
 
-    QScrollBar *sb = view()->horizontalScrollBar();
-    Qt::ScrollBarPolicy policy = view()->horizontalScrollBarPolicy();
-    bool needHorizontalScrollBar = (policy == Qt::ScrollBarAsNeeded || policy == Qt::ScrollBarAlwaysOn)
-                                   && sb->minimum() < sb->maximum();
-    if (needHorizontalScrollBar) {
+    const QScrollBar *sb = view()->horizontalScrollBar();
+    const auto needHorizontalScrollBar = [this, sb]{
+        const Qt::ScrollBarPolicy policy = view()->horizontalScrollBarPolicy();
+        return (policy == Qt::ScrollBarAsNeeded || policy == Qt::ScrollBarAlwaysOn)
+               && sb->minimum() < sb->maximum();
+    };
+    const bool neededHorizontalScrollBar = needHorizontalScrollBar();
+    if (neededHorizontalScrollBar)
         listRect.adjust(0, 0, 0, sb->height());
-    }
 
     // Hide the scrollers here, so that the listrect gets the full height of the container
     // If the scrollers are truly needed, the later call to container->updateScrollers()
@@ -2942,6 +2829,11 @@ void QComboBox::showPopup()
         }
     }
     container->show();
+    if (!neededHorizontalScrollBar && needHorizontalScrollBar()) {
+        listRect.adjust(0, 0, 0, sb->height());
+        container->setGeometry(listRect);
+    }
+
     container->updateScrollers();
     view()->setFocus();
 
@@ -2955,10 +2847,6 @@ void QComboBox::showPopup()
 #endif
 
     container->update();
-#ifdef QT_KEYPAD_NAVIGATION
-    if (QApplicationPrivate::keypadNavigationEnabled())
-        view()->setEditFocus(true);
-#endif
     if (startTimer) {
         container->popupTimer.start();
         container->maybeIgnoreMouseButtonRelease = true;
@@ -2978,60 +2866,64 @@ void QComboBox::showPopup()
 void QComboBox::hidePopup()
 {
     Q_D(QComboBox);
-    if (d->container && d->container->isVisible()) {
+    if (d->hidingPopup)
+        return;
+    d->hidingPopup = true;
+    // can't use QBoolBlocker on a bitfield
+    auto resetHidingPopup = qScopeGuard([d]{
+        d->hidingPopup = false;
+    });
+
+    if (!d->container || !d->container->isVisible())
+        return;
+
 #if QT_CONFIG(effects)
-        QSignalBlocker modelBlocker(d->model);
-        QSignalBlocker viewBlocker(d->container->itemView());
-        QSignalBlocker containerBlocker(d->container);
-        // Flash selected/triggered item (if any).
-        if (style()->styleHint(QStyle::SH_Menu_FlashTriggeredItem)) {
-            QItemSelectionModel *selectionModel = view() ? view()->selectionModel() : nullptr;
-            if (selectionModel && selectionModel->hasSelection()) {
-                QEventLoop eventLoop;
-                const QItemSelection selection = selectionModel->selection();
+    QItemSelectionModel *selectionModel = d->container->itemView()
+                                        ? d->container->itemView()->selectionModel() : nullptr;
+    // Flash selected/triggered item (if any) before hiding the popup.
+    if (style()->styleHint(QStyle::SH_Menu_FlashTriggeredItem) &&
+        selectionModel && selectionModel->hasSelection()) {
+        const QItemSelection selection = selectionModel->selection();
 
-                // Deselect item and wait 60 ms.
+        QTimer::singleShot(0, d->container, [d, selection, selectionModel]{
+            QSignalBlocker modelBlocker(d->model);
+            QSignalBlocker viewBlocker(d->container->itemView());
+            QSignalBlocker containerBlocker(d->container);
+
+            // Deselect item and wait 60 ms.
+            selectionModel->select(selection, QItemSelectionModel::Toggle);
+            QTimer::singleShot(60, d->container, [d, selection, selectionModel]{
+                QSignalBlocker modelBlocker(d->model);
+                QSignalBlocker viewBlocker(d->container->itemView());
+                QSignalBlocker containerBlocker(d->container);
                 selectionModel->select(selection, QItemSelectionModel::Toggle);
-                QTimer::singleShot(60, &eventLoop, SLOT(quit()));
-                eventLoop.exec();
-
-                // Select item and wait 20 ms.
-                selectionModel->select(selection, QItemSelectionModel::Toggle);
-                QTimer::singleShot(20, &eventLoop, SLOT(quit()));
-                eventLoop.exec();
-            }
-        }
-
-        // Fade out.
-        bool needFade = style()->styleHint(QStyle::SH_Menu_FadeOutOnHide);
-        bool didFade = false;
-        if (needFade) {
-#if defined(Q_OS_MAC)
-            QPlatformNativeInterface *platformNativeInterface = QGuiApplication::platformNativeInterface();
-            int at = platformNativeInterface->metaObject()->indexOfMethod("fadeWindow()");
-            if (at != -1) {
-                QMetaMethod windowFade = platformNativeInterface->metaObject()->method(at);
-                windowFade.invoke(platformNativeInterface, Q_ARG(QWindow *, d->container->windowHandle()));
-                didFade = true;
-            }
-
-#endif // Q_OS_MAC
-            // Other platform implementations welcome :-)
-        }
-        containerBlocker.unblock();
-        viewBlocker.unblock();
-        modelBlocker.unblock();
-
-        if (!didFade)
+                QTimer::singleShot(20, d->container, [d] {
+                    d->doHidePopup();
+                });
+            });
+        });
+    } else
 #endif // QT_CONFIG(effects)
-            // Fade should implicitly hide as well ;-)
-            d->container->hide();
+    {
+        d->doHidePopup();
     }
-#ifdef QT_KEYPAD_NAVIGATION
-    if (QApplicationPrivate::keypadNavigationEnabled() && isEditable() && hasFocus())
-        setEditFocus(true);
-#endif
-    d->_q_resetButton();
+}
+
+void QComboBoxPrivate::doHidePopup()
+{
+    if (container && container->isVisible())
+        container->hide();
+
+    resetButton();
+}
+
+void QComboBoxPrivate::updateCurrentText(const QString &text)
+{
+    if (text == currentText)
+        return;
+
+    currentText = text;
+    emit q_func()->currentTextChanged(text);
 }
 
 /*!
@@ -3044,7 +2936,7 @@ void QComboBox::clear()
 {
     Q_D(QComboBox);
     d->model->removeRows(0, d->model->rowCount(d->root), d->root);
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     QAccessibleValueChangeEvent event(this, QString());
     QAccessible::updateAccessibility(&event);
 #endif
@@ -3058,7 +2950,7 @@ void QComboBox::clearEditText()
     Q_D(QComboBox);
     if (d->lineEdit)
         d->lineEdit->clear();
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     QAccessibleValueChangeEvent event(this, QString());
     QAccessible::updateAccessibility(&event);
 #endif
@@ -3072,7 +2964,7 @@ void QComboBox::setEditText(const QString &text)
     Q_D(QComboBox);
     if (d->lineEdit)
         d->lineEdit->setText(text);
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     QAccessibleValueChangeEvent event(this, text);
     QAccessible::updateAccessibility(&event);
 #endif
@@ -3111,7 +3003,10 @@ void QComboBox::changeEvent(QEvent *e)
     Q_D(QComboBox);
     switch (e->type()) {
     case QEvent::StyleChange:
+        if (d->container)
+            d->container->updateStyleSettings();
         d->updateDelegate();
+
 #ifdef Q_OS_MAC
     case QEvent::MacSizeChange:
 #endif
@@ -3122,7 +3017,7 @@ void QComboBox::changeEvent(QEvent *e)
             d->updateLineEditGeometry();
         d->setLayoutItemMargins(QStyle::SE_ComboBoxLayoutItem);
 
-        if (e->type() == QEvent::MacSizeChange){
+        if (e->type() == QEvent::MacSizeChange) {
             QPlatformTheme::Font f = QPlatformTheme::SystemFont;
             if (testAttribute(Qt::WA_MacSmallSize))
                 f = QPlatformTheme::SmallFont;
@@ -3180,8 +3075,10 @@ void QComboBox::paintEvent(QPaintEvent *)
     initStyleOption(&opt);
     painter.drawComplexControl(QStyle::CC_ComboBox, opt);
 
-    if (currentIndex() < 0)
-        opt.palette.setBrush(QPalette::ButtonText, opt.palette.brush(QPalette::ButtonText).color().lighter());
+    if (currentIndex() < 0 && !placeholderText().isEmpty()) {
+        opt.palette.setBrush(QPalette::ButtonText, opt.palette.placeholderText());
+        opt.currentText = placeholderText();
+    }
 
     // draw the icon and text
     painter.drawControl(QStyle::CE_ComboBoxLabel, opt);
@@ -3225,7 +3122,7 @@ bool QComboBox::event(QEvent *event)
     case QEvent::HoverLeave:
     case QEvent::HoverMove:
         if (const QHoverEvent *he = static_cast<const QHoverEvent *>(event))
-            d->updateHoverControl(he->pos());
+            d->updateHoverControl(he->position().toPoint());
         break;
     case QEvent::ShortcutOverride:
         if (d->lineEdit)
@@ -3233,9 +3130,7 @@ bool QComboBox::event(QEvent *event)
         break;
 #ifdef QT_KEYPAD_NAVIGATION
     case QEvent::EnterEditFocus:
-        if (!d->lineEdit)
-            setEditFocus(false); // We never want edit focus if we are not editable
-        else
+        if (d->lineEdit)
             d->lineEdit->event(event);  //so cursor starts
         break;
     case QEvent::LeaveEditFocus:
@@ -3264,7 +3159,7 @@ void QComboBoxPrivate::showPopupFromMouseEvent(QMouseEvent *e)
     Q_Q(QComboBox);
     QStyleOptionComboBox opt;
     q->initStyleOption(&opt);
-    QStyle::SubControl sc = q->style()->hitTestComplexControl(QStyle::CC_ComboBox, &opt, e->pos(), q);
+    QStyle::SubControl sc = q->style()->hitTestComplexControl(QStyle::CC_ComboBox, &opt, e->position().toPoint(), q);
 
     if (e->button() == Qt::LeftButton
             && !(sc == QStyle::SC_None && e->type() == QEvent::MouseButtonRelease)
@@ -3280,9 +3175,12 @@ void QComboBoxPrivate::showPopupFromMouseEvent(QMouseEvent *e)
 #endif
             // We've restricted the next couple of lines, because by not calling
             // viewContainer(), we avoid creating the QComboBoxPrivateContainer.
-            viewContainer()->initialClickPosition = q->mapToGlobal(e->pos());
+            viewContainer()->initialClickPosition = q->mapToGlobal(e->position().toPoint());
         }
+        QPointer<QComboBox> guard = q;
         q->showPopup();
+        if (!guard)
+            return;
         // The code below ensures that regular mousepress and pick item still works
         // If it was not called the viewContainer would ignore event since it didn't have
         // a mousePressEvent first.
@@ -3334,7 +3232,23 @@ void QComboBox::keyPressEvent(QKeyEvent *e)
 
     Move move = NoMove;
     int newIndex = currentIndex();
-    switch (e->key()) {
+
+    bool pressLikeButton = !d->lineEdit;
+#ifdef QT_KEYPAD_NAVIGATION
+    pressLikeButton |= QApplicationPrivate::keypadNavigationEnabled() && !hasEditFocus();
+#endif
+    auto key = e->key();
+    if (pressLikeButton) {
+        const auto buttonPressKeys = QGuiApplicationPrivate::platformTheme()
+                                             ->themeHint(QPlatformTheme::ButtonPressKeys)
+                                             .value<QList<Qt::Key>>();
+        if (buttonPressKeys.contains(key)) {
+            showPopup();
+            return;
+        }
+    }
+
+    switch (key) {
     case Qt::Key_Up:
         if (e->modifiers() & Qt::ControlModifier)
             break; // pass to line edit for auto completion
@@ -3376,12 +3290,6 @@ void QComboBox::keyPressEvent(QKeyEvent *e)
             return;
         }
         break;
-    case Qt::Key_Space:
-        if (!d->lineEdit) {
-            showPopup();
-            return;
-        }
-        break;
     case Qt::Key_Enter:
     case Qt::Key_Return:
     case Qt::Key_Escape:
@@ -3389,13 +3297,6 @@ void QComboBox::keyPressEvent(QKeyEvent *e)
             e->ignore();
         break;
 #ifdef QT_KEYPAD_NAVIGATION
-    case Qt::Key_Select:
-        if (QApplicationPrivate::keypadNavigationEnabled()
-                && (!hasEditFocus() || !d->lineEdit)) {
-            showPopup();
-            return;
-        }
-        break;
     case Qt::Key_Left:
     case Qt::Key_Right:
         if (QApplicationPrivate::keypadNavigationEnabled() && !hasEditFocus())
@@ -3406,14 +3307,22 @@ void QComboBox::keyPressEvent(QKeyEvent *e)
             if (!hasEditFocus() || !d->lineEdit)
                 e->ignore();
         } else {
-            e->ignore(); // let the surounding dialog have it
+            e->ignore(); // let the surrounding dialog have it
         }
         break;
 #endif
     default:
+#if QT_CONFIG(shortcut)
+        if (d->container && d->container->isVisible() && e->matches(QKeySequence::Cancel)) {
+            hidePopup();
+            e->accept();
+        }
+#endif
+
         if (!d->lineEdit) {
-            if (!e->text().isEmpty())
-                d->keyboardSearchString(e->text());
+            const auto text = e->text();
+            if (!text.isEmpty() && text.at(0).isPrint())
+                d->keyboardSearchString(text);
             else
                 e->ignore();
         }
@@ -3611,7 +3520,7 @@ QVariant QComboBox::inputMethodQuery(Qt::InputMethodQuery query, const QVariant 
 
 /*!
     \property QComboBox::frame
-    \brief whether the combo box draws itself with a frame
+    \brief whether the combo box draws itself with a frame.
 
 
     If enabled (the default) the combo box draws itself inside a
@@ -3641,6 +3550,9 @@ void QComboBox::setFrame(bool enable)
     default value).
 
     By default, this property has a value of 0.
+
+    \note In an editable combobox, the visible column will also become
+    the \l{QCompleter::completionColumn}{completion column}.
 */
 int QComboBox::modelColumn() const
 {
@@ -3656,8 +3568,7 @@ void QComboBox::setModelColumn(int visibleColumn)
     if (lv)
         lv->setModelColumn(visibleColumn);
 #if QT_CONFIG(completer)
-    if (d->lineEdit && d->lineEdit->completer()
-        && d->lineEdit->completer() == d->completer)
+    if (d->lineEdit && d->lineEdit->completer())
         d->lineEdit->completer()->setCompletionColumn(visibleColumn);
 #endif
     setCurrentIndex(currentIndex()); //update the text to the text of the new column;

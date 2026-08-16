@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSql module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsqldriver.h"
 
@@ -43,19 +7,22 @@
 #include "qsqlerror.h"
 #include "qsqlfield.h"
 #include "qsqlindex.h"
-#include "private/qobject_p.h"
 #include "private/qsqldriver_p.h"
+#include "private/qtools_p.h"
+
+#include <limits.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 static QString prepareIdentifier(const QString &identifier,
         QSqlDriver::IdentifierType type, const QSqlDriver *driver)
 {
-    Q_ASSERT( driver != nullptr );
+    Q_ASSERT(driver != nullptr);
     QString ret = identifier;
-    if (!driver->isIdentifierEscaped(identifier, type)) {
+    if (!driver->isIdentifierEscaped(identifier, type))
         ret = driver->escapeIdentifier(identifier, type);
-    }
     return ret;
 }
 
@@ -100,20 +67,6 @@ QSqlDriver::QSqlDriver(QSqlDriverPrivate &dd, QObject *parent)
 QSqlDriver::~QSqlDriver()
 {
 }
-
-/*!
-    \since 4.4
-
-    \fn QSqlDriver::notification(const QString &name)
-
-    This signal is emitted when the database posts an event notification
-    that the driver subscribes to. \a name identifies the event notification.
-
-    \sa subscribeToNotification()
-
-    \obsolete use QSqlDriver::notification(const QString &name, QSqlDriver::NotificationSource source, const QVariant &payload)
-              instead
-*/
 
 /*!
     \since 5.0
@@ -185,7 +138,9 @@ bool QSqlDriver::isOpenError() const
     \enum QSqlDriver::DriverFeature
 
     This enum contains a list of features a driver might support. Use
-    hasFeature() to query whether a feature is supported or not.
+    hasFeature() to query whether a feature is supported or not. Some features
+    depend on the database server so they can only properly determined after
+    the database connection is successfully opened with QSqlDatabase::open().
 
     \value Transactions  Whether the driver supports SQL transactions.
     \value QuerySize  Whether the database is capable of reporting the size
@@ -262,6 +217,7 @@ bool QSqlDriver::isOpenError() const
     \value SQLite
     \value Interbase
     \value DB2
+    \value [since 6.6] MimerSQL
 */
 
 /*!
@@ -436,8 +392,8 @@ bool QSqlDriver::isIdentifierEscaped(const QString &identifier, IdentifierType t
 {
     Q_UNUSED(type);
     return identifier.size() > 2
-        && identifier.startsWith(QLatin1Char('"')) //left delimited
-        && identifier.endsWith(QLatin1Char('"')); //right delimited
+        && identifier.startsWith(u'"') //left delimited
+        && identifier.endsWith(u'"'); //right delimited
 }
 
 /*!
@@ -450,7 +406,6 @@ bool QSqlDriver::isIdentifierEscaped(const QString &identifier, IdentifierType t
     Reimplement this function if you want to provide your own implementation in your
     QSqlDriver subclass,
 
-    \since 4.5
     \sa isIdentifierEscaped()
  */
 QString QSqlDriver::stripDelimiters(const QString &identifier, IdentifierType type) const
@@ -493,78 +448,77 @@ QString QSqlDriver::sqlStatement(StatementType type, const QString &tableName,
 {
     const auto tableNameString = tableName.isEmpty() ? QString()
                                     : prepareIdentifier(tableName, QSqlDriver::TableName, this);
-    int i;
     QString s;
     s.reserve(128);
     switch (type) {
     case SelectStatement:
-        for (i = 0; i < rec.count(); ++i) {
+        for (qsizetype i = 0; i < rec.count(); ++i) {
             if (rec.isGenerated(i))
-                s.append(prepareIdentifier(rec.fieldName(i), QSqlDriver::FieldName, this)).append(QLatin1String(", "));
+                s.append(prepareIdentifier(rec.fieldName(i), QSqlDriver::FieldName, this)).append(", "_L1);
         }
         if (s.isEmpty())
             return s;
         s.chop(2);
-        s = QLatin1String("SELECT ") + s + QLatin1String(" FROM ") + tableNameString;
+        s = "SELECT "_L1 + s + " FROM "_L1 + tableNameString;
         break;
     case WhereStatement:
     {
         const QString tableNamePrefix = tableNameString.isEmpty()
-                                            ? QString() : tableNameString + QLatin1Char('.');
-        for (int i = 0; i < rec.count(); ++i) {
+                                            ? QString() : tableNameString + u'.';
+        for (qsizetype i = 0; i < rec.count(); ++i) {
             if (!rec.isGenerated(i))
                 continue;
-            s.append(s.isEmpty() ? QLatin1String("WHERE ") : QLatin1String(" AND "));
+            s.append(s.isEmpty() ? "WHERE "_L1 : " AND "_L1);
             s.append(tableNamePrefix);
             s.append(prepareIdentifier(rec.fieldName(i), QSqlDriver::FieldName, this));
             if (rec.isNull(i))
-                s.append(QLatin1String(" IS NULL"));
+                s.append(" IS NULL"_L1);
             else if (preparedStatement)
-                s.append(QLatin1String(" = ?"));
+                s.append(" = ?"_L1);
             else
-                s.append(QLatin1String(" = ")).append(formatValue(rec.field(i)));
+                s.append(" = "_L1).append(formatValue(rec.field(i)));
         }
         break;
     }
     case UpdateStatement:
-        s = s + QLatin1String("UPDATE ") + tableNameString + QLatin1String(" SET ");
-        for (i = 0; i < rec.count(); ++i) {
+        s = s + "UPDATE "_L1 + tableNameString + " SET "_L1;
+        for (qsizetype i = 0; i < rec.count(); ++i) {
             if (!rec.isGenerated(i))
                 continue;
-            s.append(prepareIdentifier(rec.fieldName(i), QSqlDriver::FieldName, this)).append(QLatin1Char('='));
+            s.append(prepareIdentifier(rec.fieldName(i), QSqlDriver::FieldName, this)).append(u'=');
             if (preparedStatement)
-                s.append(QLatin1Char('?'));
+                s.append(u'?');
             else
                 s.append(formatValue(rec.field(i)));
-            s.append(QLatin1String(", "));
+            s.append(", "_L1);
         }
-        if (s.endsWith(QLatin1String(", ")))
+        if (s.endsWith(", "_L1))
             s.chop(2);
         else
             s.clear();
         break;
     case DeleteStatement:
-        s = s + QLatin1String("DELETE FROM ") + tableNameString;
+        s = s + "DELETE FROM "_L1 + tableNameString;
         break;
     case InsertStatement: {
-        s = s + QLatin1String("INSERT INTO ") + tableNameString + QLatin1String(" (");
+        s = s + "INSERT INTO "_L1 + tableNameString + " ("_L1;
         QString vals;
-        for (i = 0; i < rec.count(); ++i) {
+        for (qsizetype i = 0; i < rec.count(); ++i) {
             if (!rec.isGenerated(i))
                 continue;
-            s.append(prepareIdentifier(rec.fieldName(i), QSqlDriver::FieldName, this)).append(QLatin1String(", "));
+            s.append(prepareIdentifier(rec.fieldName(i), QSqlDriver::FieldName, this)).append(", "_L1);
             if (preparedStatement)
-                vals.append(QLatin1Char('?'));
+                vals.append(u'?');
             else
                 vals.append(formatValue(rec.field(i)));
-            vals.append(QLatin1String(", "));
+            vals.append(", "_L1);
         }
         if (vals.isEmpty()) {
             s.clear();
         } else {
             vals.chop(2); // remove trailing comma
-            s[s.length() - 2] = QLatin1Char(')');
-            s.append(QLatin1String("VALUES (")).append(vals).append(QLatin1Char(')'));
+            s[s.size() - 2] = u')';
+            s.append("VALUES ("_L1).append(vals).append(u')');
         }
         break; }
     }
@@ -606,39 +560,36 @@ QString QSqlDriver::sqlStatement(StatementType type, const QString &tableName,
 */
 QString QSqlDriver::formatValue(const QSqlField &field, bool trimStrings) const
 {
-    const QLatin1String nullTxt("NULL");
+    const auto nullTxt = "NULL"_L1;
 
     QString r;
     if (field.isNull())
         r = nullTxt;
     else {
-        switch (+field.type()) {
+        switch (field.metaType().id()) {
         case QMetaType::Int:
         case QMetaType::UInt:
             if (field.value().userType() == QMetaType::Bool)
-                r = field.value().toBool() ? QLatin1String("1") : QLatin1String("0");
+                r = field.value().toBool() ? "1"_L1 : "0"_L1;
             else
                 r = field.value().toString();
             break;
 #if QT_CONFIG(datestring)
         case QMetaType::QDate:
             if (field.value().toDate().isValid())
-                r = QLatin1Char('\'') + field.value().toDate().toString(Qt::ISODate)
-                    + QLatin1Char('\'');
+                r = u'\'' + field.value().toDate().toString(Qt::ISODate) + u'\'';
             else
                 r = nullTxt;
             break;
         case QMetaType::QTime:
             if (field.value().toTime().isValid())
-                r =  QLatin1Char('\'') + field.value().toTime().toString(Qt::ISODate)
-                     + QLatin1Char('\'');
+                r =  u'\'' + field.value().toTime().toString(Qt::ISODate) + u'\'';
             else
                 r = nullTxt;
             break;
         case QMetaType::QDateTime:
             if (field.value().toDateTime().isValid())
-                r = QLatin1Char('\'') +
-                    field.value().toDateTime().toString(Qt::ISODate) + QLatin1Char('\'');
+                r = u'\'' + field.value().toDateTime().toString(Qt::ISODate) + u'\'';
             else
                 r = nullTxt;
             break;
@@ -648,14 +599,14 @@ QString QSqlDriver::formatValue(const QSqlField &field, bool trimStrings) const
         {
             QString result = field.value().toString();
             if (trimStrings) {
-                int end = result.length();
+                int end = result.size();
                 while (end && result.at(end-1).isSpace()) /* skip white space from end */
                     end--;
                 result.truncate(end);
             }
             /* escape the "'" character */
-            result.replace(QLatin1Char('\''), QLatin1String("''"));
-            r = QLatin1Char('\'') + result + QLatin1Char('\'');
+            result.replace(u'\'', "''"_L1);
+            r = u'\'' + result + u'\'';
             break;
         }
         case QMetaType::Bool:
@@ -663,15 +614,15 @@ QString QSqlDriver::formatValue(const QSqlField &field, bool trimStrings) const
             break;
         case QMetaType::QByteArray : {
             if (hasFeature(BLOB)) {
-                QByteArray ba = field.value().toByteArray();
-                QString res;
-                static const char hexchars[] = "0123456789abcdef";
-                for (int i = 0; i < ba.size(); ++i) {
-                    uchar s = (uchar) ba[i];
-                    res += QLatin1Char(hexchars[s >> 4]);
-                    res += QLatin1Char(hexchars[s & 0x0f]);
+                const QByteArray ba = field.value().toByteArray();
+                r.reserve((ba.size() + 1) * 2);
+                r += u'\'';
+                for (const char c : ba) {
+                    const uchar s = uchar(c);
+                    r += QLatin1Char(QtMiscUtils::toHexLower(s >> 4));
+                    r += QLatin1Char(QtMiscUtils::toHexLower(s & 0x0f));
                 }
-                r = QLatin1Char('\'') + res +  QLatin1Char('\'');
+                r += u'\'';
                 break;
             }
         }
@@ -730,7 +681,6 @@ QVariant QSqlDriver::handle() const
     Reimplement this function if you want to provide event notification support in your
     own QSqlDriver subclass,
 
-    \since 4.4
     \sa unsubscribeFromNotification(), subscribedToNotifications(), QSqlDriver::hasFeature()
 */
 bool QSqlDriver::subscribeToNotification(const QString &name)
@@ -754,7 +704,6 @@ bool QSqlDriver::subscribeToNotification(const QString &name)
     Reimplement this function if you want to provide event notification support in your
     own QSqlDriver subclass,
 
-    \since 4.4
     \sa subscribeToNotification(), subscribedToNotifications()
 */
 bool QSqlDriver::unsubscribeFromNotification(const QString &name)
@@ -769,7 +718,6 @@ bool QSqlDriver::unsubscribeFromNotification(const QString &name)
     Reimplement this function if you want to provide event notification support in your
     own QSqlDriver subclass,
 
-    \since 4.4
     \sa subscribeToNotification(), unsubscribeFromNotification()
 */
 QStringList QSqlDriver::subscribedToNotifications() const
@@ -778,16 +726,7 @@ QStringList QSqlDriver::subscribedToNotifications() const
 }
 
 /*!
-    \since 4.6
-
-    Sets the default numerical precision policy used by queries created
-    by this driver to \a precisionPolicy.
-
-    Note: Setting the default precision policy to \a precisionPolicy
-    doesn't affect any currently active queries.
-
-    \sa QSql::NumericalPrecisionPolicy, numericalPrecisionPolicy(),
-    QSqlQuery::setNumericalPrecisionPolicy(), QSqlQuery::numericalPrecisionPolicy()
+    Sets \l numericalPrecisionPolicy to \a precisionPolicy.
 */
 void QSqlDriver::setNumericalPrecisionPolicy(QSql::NumericalPrecisionPolicy precisionPolicy)
 {
@@ -796,12 +735,17 @@ void QSqlDriver::setNumericalPrecisionPolicy(QSql::NumericalPrecisionPolicy prec
 }
 
 /*!
-    \since 4.6
+    \property QSqlDriver::numericalPrecisionPolicy
+    \since 6.8
 
-    Returns the current default precision policy for the database connection.
+    This property holds the precision policy for the database connection.
+    \note Setting the precision policy doesn't affect any currently active queries.
 
-    \sa QSql::NumericalPrecisionPolicy, setNumericalPrecisionPolicy(),
-    QSqlQuery::numericalPrecisionPolicy(), QSqlQuery::setNumericalPrecisionPolicy()
+    \sa QSql::NumericalPrecisionPolicy, QSqlQuery::numericalPrecisionPolicy,
+    QSqlDatabase::numericalPrecisionPolicy
+*/
+/*!
+    Returns the \l numericalPrecisionPolicy.
 */
 QSql::NumericalPrecisionPolicy QSqlDriver::numericalPrecisionPolicy() const
 {
@@ -844,4 +788,19 @@ bool QSqlDriver::cancelQuery()
     return false;
 }
 
+/*!
+    \since 6.0
+
+    Returns the maximum length for the identifier \a type according to the database settings. Returns
+    INT_MAX by default if the is no maximum for the database.
+*/
+
+int QSqlDriver::maximumIdentifierLength(QSqlDriver::IdentifierType type) const
+{
+    Q_UNUSED(type);
+    return INT_MAX;
+}
+
 QT_END_NAMESPACE
+
+#include "moc_qsqldriver.cpp"

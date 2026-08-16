@@ -1,77 +1,152 @@
-/****************************************************************************
-**
-** Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qandroidplatformservices.h"
-#include <QUrl>
-#include <QFile>
+
 #include <QDebug>
+#include <QDesktopServices>
+#include <QFile>
 #include <QMimeDatabase>
-#include <QtCore/private/qjni_p.h>
-#include <private/qjnihelpers_p.h>
+#include <QtCore/QJniObject>
+#include <QtCore/qcoreapplication.h>
+#include <QtCore/qscopedvaluerollback.h>
 
 QT_BEGIN_NAMESPACE
 
+using namespace QtJniTypes;
+using namespace Qt::StringLiterals;
+
+static constexpr auto s_defaultScheme = "file"_L1;
+static constexpr auto s_defaultProvider = "qtprovider"_L1;
+
 QAndroidPlatformServices::QAndroidPlatformServices()
 {
+    m_actionView = QJniObject::getStaticObjectField("android/content/Intent", "ACTION_VIEW",
+                                                    "Ljava/lang/String;")
+                           .toString();
+
+    QtAndroidPrivate::registerNewIntentListener(this);
+
+    // Qt applications without Activity contexts cannot retrieve intents from the Activity.
+    if (QNativeInterface::QAndroidApplication::isActivityContext()) {
+        QMetaObject::invokeMethod(
+                this,
+                [this] {
+                    QJniObject context = QJniObject(QtAndroidPrivate::context());
+                    QJniObject intent =
+                            context.callObjectMethod("getIntent", "()Landroid/content/Intent;");
+                    handleNewIntent(nullptr, intent.object());
+                },
+                Qt::QueuedConnection);
+    }
 }
+
+Q_DECLARE_JNI_CLASS(FileProvider, "androidx/core/content/FileProvider");
+Q_DECLARE_JNI_CLASS(PackageManager, "android/content/pm/PackageManager");
+Q_DECLARE_JNI_CLASS(PackageInfo, "android/content/pm/PackageInfo");
+Q_DECLARE_JNI_CLASS(ProviderInfo, "android/content/pm/ProviderInfo");
 
 bool QAndroidPlatformServices::openUrl(const QUrl &theUrl)
 {
-    QString mime;
     QUrl url(theUrl);
 
-    // if the file is local, we need to pass the MIME type, otherwise Android
-    // does not start an Intent to view this file
-    QLatin1String fileScheme("file");
-    if ((url.scheme().isEmpty() || url.scheme() == fileScheme) && QFile::exists(url.path())) {
-        // a real URL including the scheme is needed, else the Intent can not be started
-        url.setScheme(fileScheme);
-        QMimeDatabase mimeDb;
-        mime = mimeDb.mimeTypeForUrl(url).name();
-    }
+    // avoid recursing back into self
+    if (url == m_handlingUrl)
+        return false;
 
-    QJNIObjectPrivate urlString = QJNIObjectPrivate::fromString(url.toString());
-    QJNIObjectPrivate mimeString = QJNIObjectPrivate::fromString(mime);
-    return QJNIObjectPrivate::callStaticMethod<jboolean>(
+    // a real URL including the scheme is needed, else the Intent can not be started
+    if (url.scheme().isEmpty())
+        url.setScheme(s_defaultScheme);
+
+    const int sdkVersion = QNativeInterface::QAndroidApplication::sdkVersion();
+    if (url.scheme() != s_defaultScheme || sdkVersion < 24 )
+        return openURL(url);
+    return openUrlWithFileProvider(url);
+}
+
+QString QAndroidPlatformServices::getMimeOfUrl(const QUrl &url) const
+{
+    QString mime;
+    if (url.scheme() == s_defaultScheme)
+        mime = QMimeDatabase().mimeTypeForUrl(url).name();
+    return mime;
+}
+
+bool QAndroidPlatformServices::openURL(const QUrl &url) const
+{
+    return  QJniObject::callStaticMethod<jboolean>(
             QtAndroid::applicationClass(), "openURL",
-            "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z",
-            QtAndroidPrivate::context(), urlString.object(), mimeString.object());
+            QNativeInterface::QAndroidApplication::context(),
+            url.toString(),
+            getMimeOfUrl(url));
+}
+
+bool QAndroidPlatformServices::openUrlWithFileProvider(const QUrl &url)
+{
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    auto authorities = getFileProviderAuthorities(context);
+    if (authorities.isEmpty())
+        return false;
+    return openUrlWithAuthority(url, getAdequateFileproviderAuthority(authorities));
+}
+
+
+QString QAndroidPlatformServices::getAdequateFileproviderAuthority(const QStringList &authorities) const
+{
+    if (authorities.size() == 1)
+        return authorities[0];
+
+    QString nonQtAuthority;
+    for (const auto &authority : authorities) {
+        if (!authority.endsWith(s_defaultProvider, Qt::CaseSensitive)) {
+            nonQtAuthority = authority;
+            break;
+        }
+    }
+    return nonQtAuthority;
+}
+
+bool QAndroidPlatformServices::openUrlWithAuthority(const QUrl &url, const QString &authority)
+{
+    const auto urlPath = QJniObject::fromString(url.path());
+    const auto urlFile = QJniObject(Traits<File>::className(),
+                                    urlPath.object<jstring>());
+    const auto fileProviderUri = QJniObject::callStaticMethod<Uri>(
+            Traits<FileProvider>::className(), "getUriForFile",
+            QNativeInterface::QAndroidApplication::context(), authority,
+            urlFile.object<File>());
+    if (fileProviderUri.isValid())
+        return openURL(url);
+    return false;
+}
+
+QStringList QAndroidPlatformServices::getFileProviderAuthorities(const QJniObject &context) const
+{
+    QStringList authorityList;
+
+    const auto packageManager = context.callMethod<PackageManager>("getPackageManager");
+    const auto packageName = context.callMethod<QString>("getPackageName");
+    const auto packageInfo = packageManager.callMethod<PackageInfo>("getPackageInfo",
+                                                                    packageName,
+                                                                    8 /* PackageManager.GET_PROVIDERS */);
+    const auto providersArray = packageInfo.getField<ProviderInfo[]>("providers");
+
+    if (providersArray.isValid()) {
+        const auto className = Traits<FileProvider>::className();
+        for (const auto &fileProvider : providersArray) {
+            auto providerName = fileProvider.getField<QString>("name");
+            if (providerName.replace(".", "/").contains(className.data())) {
+                const auto authority = fileProvider.getField<QString>("authority");
+                if (!authority.isEmpty())
+                    authorityList << authority;
+            }
+        }
+    }
+    if (authorityList.isEmpty())
+        qWarning() << "No file provider found in the AndroidManifest.xml.";
+
+    return authorityList;
 }
 
 bool QAndroidPlatformServices::openDocument(const QUrl &url)
@@ -82,6 +157,21 @@ bool QAndroidPlatformServices::openDocument(const QUrl &url)
 QByteArray QAndroidPlatformServices::desktopEnvironment() const
 {
     return QByteArray("Android");
+}
+
+bool QAndroidPlatformServices::handleNewIntent(JNIEnv *env, jobject intent)
+{
+    Q_UNUSED(env);
+
+    const QJniObject jniIntent(intent);
+
+    const QString action = jniIntent.callObjectMethod<jstring>("getAction").toString();
+    if (action != m_actionView)
+        return false;
+
+    const QString url = jniIntent.callObjectMethod<jstring>("getDataString").toString();
+    QScopedValueRollback<QUrl> rollback(m_handlingUrl, url);
+    return QDesktopServices::openUrl(url);
 }
 
 QT_END_NAMESPACE

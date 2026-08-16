@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qscrollarea.h"
 #include "private/qscrollarea_p.h"
@@ -127,11 +91,7 @@ QT_BEGIN_NAMESPACE
     cause the size of the scroll area to be updated whenever the
     contents of the layout changes.
 
-    For a complete example using the QScrollArea class, see the \l
-    {widgets/imageviewer}{Image Viewer} example. The example shows how
-    to combine QLabel and QScrollArea to display an image.
-
-    \sa QAbstractScrollArea, QScrollBar, {Image Viewer Example}
+    \sa QAbstractScrollArea, QScrollBar
 */
 
 
@@ -196,7 +156,23 @@ void QScrollAreaPrivate::updateScrollBars()
     if (resizable) {
         if ((widget->layout() ? widget->layout()->hasHeightForWidth() : widget->sizePolicy().hasHeightForWidth())) {
             QSize p_hfw = p.expandedTo(min).boundedTo(max);
-            int h = widget->heightForWidth( p_hfw.width() );
+            int h = widget->heightForWidth(p_hfw.width());
+            // If the height we calculated requires a vertical scrollbar,
+            // then we need to constrain the width and calculate the height again,
+            // otherwise we end up flipping the scrollbar on and off all the time.
+            if (vbarpolicy == Qt::ScrollBarAsNeeded) {
+                int vbarWidth = vbar->sizeHint().width();
+                QSize m_hfw = m.expandedTo(min).boundedTo(max);
+                // is there any point in searching?
+                if (widget->heightForWidth(m_hfw.width() - vbarWidth) <= m.height()) {
+                    while (h > m.height() && vbarWidth) {
+                        --vbarWidth;
+                        --m_hfw.rwidth();
+                        h = widget->heightForWidth(m_hfw.width());
+                    }
+                }
+                max = QSize(m_hfw.width(), qMax(m_hfw.height(), h));
+            }
             min = QSize(p_hfw.width(), qMax(p_hfw.height(), h));
         }
     }

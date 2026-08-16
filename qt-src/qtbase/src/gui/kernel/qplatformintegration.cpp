@@ -1,47 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplatformintegration.h"
 
 #include <qpa/qplatformfontdatabase.h>
 #include <qpa/qplatformclipboard.h>
 #include <qpa/qplatformaccessibility.h>
+#include <qpa/qplatformkeymapper.h>
 #include <qpa/qplatformtheme.h>
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/private/qpixmap_raster_p.h>
@@ -187,7 +152,7 @@ QPlatformServices *QPlatformIntegration::services() const
 /*!
     \enum QPlatformIntegration::Capability
 
-    Capabilities are used to determing specific features of a platform integration
+    Capabilities are used to determine specific features of a platform integration
 
     \value ThreadedPixmaps The platform uses a pixmap implementation that is reentrant
     and can be used from multiple threads, like the raster paint engine and QImage based
@@ -199,8 +164,8 @@ QPlatformServices *QPlatformIntegration::services() const
 
     \value SharedGraphicsCache The platform supports a shared graphics cache
 
-    \value BufferQueueingOpenGL The OpenGL implementation on the platform will queue
-    up buffers when swapBuffers() is called and block only when its buffer pipeline
+    \value BufferQueueingOpenGL Deprecated. The OpenGL implementation on the platform will
+    queue up buffers when swapBuffers() is called and block only when its buffer pipeline
     is full, rather than block immediately.
 
     \value MultipleWindows The platform supports multiple QWindows, i.e. does some kind
@@ -247,6 +212,28 @@ QPlatformServices *QPlatformIntegration::services() const
 
     \value OpenGLOnRasterSurface The platform supports making a QOpenGLContext current
     in combination with a QWindow of type RasterSurface.
+
+    \value PaintEvents The platform sends paint events instead of expose events when
+    the window needs repainting. Expose events are only sent when a window is toggled
+    from a non-exposed to exposed state or back.
+
+    \value RhiBasedRendering The platform supports one or more of the 3D rendering APIs
+    that Qt Quick and other components can use via the Qt Rendering Hardware Interface. On
+    platforms where it is clear upfront that the platform cannot, or does not want to,
+    support rendering via 3D graphics APIs such as OpenGL, Vulkan, Direct 3D, or Metal,
+    this capability can be reported as \c false. That in effect means that in modules
+    where there is an alternative, such as Qt Quick with its \c software backend, an
+    automatic fallback to that alternative may occur, if applicable. The default
+    implementation of hasCapability() returns \c true.
+
+    \value ScreenWindowGrabbing The platform supports grabbing window on screen.
+    On Wayland, this capability can be reported as \c false. The default implementation
+    of hasCapability() returns \c true.
+
+    \value BackingStoreStaticContents The platform backingstore supports static contents.
+    On resize of the backingstore the static contents region is provided, and the backing
+    store is expected to propagate the static content to the resized backing store, without
+    clients needing to repaint the static content region.
  */
 
 /*!
@@ -271,7 +258,8 @@ QPlatformServices *QPlatformIntegration::services() const
 bool QPlatformIntegration::hasCapability(Capability cap) const
 {
     return cap == NonFullScreenWindows || cap == NativeWidgets || cap == WindowManagement
-        || cap == TopStackedNativeChildWindows || cap == WindowActivation;
+        || cap == TopStackedNativeChildWindows || cap == WindowActivation
+        || cap == RhiBasedRendering || cap == ScreenWindowGrabbing;
 }
 
 QPlatformPixmap *QPlatformIntegration::createPlatformPixmap(QPlatformPixmap::PixelType type) const
@@ -324,7 +312,7 @@ QPlatformSharedGraphicsCache *QPlatformIntegration::createPlatformSharedGraphics
 */
 QPaintEngine *QPlatformIntegration::createImagePaintEngine(QPaintDevice *paintDevice) const
 {
-    Q_UNUSED(paintDevice)
+    Q_UNUSED(paintDevice);
     return nullptr;
 }
 
@@ -360,7 +348,22 @@ QPlatformInputContext *QPlatformIntegration::inputContext() const
     return nullptr;
 }
 
-#ifndef QT_NO_ACCESSIBILITY
+/*!
+    Accessor for the platform integration's key mapper.
+
+    Default implementation returns a default QPlatformKeyMapper.
+
+    \sa QPlatformKeyMapper
+*/
+QPlatformKeyMapper *QPlatformIntegration::keyMapper() const
+{
+    static QPlatformKeyMapper *keyMapper = nullptr;
+    if (!keyMapper)
+        keyMapper = new QPlatformKeyMapper;
+    return keyMapper;
+}
+
+#if QT_CONFIG(accessibility)
 
 /*!
   Returns the platforms accessibility.
@@ -411,7 +414,7 @@ QVariant QPlatformIntegration::styleHint(StyleHint hint) const
     case UseRtlExtensions:
         return QVariant(false);
     case SetFocusOnTouchRelease:
-        return QVariant(false);
+        return QPlatformTheme::defaultThemeHint(QPlatformTheme::SetFocusOnTouchRelease);
     case MousePressAndHoldInterval:
         return QPlatformTheme::defaultThemeHint(QPlatformTheme::MousePressAndHoldInterval);
     case TabFocusBehavior:
@@ -426,6 +429,16 @@ QVariant QPlatformIntegration::styleHint(StyleHint hint) const
         return QPlatformTheme::defaultThemeHint(QPlatformTheme::WheelScrollLines);
     case MouseQuickSelectionThreshold:
         return QPlatformTheme::defaultThemeHint(QPlatformTheme::MouseQuickSelectionThreshold);
+    case MouseDoubleClickDistance:
+        return QPlatformTheme::defaultThemeHint(QPlatformTheme::MouseDoubleClickDistance);
+    case FlickStartDistance:
+        return QPlatformTheme::defaultThemeHint(QPlatformTheme::FlickStartDistance);
+    case FlickMaximumVelocity:
+        return QPlatformTheme::defaultThemeHint(QPlatformTheme::FlickMaximumVelocity);
+    case FlickDeceleration:
+        return QPlatformTheme::defaultThemeHint(QPlatformTheme::FlickDeceleration);
+    case UnderlineShortcut:
+        return true;
     }
 
     return 0;
@@ -435,6 +448,9 @@ Qt::WindowState QPlatformIntegration::defaultWindowState(Qt::WindowFlags flags) 
 {
     // Leave popup-windows as is
     if (flags & Qt::Popup & ~Qt::Window)
+        return Qt::WindowNoState;
+
+     if (flags & Qt::SubWindow)
         return Qt::WindowNoState;
 
     if (styleHint(QPlatformIntegration::ShowIsFullScreen).toBool())
@@ -472,7 +488,7 @@ QStringList QPlatformIntegration::themeNames() const
 
 class QPlatformTheme *QPlatformIntegration::createPlatformTheme(const QString &name) const
 {
-    Q_UNUSED(name)
+    Q_UNUSED(name);
     return new QPlatformTheme;
 }
 
@@ -483,7 +499,7 @@ class QPlatformTheme *QPlatformIntegration::createPlatformTheme(const QString &n
 */
 QPlatformOffscreenSurface *QPlatformIntegration::createPlatformOffscreenSurface(QOffscreenSurface *surface) const
 {
-    Q_UNUSED(surface)
+    Q_UNUSED(surface);
     return nullptr;
 }
 
@@ -525,6 +541,20 @@ void QPlatformIntegration::beep() const
 {
 }
 
+/*!
+   \since 6.0
+
+   Asks the platform to terminate the application.
+
+   Overrides should ensure there's a callback into the QWSI
+   function handleApplicationTermination so that the quit can
+   be propagated to QtGui and the application.
+*/
+void QPlatformIntegration::quit() const
+{
+    QWindowSystemInterface::handleApplicationTermination<QWindowSystemInterface::SynchronousDelivery>();
+}
+
 #ifndef QT_NO_OPENGL
 /*!
   Platform integration function for querying the OpenGL implementation type.
@@ -562,7 +592,21 @@ void QPlatformIntegration::setApplicationIcon(const QIcon &icon) const
     Q_UNUSED(icon);
 }
 
-#if QT_CONFIG(vulkan) || defined(Q_CLANG_QDOC)
+/*!
+    \since 6.5
+
+    Should set the application's badge to \a number.
+
+    If the number is 0 the badge should be cleared.
+
+    \sa QGuiApplication::setBadge()
+*/
+void QPlatformIntegration::setApplicationBadge(qint64 number)
+{
+    Q_UNUSED(number);
+}
+
+#if QT_CONFIG(vulkan) || defined(Q_QDOC)
 
 /*!
     Factory function for QPlatformVulkanInstance. The \a instance parameter is a

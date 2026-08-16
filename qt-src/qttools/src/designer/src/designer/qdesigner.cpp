@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 // designer
 #include "qdesigner.h"
@@ -33,7 +8,8 @@
 #include "qdesigner_settings.h"
 #include "qdesigner_workbench.h"
 #include "mainwindow.h"
-
+#include <QtDesigner/abstractintegration.h>
+#include <QtDesigner/abstractformeditor.h>
 #include <qdesigner_propertysheet_p.h>
 
 #include <QtGui/qevent.h>
@@ -41,30 +17,38 @@
 #include <QtGui/qicon.h>
 #include <QtWidgets/qerrormessage.h>
 #include <QtCore/qmetaobject.h>
+#include <QtCore/qdir.h>
 #include <QtCore/qfile.h>
 #include <QtCore/qlibraryinfo.h>
 #include <QtCore/qlocale.h>
+#include <QtCore/qtextstream.h>
 #include <QtCore/qtimer.h>
 #include <QtCore/qtranslator.h>
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qdebug.h>
 #include <QtCore/qcommandlineparser.h>
 #include <QtCore/qcommandlineoption.h>
+#include <QtCore/qversionnumber.h>
+#include <QtCore/qvariant.h>
 
 #include <QtDesigner/QDesignerComponents>
 
+#include <optional>
+
 QT_BEGIN_NAMESPACE
 
-static const char *designerApplicationName = "Designer";
-static const char designerDisplayName[] = "Qt Designer";
-static const char *designerWarningPrefix = "Designer: ";
+using namespace Qt::StringLiterals;
+
+static constexpr auto designerApplicationName = "Designer"_L1;
+static constexpr auto designerDisplayName = "Qt Widgets Designer"_L1;
+static constexpr auto designerWarningPrefix = "Designer: "_L1;
 static QtMessageHandler previousMessageHandler = nullptr;
 
 static void designerMessageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
     // Only Designer warnings are displayed as box
     QDesigner *designerApp = qDesigner;
-    if (type != QtWarningMsg || !designerApp || !msg.startsWith(QLatin1String(designerWarningPrefix))) {
+    if (type != QtWarningMsg || !designerApp || !msg.startsWith(designerWarningPrefix)) {
         previousMessageHandler(type, context, msg);
         return;
     }
@@ -72,18 +56,15 @@ static void designerMessageHandler(QtMsgType type, const QMessageLogContext &con
 }
 
 QDesigner::QDesigner(int &argc, char **argv)
-    : QApplication(argc, argv),
-      m_server(nullptr),
-      m_client(nullptr),
-      m_workbench(0), m_suppressNewFormShow(false)
+    : QApplication(argc, argv)
 {
-    setOrganizationName(QStringLiteral("QtProject"));
-    QGuiApplication::setApplicationDisplayName(QLatin1String(designerDisplayName));
-    setApplicationName(QLatin1String(designerApplicationName));
+    setOrganizationName(u"QtProject"_s);
+    QGuiApplication::setApplicationDisplayName(designerDisplayName);
+    setApplicationName(designerApplicationName);
     QDesignerComponents::initializeResources();
 
-#if !defined(Q_OS_OSX) && !defined(Q_OS_WIN)
-    setWindowIcon(QIcon(QStringLiteral(":/qt-project.org/designer/images/designer.png")));
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_WIN)
+    setWindowIcon(QIcon(u":/qt-project.org/designer/images/designer.png"_s));
 #endif
 }
 
@@ -98,7 +79,7 @@ void QDesigner::showErrorMessage(const QString &message)
 {
     // strip the prefix
     const QString qMessage =
-        message.right(message.size() - int(qstrlen(designerWarningPrefix)));
+        message.right(message.size() - int(designerWarningPrefix.size()));
     // If there is no main window yet, just store the message.
     // The QErrorMessage would otherwise be hidden by the main window.
     if (m_mainWindow) {
@@ -107,7 +88,7 @@ void QDesigner::showErrorMessage(const QString &message)
         const QMessageLogContext emptyContext;
         previousMessageHandler(QtWarningMsg, emptyContext, message); // just in case we crash
         m_initializationErrors += qMessage;
-        m_initializationErrors += QLatin1Char('\n');
+        m_initializationErrors += u'\n';
     }
 }
 
@@ -123,10 +104,9 @@ void QDesigner::showErrorMessageBox(const QString &msg)
     if (!m_errorMessageDialog) {
         m_lastErrorMessage.clear();
         m_errorMessageDialog = new QErrorMessage(m_mainWindow);
-        const QString title = QCoreApplication::translate("QDesigner", "%1 - warning").arg(QLatin1String(designerApplicationName));
+        const QString title = QCoreApplication::translate("QDesigner", "%1 - warning").arg(designerApplicationName);
         m_errorMessageDialog->setWindowTitle(title);
         m_errorMessageDialog->setMinimumSize(QSize(600, 250));
-        m_errorMessageDialog->setWindowFlags(m_errorMessageDialog->windowFlags() & ~Qt::WindowContextHelpButtonHint);
     }
     m_errorMessageDialog->showMessage(msg);
     m_lastErrorMessage = msg;
@@ -160,7 +140,9 @@ static void showHelp(QCommandLineParser &parser, const QString &errorMessage = Q
 struct Options
 {
     QStringList files;
-    QString resourceDir{QLibraryInfo::location(QLibraryInfo::TranslationsPath)};
+    QString resourceDir{QLibraryInfo::path(QLibraryInfo::TranslationsPath)};
+    QStringList pluginPaths;
+    std::optional<QVersionNumber> qtVersion;
     bool server{false};
     quint16 clientPort{0};
     bool enableInternalDynamicProperties{false};
@@ -170,31 +152,35 @@ static inline QDesigner::ParseArgumentsResult
     parseDesignerCommandLineArguments(QCommandLineParser &parser, Options *options,
                                       QString *errorMessage)
 {
-    parser.setApplicationDescription(QStringLiteral("Qt Designer ")
-        + QLatin1String(QT_VERSION_STR)
-        + QLatin1String("\n\nUI designer for QWidget-based applications."));
+    parser.setApplicationDescription(u"Qt Widgets Designer " QT_VERSION_STR "\n\nUI designer for QWidget-based applications."_s);
     const QCommandLineOption helpOption = parser.addHelpOption();
     parser.setSingleDashWordOptionMode(QCommandLineParser::ParseAsLongOptions);
-    const QCommandLineOption serverOption(QStringLiteral("server"),
-                                          QStringLiteral("Server mode"));
+    const QCommandLineOption serverOption(u"server"_s,
+                                          u"Server mode"_s);
     parser.addOption(serverOption);
-    const QCommandLineOption clientOption(QStringLiteral("client"),
-                                          QStringLiteral("Client mode"),
-                                          QStringLiteral("port"));
+    const QCommandLineOption clientOption(u"client"_s,
+                                          u"Client mode"_s,
+                                          u"port"_s);
     parser.addOption(clientOption);
-    const QCommandLineOption resourceDirOption(QStringLiteral("resourcedir"),
-                                          QStringLiteral("Resource directory"),
-                                          QStringLiteral("directory"));
+    const QCommandLineOption resourceDirOption(u"resourcedir"_s,
+                                          u"Resource directory"_s,
+                                          u"directory"_s);
     parser.addOption(resourceDirOption);
-    const QCommandLineOption internalDynamicPropertyOption(QStringLiteral("enableinternaldynamicproperties"),
-                                          QStringLiteral("Enable internal dynamic properties"));
+    const QCommandLineOption internalDynamicPropertyOption(u"enableinternaldynamicproperties"_s,
+                                          u"Enable internal dynamic properties"_s);
     parser.addOption(internalDynamicPropertyOption);
-    const QCommandLineOption noScalingOption(QStringLiteral("no-scaling"),
-                                             QStringLiteral("Disable High DPI scaling"));
-    parser.addOption(noScalingOption);
+    const QCommandLineOption pluginPathsOption(u"plugin-path"_s,
+                                               u"Default plugin path list"_s,
+                                               u"path"_s);
+    parser.addOption(pluginPathsOption);
 
-    parser.addPositionalArgument(QStringLiteral("files"),
-                                 QStringLiteral("The UI files to open."));
+    const QCommandLineOption qtVersionOption(u"qt-version"_s,
+                                             u"Qt Version for writing .ui files"_s,
+                                             u"version"_s);
+    parser.addOption(qtVersionOption);
+
+    parser.addPositionalArgument(u"files"_s,
+                                 u"The UI files to open."_s);
 
     if (!parser.parse(QCoreApplication::arguments())) {
         *errorMessage = parser.errorText();
@@ -203,17 +189,28 @@ static inline QDesigner::ParseArgumentsResult
 
     if (parser.isSet(helpOption))
         return QDesigner::ParseArgumentsHelpRequested;
+    // There is no way to retrieve the complete help text from QCommandLineParser,
+    // so, call process() to display it.
+    if (parser.isSet(u"help-all"_s))
+        parser.process(QCoreApplication::arguments()); // exits
     options->server = parser.isSet(serverOption);
     if (parser.isSet(clientOption)) {
         bool ok;
         options->clientPort = parser.value(clientOption).toUShort(&ok);
         if (!ok) {
-            *errorMessage = QStringLiteral("Non-numeric argument specified for -client");
+            *errorMessage = u"Non-numeric argument specified for -client"_s;
             return QDesigner::ParseArgumentsError;
         }
     }
     if (parser.isSet(resourceDirOption))
         options->resourceDir = parser.value(resourceDirOption);
+    const auto pluginPathValues = parser.values(pluginPathsOption);
+    for (const auto &pluginPath : pluginPathValues)
+        options->pluginPaths.append(pluginPath.split(QDir::listSeparator(), Qt::SkipEmptyParts));
+
+    if (parser.isSet(qtVersionOption))
+        options->qtVersion = QVersionNumber::fromString(parser.value(qtVersionOption));
+
     options->enableInternalDynamicProperties = parser.isSet(internalDynamicPropertyOption);
     options->files = parser.positionalArguments();
     return QDesigner::ParseArgumentsSuccess;
@@ -240,41 +237,46 @@ QDesigner::ParseArgumentsResult QDesigner::parseCommandLineArguments()
     if (options.enableInternalDynamicProperties)
         QDesignerPropertySheet::setInternalDynamicPropertiesEnabled(true);
 
-    const QString localSysName = QLocale::system().name();
-    QScopedPointer<QTranslator> designerTranslator(new QTranslator(this));
-    if (designerTranslator->load(QStringLiteral("designer_") + localSysName, options.resourceDir)) {
-        installTranslator(designerTranslator.take());
-        QScopedPointer<QTranslator> qtTranslator(new QTranslator(this));
-        if (qtTranslator->load(QStringLiteral("qt_") + localSysName, options.resourceDir))
-            installTranslator(qtTranslator.take());
+    std::unique_ptr<QTranslator> designerTranslator(new QTranslator(this));
+    if (designerTranslator->load(QLocale(), u"designer"_s, u"_"_s, options.resourceDir)) {
+        installTranslator(designerTranslator.release());
+        std::unique_ptr<QTranslator> qtTranslator(new QTranslator(this));
+        if (qtTranslator->load(QLocale(), u"qt"_s, u"_"_s, options.resourceDir))
+            installTranslator(qtTranslator.release());
     }
 
-    m_workbench = new QDesignerWorkbench();
+    m_workbench = new QDesignerWorkbench(options.pluginPaths);
 
     emit initialized();
     previousMessageHandler = qInstallMessageHandler(designerMessageHandler); // Warn when loading faulty forms
     Q_ASSERT(previousMessageHandler);
 
-    m_suppressNewFormShow = m_workbench->readInBackup();
+    bool suppressNewFormShow = m_workbench->readInBackup();
 
-    if (!options.files.isEmpty()) {
-        const QStringList::const_iterator cend = options.files.constEnd();
-        for (QStringList::const_iterator it = options.files.constBegin(); it != cend; ++it) {
-            // Ensure absolute paths for recent file list to be unique
-            QString fileName = *it;
-            const QFileInfo fi(fileName);
-            if (fi.exists() && fi.isRelative())
-                fileName = fi.absoluteFilePath();
-            m_workbench->readInForm(fileName);
-        }
+    for (auto fileName : std::as_const(options.files)) {
+        // Ensure absolute paths for recent file list to be unique
+        const QFileInfo fi(fileName);
+        if (fi.exists() && fi.isRelative())
+            fileName = fi.absoluteFilePath();
+        m_workbench->readInForm(fileName);
     }
-    if ( m_workbench->formWindowCount())
-        m_suppressNewFormShow = true;
+
+    if (m_workbench->formWindowCount() > 0)
+        suppressNewFormShow = true;
+
+    if (options.qtVersion.has_value()) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+        m_workbench->core()->integration()->setQtVersion(options.qtVersion.value());
+#else
+        auto version = QVariant::fromValue(options.qtVersion.value());
+        m_workbench->core()->integration()->setProperty("qtVersion", version);
+#endif
+    }
 
     // Show up error box with parent now if something went wrong
     if (m_initializationErrors.isEmpty()) {
-        if (!m_suppressNewFormShow && QDesignerSettings(m_workbench->core()).showNewFormOnStartup())
-            QTimer::singleShot(100, this, &QDesigner::callCreateForm); // won't show anything if suppressed
+        if (!isServerOrClientEnabled() && !suppressNewFormShow)
+            m_workbench->showNewForm();
     } else {
         showErrorMessageBox(m_initializationErrors);
         m_initializationErrors.clear();
@@ -282,15 +284,18 @@ QDesigner::ParseArgumentsResult QDesigner::parseCommandLineArguments()
     return result;
 }
 
+bool QDesigner::isServerOrClientEnabled() const
+{
+    return m_server || m_client;
+}
+
 bool QDesigner::event(QEvent *ev)
 {
     bool eaten;
     switch (ev->type()) {
     case QEvent::FileOpen:
-        // Set it true first since, if it's a Qt 3 form, the messagebox from convert will fire the timer.
-        m_suppressNewFormShow = true;
-        if (!m_workbench->readInForm(static_cast<QFileOpenEvent *>(ev)->file()))
-            m_suppressNewFormShow = false;
+        m_workbench->readInForm(static_cast<QFileOpenEvent *>(ev)->file());
+        m_workbench->requestActivate();
         eaten = true;
         break;
     case QEvent::Close: {
@@ -320,12 +325,6 @@ void QDesigner::setMainWindow(MainWindowBase *tw)
 MainWindowBase *QDesigner::mainWindow() const
 {
     return m_mainWindow;
-}
-
-void QDesigner::callCreateForm()
-{
-    if (!m_suppressNewFormShow)
-        m_workbench->actionManager()->createForm();
 }
 
 QT_END_NAMESPACE

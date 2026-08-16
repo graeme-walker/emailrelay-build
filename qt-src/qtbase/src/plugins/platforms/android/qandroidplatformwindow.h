@@ -1,59 +1,40 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef ANDROIDPLATFORMWINDOW_H
 #define ANDROIDPLATFORMWINDOW_H
 #include <qobject.h>
 #include <qrect.h>
 #include <qpa/qplatformwindow.h>
+#include <QtCore/qjnienvironment.h>
+#include <QtCore/qjniobject.h>
+#include <QtCore/qjnitypes.h>
+#include <QtCore/qloggingcategory.h>
+#include <QtCore/qmutex.h>
+#include <QtCore/qwaitcondition.h>
+#include <jni.h>
 
 QT_BEGIN_NAMESPACE
 
+Q_DECLARE_LOGGING_CATEGORY(lcQpaWindow)
+Q_DECLARE_JNI_CLASS(QtWindow, "org/qtproject/qt/android/QtWindow")
+Q_DECLARE_JNI_CLASS(Surface, "android/view/Surface")
+
 class QAndroidPlatformScreen;
-class QAndroidPlatformBackingStore;
 
 class QAndroidPlatformWindow: public QPlatformWindow
 {
 public:
-    explicit QAndroidPlatformWindow(QWindow *window);
+    enum class SurfaceContainer {
+        SurfaceView,
+        TextureView
+    };
 
+    explicit QAndroidPlatformWindow(QWindow *window);
+    void initialize() override;
+
+    ~QAndroidPlatformWindow();
     void lower() override;
     void raise() override;
 
@@ -63,42 +44,68 @@ public:
     void setWindowFlags(Qt::WindowFlags flags) override;
     Qt::WindowFlags windowFlags() const;
     void setParent(const QPlatformWindow *window) override;
-    WId winId() const override { return m_windowId; }
+
+    WId winId() const override;
 
     bool setMouseGrabEnabled(bool grab) override { Q_UNUSED(grab); return false; }
     bool setKeyboardGrabEnabled(bool grab) override { Q_UNUSED(grab); return false; }
 
     QAndroidPlatformScreen *platformScreen() const;
 
+    QMargins safeAreaMargins() const override;
+
     void propagateSizeHints() override;
     void requestActivateWindow() override;
-    void updateStatusBarVisibility();
-    inline bool isRaster() const {
-        if (isForeignWindow())
-            return false;
-
-        return window()->surfaceType() == QSurface::RasterSurface
-            || window()->surfaceType() == QSurface::RasterGLSurface;
-    }
+    void updateSystemUiVisibility();
+    void updateFocusedEditText();
+    inline bool isRaster() const { return m_isRaster; }
     bool isExposed() const override;
+    QtJniTypes::QtWindow nativeWindow() const { return m_nativeQtWindow; }
 
     virtual void applicationStateChanged(Qt::ApplicationState);
+    int nativeViewId() const { return m_nativeViewId; }
 
-    void setBackingStore(QAndroidPlatformBackingStore *store) { m_backingStore = store; }
-    QAndroidPlatformBackingStore *backingStore() const { return m_backingStore; }
+    static bool registerNatives(QJniEnvironment &env);
+    void onSurfaceChanged(QtJniTypes::Surface surface);
 
-    virtual void repaint(const QRegion &) { }
+    void lockSurface() { m_surfaceMutex.lock(); }
+    void unlockSurface() { m_surfaceMutex.unlock(); }
 
 protected:
     void setGeometry(const QRect &rect) override;
+    void createSurface();
+    void destroySurface();
+    void sendExpose() const;
+    bool blockedByModal() const;
+    bool isEmbeddingContainer() const;
+    virtual void clearSurface() {}
 
-protected:
     Qt::WindowFlags m_windowFlags;
     Qt::WindowStates m_windowState;
+    bool m_isRaster;
 
-    WId m_windowId;
+    int m_nativeViewId = -1;
+    QtJniTypes::QtWindow m_nativeQtWindow;
+    SurfaceContainer m_surfaceContainerType = SurfaceContainer::SurfaceView;
+    QtJniTypes::QtWindow m_nativeParentQtWindow;
+    // The Android Surface, accessed from multiple threads, guarded by m_surfaceMutex.
+    // If the window is using QtSurface, which is a SurfaceView subclass, this Surface will be
+    // automatically created by Android when QtSurface is in a layout and visible. If the
+    // QtSurface is detached or hidden (app goes to background), Android will automatically
+    // destroy the Surface.
+    QtJniTypes::Surface m_androidSurfaceObject;
+    QWaitCondition m_surfaceWaitCondition;
+    bool m_surfaceCreated = false;
+    QMutex m_surfaceMutex;
+    QMutex m_destructionMutex;
 
-    QAndroidPlatformBackingStore *m_backingStore = nullptr;
+private:
+    static void setSurface(JNIEnv *env, jobject obj, jint windowId, QtJniTypes::Surface surface);
+    Q_DECLARE_JNI_NATIVE_METHOD_IN_CURRENT_SCOPE(setSurface)
+    static void windowFocusChanged(JNIEnv *env, jobject object, jboolean focus, jint windowId);
+    Q_DECLARE_JNI_NATIVE_METHOD_IN_CURRENT_SCOPE(windowFocusChanged)
+
+    [[nodiscard]] QMutexLocker<QMutex> destructionGuard();
 };
 
 QT_END_NAMESPACE

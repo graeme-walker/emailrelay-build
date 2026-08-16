@@ -1,48 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qabstractnetworkcache.h"
 #include "qabstractnetworkcache_p.h"
+#include "qnetworkrequest_p.h"
+#include "qhttpheadershelper_p.h"
 
 #include <qdatastream.h>
 #include <qdatetime.h>
 #include <qurl.h>
+#include <qhash.h>
 
 #include <qdebug.h>
 
@@ -63,14 +30,14 @@ public:
             url == other.url
             && lastModified == other.lastModified
             && expirationDate == other.expirationDate
-            && headers == other.headers
-            && saveToDisk == other.saveToDisk;
+            && saveToDisk == other.saveToDisk
+            && QHttpHeadersHelper::compareStrict(headers, other.headers);
     }
 
     QUrl url;
     QDateTime lastModified;
     QDateTime expirationDate;
-    QNetworkCacheMetaData::RawHeaderList headers;
+    QHttpHeaders headers;
     QNetworkCacheMetaData::AttributesMap attributes;
     bool saveToDisk;
 
@@ -150,9 +117,7 @@ QNetworkCacheMetaData &QNetworkCacheMetaData::operator=(const QNetworkCacheMetaD
 /*!
     \fn void QNetworkCacheMetaData::swap(QNetworkCacheMetaData &other)
     \since 5.0
-
-    Swaps this metadata instance with \a other. This function is very
-    fast and never fails.
+    \memberswap{metadata instance}
  */
 
 /*!
@@ -232,30 +197,55 @@ QUrl QNetworkCacheMetaData::url() const
  */
 void QNetworkCacheMetaData::setUrl(const QUrl &url)
 {
-    d->url = url;
-    d->url.setPassword(QString());
-    d->url.setFragment(QString());
+    auto *p = d.data();
+    p->url = url;
+    p->url.setPassword(QString());
+    p->url.setFragment(QString());
 }
 
 /*!
     Returns a list of all raw headers that are set in this meta data.
     The list is in the same order that the headers were set.
 
-    \sa setRawHeaders()
+    \sa setRawHeaders(), headers()
  */
 QNetworkCacheMetaData::RawHeaderList QNetworkCacheMetaData::rawHeaders() const
 {
-    return d->headers;
+    return QNetworkHeadersPrivate::fromHttpToRaw(d->headers);
 }
 
 /*!
     Sets the raw headers to \a list.
 
-    \sa rawHeaders()
+    \sa rawHeaders(), setHeaders()
  */
 void QNetworkCacheMetaData::setRawHeaders(const RawHeaderList &list)
 {
-    d->headers = list;
+    d->headers = QNetworkHeadersPrivate::fromRawToHttp(list);
+}
+
+/*!
+    \since 6.8
+
+    Returns headers in form of QHttpHeaders that are set in this meta data.
+
+    \sa setHeaders()
+*/
+QHttpHeaders QNetworkCacheMetaData::headers() const
+{
+    return d->headers;
+}
+
+/*!
+    \since 6.8
+
+    Sets the headers of this network cache meta data to \a headers.
+
+    \sa headers()
+*/
+void QNetworkCacheMetaData::setHeaders(const QHttpHeaders &headers)
+{
+    d->headers = headers;
 }
 
 /*!
@@ -395,12 +385,14 @@ static inline QDataStream &operator>>(QDataStream &in, QNetworkCacheMetaData::At
 
 void QNetworkCacheMetaDataPrivate::load(QDataStream &in, QNetworkCacheMetaData &metaData)
 {
-    in >> metaData.d->url;
-    in >> metaData.d->expirationDate;
-    in >> metaData.d->lastModified;
-    in >> metaData.d->saveToDisk;
-    in >> metaData.d->attributes;
-    in >> metaData.d->headers;
+    auto *p = metaData.d.data();
+    in >> p->url;
+    in >> p->expirationDate;
+    in >> p->lastModified;
+    in >> p->saveToDisk;
+    in >> p->attributes;
+    QNetworkCacheMetaData::RawHeaderList list; in >> list;
+    metaData.setRawHeaders(list);
 }
 
 /*!
@@ -542,3 +534,5 @@ QAbstractNetworkCache::~QAbstractNetworkCache()
 */
 
 QT_END_NAMESPACE
+
+#include "moc_qabstractnetworkcache.cpp"

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qstyleditemdelegate.h"
 
@@ -66,6 +30,7 @@
 #include <qmetaobject.h>
 #include <qtextlayout.h>
 #include <private/qabstractitemdelegate_p.h>
+#include <private/qabstractitemmodel_p.h>
 #include <private/qtextengine_p.h>
 #include <private/qlayoutengine_p.h>
 #include <qdebug.h>
@@ -74,6 +39,7 @@
 #include <qtableview.h>
 #endif
 
+#include <array>
 #include <limits.h>
 
 QT_BEGIN_NAMESPACE
@@ -96,6 +62,16 @@ public:
     }
 
     QItemEditorFactory *factory;
+
+    mutable std::array<QModelRoleData, 7> modelRoleData = {
+        QModelRoleData(Qt::FontRole),
+        QModelRoleData(Qt::TextAlignmentRole),
+        QModelRoleData(Qt::ForegroundRole),
+        QModelRoleData(Qt::CheckStateRole),
+        QModelRoleData(Qt::DecorationRole),
+        QModelRoleData(Qt::DisplayRole),
+        QModelRoleData(Qt::BackgroundRole)
+    };
 };
 
 /*!
@@ -139,8 +115,7 @@ public:
     \row    \li \l Qt::AccessibleDescriptionRole \li QString
     \row    \li \l Qt::AccessibleTextRole \li QString
     \endomit
-    \row    \li \l Qt::BackgroundRole \li QBrush (\since 4.2)
-    \row    \li \l Qt::BackgroundColorRole \li QColor (obsolete; use Qt::BackgroundRole instead)
+    \row    \li \l Qt::BackgroundRole \li QBrush \since 4.2
     \row    \li \l Qt::CheckStateRole \li Qt::CheckState
     \row    \li \l Qt::DecorationRole \li QIcon, QPixmap, QImage and QColor
     \row    \li \l Qt::DisplayRole \li QString and types with a string representation
@@ -151,8 +126,7 @@ public:
     \row    \li \l Qt::StatusTipRole \li
     \endomit
     \row    \li \l Qt::TextAlignmentRole \li Qt::Alignment
-    \row    \li \l Qt::ForegroundRole \li QBrush (\since 4.2)
-    \row    \li \l Qt::TextColorRole \li QColor (obsolete; use Qt::ForegroundRole instead)
+    \row    \li \l Qt::ForegroundRole \li QBrush \since 4.2
     \omit
     \row    \li \l Qt::ToolTipRole
     \row    \li \l Qt::WhatsThisRole
@@ -163,12 +137,17 @@ public:
     instance provided by QItemEditorFactory is installed on all item
     delegates. You can set a custom factory using
     setItemEditorFactory() or set a new default factory with
-    QItemEditorFactory::setDefaultFactory(). It is the data stored in
-    the item model with the \l{Qt::}{EditRole} that is edited. See the
-    QItemEditorFactory class for a more high-level introduction to
-    item editor factories. The \l{Color Editor Factory Example}{Color
-    Editor Factory} example shows how to create custom editors with a
-    factory.
+    QItemEditorFactory::setDefaultFactory().
+
+    \snippet code/src_gui_itemviews_qitemeditorfactory.cpp setDefaultFactory
+
+    After the new factory has been set, all standard item delegates
+    will use it (i.e, also delegates that were created before the new
+    default factory was set).
+
+    It is the data stored in the item model with the \l{Qt::}{EditRole}
+    that is edited. See the QItemEditorFactory class for a more
+    high-level introduction to item editor factories.
 
     \section1 Subclassing QStyledItemDelegate
 
@@ -230,8 +209,7 @@ public:
     documentation for details.
 
     \sa {Delegate Classes}, QItemDelegate, QAbstractItemDelegate, QStyle,
-        {Spin Box Delegate Example}, {Star Delegate Example}, {Color
-         Editor Factory Example}
+        {Star Delegate Example}
 */
 
 
@@ -278,33 +256,43 @@ QString QStyledItemDelegate::displayText(const QVariant &value, const QLocale& l
 void QStyledItemDelegate::initStyleOption(QStyleOptionViewItem *option,
                                          const QModelIndex &index) const
 {
-    QVariant value = index.data(Qt::FontRole);
-    if (value.isValid() && !value.isNull()) {
-        option->font = qvariant_cast<QFont>(value).resolve(option->font);
+    option->index = index;
+
+    Q_D(const QStyledItemDelegate);
+    QModelRoleDataSpan modelRoleDataSpan = d->modelRoleData;
+    index.multiData(modelRoleDataSpan);
+
+    const QVariant *value;
+    value = modelRoleDataSpan.dataForRole(Qt::FontRole);
+    if (value->isValid() && !value->isNull()) {
+        option->font = qvariant_cast<QFont>(*value).resolve(option->font);
         option->fontMetrics = QFontMetrics(option->font);
     }
 
-    value = index.data(Qt::TextAlignmentRole);
-    if (value.isValid() && !value.isNull())
-        option->displayAlignment = Qt::Alignment(value.toInt());
+    value = modelRoleDataSpan.dataForRole(Qt::TextAlignmentRole);
+    if (value->isValid() && !value->isNull())
+        option->displayAlignment = QtPrivate::legacyFlagValueFromModelData<Qt::Alignment>(*value);
 
-    value = index.data(Qt::ForegroundRole);
-    if (value.canConvert<QBrush>())
-        option->palette.setBrush(QPalette::Text, qvariant_cast<QBrush>(value));
+    value = modelRoleDataSpan.dataForRole(Qt::ForegroundRole);
+    if (value->canConvert<QBrush>())
+        option->palette.setBrush(QPalette::Text, qvariant_cast<QBrush>(*value));
 
-    option->index = index;
-    value = index.data(Qt::CheckStateRole);
-    if (value.isValid() && !value.isNull()) {
+    value = modelRoleDataSpan.dataForRole(Qt::CheckStateRole);
+    if (value->isValid() && !value->isNull()) {
         option->features |= QStyleOptionViewItem::HasCheckIndicator;
-        option->checkState = static_cast<Qt::CheckState>(value.toInt());
+        option->checkState = QtPrivate::legacyEnumValueFromModelData<Qt::CheckState>(*value);
     }
 
-    value = index.data(Qt::DecorationRole);
-    if (value.isValid() && !value.isNull()) {
+    value = modelRoleDataSpan.dataForRole(Qt::DecorationRole);
+    if (value->isValid() && !value->isNull()) {
         option->features |= QStyleOptionViewItem::HasDecoration;
-        switch (value.userType()) {
+        switch (value->userType()) {
         case QMetaType::QIcon: {
-            option->icon = qvariant_cast<QIcon>(value);
+            option->icon = qvariant_cast<QIcon>(*value);
+            if (option->icon.isNull()) {
+                option->features &= ~QStyleOptionViewItem::HasDecoration;
+                break;
+            }
             QIcon::Mode mode;
             if (!(option->state & QStyle::State_Enabled))
                 mode = QIcon::Disabled;
@@ -321,20 +309,20 @@ void QStyledItemDelegate::initStyleOption(QStyleOptionViewItem *option,
         }
         case QMetaType::QColor: {
             QPixmap pixmap(option->decorationSize);
-            pixmap.fill(qvariant_cast<QColor>(value));
+            pixmap.fill(qvariant_cast<QColor>(*value));
             option->icon = QIcon(pixmap);
             break;
         }
         case QMetaType::QImage: {
-            QImage image = qvariant_cast<QImage>(value);
+            QImage image = qvariant_cast<QImage>(*value);
             option->icon = QIcon(QPixmap::fromImage(image));
-            option->decorationSize = image.size() / image.devicePixelRatio();
+            option->decorationSize = image.deviceIndependentSize().toSize();
             break;
         }
         case QMetaType::QPixmap: {
-            QPixmap pixmap = qvariant_cast<QPixmap>(value);
+            QPixmap pixmap = qvariant_cast<QPixmap>(*value);
             option->icon = QIcon(pixmap);
-            option->decorationSize = pixmap.size() / pixmap.devicePixelRatio();
+            option->decorationSize = pixmap.deviceIndependentSize().toSize();
             break;
         }
         default:
@@ -342,13 +330,14 @@ void QStyledItemDelegate::initStyleOption(QStyleOptionViewItem *option,
         }
     }
 
-    value = index.data(Qt::DisplayRole);
-    if (value.isValid() && !value.isNull()) {
+    value = modelRoleDataSpan.dataForRole(Qt::DisplayRole);
+    if (value->isValid() && !value->isNull()) {
         option->features |= QStyleOptionViewItem::HasDisplay;
-        option->text = displayText(value, option->locale);
+        option->text = displayText(*value, option->locale);
     }
 
-    option->backgroundBrush = qvariant_cast<QBrush>(index.data(Qt::BackgroundRole));
+    value = modelRoleDataSpan.dataForRole(Qt::BackgroundRole);
+    option->backgroundBrush = qvariant_cast<QBrush>(*value);
 
     // disable style animations for checkboxes etc. within itemviews (QTBUG-30146)
     option->styleObject = nullptr;
@@ -421,9 +410,10 @@ QSize QStyledItemDelegate::sizeHint(const QStyleOptionViewItem &option,
     \sa QAbstractItemDelegate::createEditor()
 */
 QWidget *QStyledItemDelegate::createEditor(QWidget *parent,
-                                     const QStyleOptionViewItem &,
+                                     const QStyleOptionViewItem &option,
                                      const QModelIndex &index) const
 {
+    Q_UNUSED(option);
     Q_D(const QStyledItemDelegate);
     if (!index.isValid())
         return nullptr;
@@ -441,19 +431,14 @@ QWidget *QStyledItemDelegate::createEditor(QWidget *parent,
 */
 void QStyledItemDelegate::setEditorData(QWidget *editor, const QModelIndex &index) const
 {
-#ifdef QT_NO_PROPERTIES
-    Q_UNUSED(editor);
-    Q_UNUSED(index);
-#else
     QVariant v = index.data(Qt::EditRole);
     QByteArray n = editor->metaObject()->userProperty().name();
 
     if (!n.isEmpty()) {
         if (!v.isValid())
-            v = QVariant(editor->property(n).userType(), (const void *)nullptr);
+            v = QVariant(editor->property(n).metaType());
         editor->setProperty(n, v);
     }
-#endif
 }
 
 /*!
@@ -470,11 +455,6 @@ void QStyledItemDelegate::setModelData(QWidget *editor,
                                  QAbstractItemModel *model,
                                  const QModelIndex &index) const
 {
-#ifdef QT_NO_PROPERTIES
-    Q_UNUSED(model);
-    Q_UNUSED(editor);
-    Q_UNUSED(index);
-#else
     Q_D(const QStyledItemDelegate);
     Q_ASSERT(model);
     Q_ASSERT(editor);
@@ -484,7 +464,6 @@ void QStyledItemDelegate::setModelData(QWidget *editor,
             model->data(index, Qt::EditRole).userType());
     if (!n.isEmpty())
         model->setData(index, editor->property(n), Qt::EditRole);
-#endif
 }
 
 /*!
@@ -502,15 +481,7 @@ void QStyledItemDelegate::updateEditorGeometry(QWidget *editor,
 
     QStyleOptionViewItem opt = option;
     initStyleOption(&opt, index);
-    // let the editor take up all available space
-    //if the editor is not a QLineEdit
-    //or it is in a QTableView
-#if QT_CONFIG(tableview) && QT_CONFIG(lineedit)
-    if (qobject_cast<QExpandingLineEdit*>(editor) && !qobject_cast<const QTableView*>(widget))
-        opt.showDecorationSelected = editor->style()->styleHint(QStyle::SH_ItemView_ShowDecorationSelected, nullptr, editor);
-    else
-#endif
-        opt.showDecorationSelected = true;
+    opt.showDecorationSelected = editor->style()->styleHint(QStyle::SH_ItemView_ShowDecorationSelected, nullptr, editor);
 
     QStyle *style = widget ? widget->style() : QApplication::style();
     QRect geom = style->subElementRect(QStyle::SE_ItemViewItemText, &opt, widget);
@@ -558,8 +529,9 @@ void QStyledItemDelegate::setItemEditorFactory(QItemEditorFactory *factory)
         \li \uicontrol Esc
     \endlist
 
-    If the \a editor's type is QTextEdit or QPlainTextEdit then \uicontrol Enter and
-    \uicontrol Return keys are \e not handled.
+    If the \a editor's type is QTextEdit or QPlainTextEdit then \uicontrol Tab,
+    \uicontrol Backtab, \uicontrol Enter and \uicontrol Return keys are \e not
+    handled.
 
     In the case of \uicontrol Tab, \uicontrol Backtab, \uicontrol Enter and \uicontrol Return
     key press events, the \a editor's data is committed to the model
@@ -612,7 +584,7 @@ bool QStyledItemDelegate::editorEvent(QEvent *event,
         initStyleOption(&viewOpt, index);
         QRect checkRect = style->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &viewOpt, widget);
         QMouseEvent *me = static_cast<QMouseEvent*>(event);
-        if (me->button() != Qt::LeftButton || !checkRect.contains(me->pos()))
+        if (me->button() != Qt::LeftButton || !checkRect.contains(me->position().toPoint()))
             return false;
 
         if ((event->type() == QEvent::MouseButtonPress)
@@ -627,7 +599,7 @@ bool QStyledItemDelegate::editorEvent(QEvent *event,
         return false;
     }
 
-    Qt::CheckState state = static_cast<Qt::CheckState>(value.toInt());
+    Qt::CheckState state = QtPrivate::legacyEnumValueFromModelData<Qt::CheckState>(value);
     if (flags & Qt::ItemIsUserTristate)
         state = ((Qt::CheckState)((state + 1) % 3));
     else

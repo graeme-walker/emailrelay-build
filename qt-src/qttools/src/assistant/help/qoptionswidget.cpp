@@ -1,39 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qoptionswidget_p.h"
 
-#include <QtWidgets/QComboBox>
-#include <QtWidgets/QItemDelegate>
-#include <QtWidgets/QListWidget>
-#include <QtWidgets/QVBoxLayout>
+#include <QtWidgets/qitemdelegate.h>
+#include <QtWidgets/qlayout.h>
+#include <QtWidgets/qlistwidget.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 class ListWidgetDelegate : public QItemDelegate
 {
@@ -41,7 +17,7 @@ public:
     ListWidgetDelegate(QWidget *w) : QItemDelegate(w), m_widget(w) {}
 
     static bool isSeparator(const QModelIndex &index) {
-        return index.data(Qt::AccessibleDescriptionRole).toString() == QLatin1String("separator");
+        return index.data(Qt::AccessibleDescriptionRole).toString() == "separator"_L1;
     }
     static void setSeparator(QListWidgetItem *item) {
         item->setData(Qt::AccessibleDescriptionRole, QString::fromLatin1("separator"));
@@ -49,29 +25,31 @@ public:
     }
 
 protected:
-    void paint(QPainter *painter,
-               const QStyleOptionViewItem &option,
-               const QModelIndex &index) const override {
+    void paint(QPainter *painter, const QStyleOptionViewItem &option,
+               const QModelIndex &index) const override
+    {
         if (isSeparator(index)) {
             QRect rect = option.rect;
             if (const QAbstractItemView *view = qobject_cast<const QAbstractItemView*>(option.widget))
                 rect.setWidth(view->viewport()->width());
             QStyleOption opt;
             opt.rect = rect;
-            m_widget->style()->drawPrimitive(QStyle::PE_IndicatorToolBarSeparator, &opt, painter, m_widget);
+            m_widget->style()->drawPrimitive(QStyle::PE_IndicatorToolBarSeparator, &opt, painter,
+                                             m_widget);
         } else {
             QItemDelegate::paint(painter, option, index);
         }
     }
 
-    QSize sizeHint(const QStyleOptionViewItem &option,
-                   const QModelIndex &index) const override {
+    QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
         if (isSeparator(index)) {
             int pm = m_widget->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, nullptr, m_widget);
-            return QSize(pm, pm);
+            return {pm, pm};
         }
         return QItemDelegate::sizeHint(option, index);
     }
+
 private:
     QWidget *m_widget;
 };
@@ -93,18 +71,11 @@ QOptionsWidget::QOptionsWidget(QWidget *parent)
     m_listWidget->setItemDelegate(new ListWidgetDelegate(m_listWidget));
     QVBoxLayout *layout = new QVBoxLayout(this);
     layout->addWidget(m_listWidget);
-    layout->setContentsMargins(QMargins());
-
+    layout->setContentsMargins({});
     connect(m_listWidget, &QListWidget::itemChanged, this, &QOptionsWidget::itemChanged);
 }
 
-void QOptionsWidget::clear()
-{
-    setOptions(QStringList(), QStringList());
-}
-
-void QOptionsWidget::setOptions(const QStringList &validOptions,
-                                const QStringList &selectedOptions)
+void QOptionsWidget::setOptions(const QStringList &validOptions, const QStringList &selectedOptions)
 {
     m_listWidget->clear();
     m_optionToItem.clear();
@@ -128,26 +99,14 @@ void QOptionsWidget::setOptions(const QStringList &validOptions,
     for (const QString &option : m_invalidOptions)
         appendItem(option, false, true);
 
-    if ((validSelectedOptions.count() + m_invalidOptions.count())
-            && validUnselectedOptions.count()) {
+    if ((validSelectedOptions.size() + m_invalidOptions.size()) && validUnselectedOptions.size())
         appendSeparator();
-    }
 
     for (const QString &option : validUnselectedOptions) {
         appendItem(option, true, false);
-        if (option.isEmpty() && validUnselectedOptions.count() > 1) // special No Option item
+        if (option.isEmpty() && validUnselectedOptions.size() > 1) // special No Option item
             appendSeparator();
     }
-}
-
-QStringList QOptionsWidget::validOptions() const
-{
-    return m_validOptions;
-}
-
-QStringList QOptionsWidget::selectedOptions() const
-{
-    return m_selectedOptions;
 }
 
 void QOptionsWidget::setNoOptionText(const QString &text)
@@ -182,9 +141,9 @@ QString QOptionsWidget::optionText(const QString &optionName, bool valid) const
 {
     QString text = optionName;
     if (optionName.isEmpty())
-        text = QLatin1Char('[') + m_noOptionText + QLatin1Char(']');
+        text = u'[' + m_noOptionText + u']';
     if (!valid)
-        text += QLatin1String("\t[") + m_invalidOptionText + QLatin1Char(']');
+        text += "\t["_L1 + m_invalidOptionText + u']';
     return text;
 }
 
@@ -192,7 +151,7 @@ QListWidgetItem *QOptionsWidget::appendItem(const QString &optionName, bool vali
 {
     QListWidgetItem *optionItem = new QListWidgetItem(optionText(optionName, valid), m_listWidget);
     optionItem->setCheckState(selected ? Qt::Checked : Qt::Unchecked);
-    m_listWidget->insertItem(m_listWidget->count(), optionItem);
+    m_listWidget->addItem(optionItem);
     m_optionToItem[optionName] = optionItem;
     m_itemToOption[optionItem] = optionName;
     return optionItem;
@@ -202,7 +161,7 @@ void QOptionsWidget::appendSeparator()
 {
     QListWidgetItem *separatorItem = new QListWidgetItem(m_listWidget);
     ListWidgetDelegate::setSeparator(separatorItem);
-    m_listWidget->insertItem(m_listWidget->count(), separatorItem);
+    m_listWidget->addItem(separatorItem);
 }
 
 void QOptionsWidget::itemChanged(QListWidgetItem *item)
@@ -221,9 +180,7 @@ void QOptionsWidget::itemChanged(QListWidgetItem *item)
     } else {
         return;
     }
-
     emit optionSelectionChanged(m_selectedOptions);
 }
-
 
 QT_END_NAMESPACE

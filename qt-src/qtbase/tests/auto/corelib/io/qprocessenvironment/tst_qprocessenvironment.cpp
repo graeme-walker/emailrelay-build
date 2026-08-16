@@ -1,32 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest>
+#include <QTest>
+#include <QtTest/private/qcomparisontesthelper_p.h>
 #include <QObject>
 #include <QProcessEnvironment>
 
@@ -34,8 +10,10 @@ class tst_QProcessEnvironment: public QObject
 {
     Q_OBJECT
 private slots:
+    void compareCompiles();
     void operator_eq();
     void clearAndIsEmpty();
+    void clearAndInheritsFromParent();
     void insert();
     void emptyNull();
     void toStringList();
@@ -46,6 +24,11 @@ private slots:
     void systemEnvironment();
     void putenv();
 };
+
+void tst_QProcessEnvironment::compareCompiles()
+{
+    QTestPrivate::testEqualityOperatorsCompile<QProcessEnvironment>();
+}
 
 void tst_QProcessEnvironment::operator_eq()
 {
@@ -58,6 +41,9 @@ void tst_QProcessEnvironment::operator_eq()
     QProcessEnvironment e2;
     QCOMPARE(e1, e2);
 
+    auto parentEnv = QProcessEnvironment(QProcessEnvironment::InheritFromParent);
+    QT_TEST_EQUALITY_OPS(parentEnv, e2, false);
+
     e1.clear();
     QCOMPARE(e1, e2);
 
@@ -65,22 +51,45 @@ void tst_QProcessEnvironment::operator_eq()
     QCOMPARE(e1, e2);
 
     e1.insert("FOO", "bar");
-    QVERIFY(e1 != e2);
+    QT_TEST_EQUALITY_OPS(e1, e2, false);
 
     e2.insert("FOO", "bar");
     QCOMPARE(e1, e2);
 
     e2.insert("FOO", "baz");
-    QVERIFY(e1 != e2);
+    QT_TEST_EQUALITY_OPS(e1, e2, false);
+
+    QT_TEST_EQUALITY_OPS(e2, parentEnv, false);
 }
 
 void tst_QProcessEnvironment::clearAndIsEmpty()
 {
     QProcessEnvironment e;
+    QVERIFY(e.isEmpty());
+    QVERIFY(!e.inheritsFromParent());
     e.insert("FOO", "bar");
     QVERIFY(!e.isEmpty());
+    QVERIFY(!e.inheritsFromParent());
     e.clear();
     QVERIFY(e.isEmpty());
+    QVERIFY(!e.inheritsFromParent());
+}
+
+void tst_QProcessEnvironment::clearAndInheritsFromParent()
+{
+    QProcessEnvironment e(QProcessEnvironment::InheritFromParent);
+    QVERIFY(e.isEmpty());
+    QVERIFY(e.inheritsFromParent());
+    // Clearing null environment keeps it null
+    e.clear();
+    QVERIFY(e.isEmpty());
+    QVERIFY(e.inheritsFromParent());
+    e.insert("FOO", "bar");
+    QVERIFY(!e.isEmpty());
+    QVERIFY(!e.inheritsFromParent());
+    e.clear();
+    QVERIFY(e.isEmpty());
+    QVERIFY(!e.inheritsFromParent());
 }
 
 void tst_QProcessEnvironment::insert()
@@ -126,7 +135,7 @@ void tst_QProcessEnvironment::toStringList()
     e.insert("FOO", "bar");
     QStringList result = e.toStringList();
     QVERIFY(!result.isEmpty());
-    QCOMPARE(result.length(), 1);
+    QCOMPARE(result.size(), 1);
     QCOMPARE(result.at(0), QString("FOO=bar"));
 
     e.clear();
@@ -138,7 +147,7 @@ void tst_QProcessEnvironment::toStringList()
     e.insert("A", "bc");
     e.insert("HELLO", "World");
     result = e.toStringList();
-    QCOMPARE(result.length(), 4);
+    QCOMPARE(result.size(), 4);
 
     // order is not specified, so use contains()
     QVERIFY(result.contains("FOO=bar"));
@@ -155,7 +164,7 @@ void tst_QProcessEnvironment::keys()
 
     e.insert("FOO", "bar");
     QStringList result = e.keys();
-    QCOMPARE(result.length(), 1);
+    QCOMPARE(result.size(), 1);
     QCOMPARE(result.at(0), QString("FOO"));
 
     e.clear();
@@ -167,7 +176,7 @@ void tst_QProcessEnvironment::keys()
     e.insert("A", "bc");
     e.insert("HELLO", "World");
     result = e.keys();
-    QCOMPARE(result.length(), 4);
+    QCOMPARE(result.size(), 4);
 
     // order is not specified, so use contains()
     QVERIFY(result.contains("FOO"));
@@ -190,7 +199,7 @@ void tst_QProcessEnvironment::insertEnv()
 
     e.insert(e2);
     QStringList keys = e.keys();
-    QCOMPARE(keys.length(), 5);
+    QCOMPARE(keys.size(), 5);
 
     QCOMPARE(e.value("FOO"), QString("bar"));
     QCOMPARE(e.value("A"), QString("bc"));
@@ -240,7 +249,7 @@ void tst_QProcessEnvironment::caseSensitivity()
     QCOMPARE(e.value("foo"), QString("bar"));
 
     QStringList list = e.toStringList();
-    QCOMPARE(list.length(), 2);
+    QCOMPARE(list.size(), 2);
     QVERIFY(list.contains("foo=bar"));
     QVERIFY(list.contains("FOO=baz"));
 #endif
@@ -248,6 +257,9 @@ void tst_QProcessEnvironment::caseSensitivity()
 
 void tst_QProcessEnvironment::systemEnvironment()
 {
+#ifdef Q_OS_VXWORKS
+    QSKIP("VxWorks do not have PATH environment variable");
+#endif
     static const char envname[] = "THIS_ENVIRONMENT_VARIABLE_HOPEFULLY_DOESNT_EXIST";
     QByteArray path = qgetenv("PATH");
     QByteArray nonexistant = qgetenv(envname);

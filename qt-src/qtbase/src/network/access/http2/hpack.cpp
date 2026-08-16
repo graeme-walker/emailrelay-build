@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "bitstreams_p.h"
 #include "hpack_p.h"
@@ -71,7 +35,7 @@ struct BitPattern
     uchar bitLength;
 };
 
-bool operator == (const BitPattern &lhs, const BitPattern &rhs)
+bool operator==(BitPattern lhs, BitPattern rhs)
 {
     return lhs.bitLength == rhs.bitLength && lhs.value == rhs.value;
 }
@@ -90,25 +54,25 @@ using StreamError = BitIStream::Error;
 
 // It's always 1 or 0 actually, but the number of bits to extract
 // from the input stream - differs.
-const BitPattern Indexed = {1, 1};
-const BitPattern LiteralIncrementalIndexing = {1, 2};
-const BitPattern LiteralNoIndexing = {0, 4};
-const BitPattern LiteralNeverIndexing = {1, 4};
-const BitPattern SizeUpdate = {1, 3};
+constexpr BitPattern Indexed = {1, 1};
+constexpr BitPattern LiteralIncrementalIndexing = {1, 2};
+constexpr BitPattern LiteralNoIndexing = {0, 4};
+constexpr BitPattern LiteralNeverIndexing = {1, 4};
+constexpr BitPattern SizeUpdate = {1, 3};
 
-bool is_literal_field(const BitPattern &pattern)
+bool is_literal_field(BitPattern pattern)
 {
     return pattern == LiteralIncrementalIndexing
            || pattern == LiteralNoIndexing
            || pattern == LiteralNeverIndexing;
 }
 
-void write_bit_pattern(const BitPattern &pattern, BitOStream &outputStream)
+void write_bit_pattern(BitPattern pattern, BitOStream &outputStream)
 {
     outputStream.writeBits(pattern.value, pattern.bitLength);
 }
 
-bool read_bit_pattern(const BitPattern &pattern, BitIStream &inputStream)
+bool read_bit_pattern(BitPattern pattern, BitIStream &inputStream)
 {
     uchar chunk = 0;
 
@@ -127,7 +91,7 @@ bool read_bit_pattern(const BitPattern &pattern, BitIStream &inputStream)
     return true;
 }
 
-bool is_request_pseudo_header(const QByteArray &name)
+bool is_request_pseudo_header(QByteArrayView name)
 {
     return name == ":method" || name == ":scheme" ||
            name == ":authority" || name == ":path";
@@ -144,6 +108,16 @@ Encoder::Encoder(quint32 size, bool compress)
 quint32 Encoder::dynamicTableSize() const
 {
     return lookupTable.dynamicDataSize();
+}
+
+quint32 Encoder::dynamicTableCapacity() const
+{
+    return lookupTable.dynamicDataCapacity();
+}
+
+quint32 Encoder::maxDynamicTableCapacity() const
+{
+    return lookupTable.maxDynamicDataCapacity();
 }
 
 bool Encoder::encodeRequest(BitOStream &outputStream, const HttpHeader &header)
@@ -230,8 +204,8 @@ bool Encoder::encodeRequestPseudoHeaders(BitOStream &outputStream,
     using size_type = decltype(header.size());
 
     bool methodFound = false;
-    const char *headerName[] = {":authority", ":scheme", ":path"};
-    const size_type nHeaders = sizeof headerName / sizeof headerName[0];
+    constexpr QByteArrayView headerName[] = {":authority", ":scheme", ":path"};
+    constexpr size_type nHeaders = std::size(headerName);
     bool headerFound[nHeaders] = {};
 
     for (const auto &field : header) {
@@ -355,7 +329,7 @@ bool Encoder::encodeIndexedField(BitOStream &outputStream, quint32 index) const
     return true;
 }
 
-bool Encoder::encodeLiteralField(BitOStream &outputStream, const BitPattern &fieldType,
+bool Encoder::encodeLiteralField(BitOStream &outputStream, BitPattern fieldType,
                                  const QByteArray &name, const QByteArray &value,
                                  bool withCompression)
 {
@@ -383,7 +357,7 @@ bool Encoder::encodeLiteralField(BitOStream &outputStream, const BitPattern &fie
     return true;
 }
 
-bool Encoder::encodeLiteralField(BitOStream &outputStream, const BitPattern &fieldType,
+bool Encoder::encodeLiteralField(BitOStream &outputStream, BitPattern fieldType,
                                  quint32 nameIndex, const QByteArray &value,
                                  bool withCompression)
 {
@@ -391,7 +365,8 @@ bool Encoder::encodeLiteralField(BitOStream &outputStream, const BitPattern &fie
 
     QByteArray name;
     const bool found = lookupTable.fieldName(nameIndex, &name);
-    Q_UNUSED(found) Q_ASSERT(found);
+    Q_UNUSED(found);
+    Q_ASSERT(found);
 
     if (fieldType == LiteralIncrementalIndexing) {
         if (!lookupTable.prependField(name, value))
@@ -442,6 +417,16 @@ quint32 Decoder::dynamicTableSize() const
     return lookupTable.dynamicDataSize();
 }
 
+quint32 Decoder::dynamicTableCapacity() const
+{
+    return lookupTable.dynamicDataCapacity();
+}
+
+quint32 Decoder::maxDynamicTableCapacity() const
+{
+    return lookupTable.maxDynamicDataCapacity();
+}
+
 void Decoder::setMaxDynamicTableSize(quint32 size)
 {
     // Up to a caller (HTTP2 protocol handler)
@@ -486,7 +471,7 @@ bool Decoder::decodeSizeUpdate(BitIStream &inputStream)
     return false;
 }
 
-bool Decoder::decodeLiteralField(const BitPattern &fieldType, BitIStream &inputStream)
+bool Decoder::decodeLiteralField(BitPattern fieldType, BitIStream &inputStream)
 {
     // https://http2.github.io/http2-spec/compression.html
     // 6.2.1, 6.2.2, 6.2.3
@@ -516,13 +501,18 @@ bool Decoder::decodeLiteralField(const BitPattern &fieldType, BitIStream &inputS
     return false;
 }
 
-bool Decoder::processDecodedField(const BitPattern &fieldType,
+bool Decoder::processDecodedField(BitPattern fieldType,
                                  const QByteArray &name,
                                  const QByteArray &value)
 {
     if (fieldType == LiteralIncrementalIndexing) {
         if (!lookupTable.prependField(name, value))
             return false;
+    }
+
+    if (lookupTable.maxDynamicDataCapacity() < lookupTable.dynamicDataCapacity()) {
+        qDebug("about to add a new field, but expected a Dynamic Table Size Update");
+        return false; // We expected a dynamic table size update.
     }
 
     header.push_back(HeaderField(name, value));
@@ -537,6 +527,49 @@ void Decoder::handleStreamError(BitIStream &inputStream)
 
     // For now error handling not needed here,
     // HTTP2 layer will end with session error/COMPRESSION_ERROR.
+}
+
+std::optional<QUrl> makePromiseKeyUrl(const HttpHeader &requestHeader)
+{
+    constexpr QByteArrayView names[] = { ":authority", ":method", ":path", ":scheme" };
+    enum PseudoHeaderEnum
+    {
+        Authority,
+        Method,
+        Path,
+        Scheme
+    };
+    std::array<std::optional<QByteArrayView>, std::size(names)> pseudoHeaders{};
+    for (const auto &field : requestHeader) {
+        const auto *it = std::find(std::begin(names), std::end(names), QByteArrayView(field.name));
+        if (it != std::end(names)) {
+            const auto index = std::distance(std::begin(names), it);
+            if (field.value.isEmpty() || pseudoHeaders.at(index).has_value())
+                return {};
+            pseudoHeaders[index] = field.value;
+        }
+    }
+
+    auto optionalIsSet = [](const auto &x) { return x.has_value(); };
+    if (!std::all_of(pseudoHeaders.begin(), pseudoHeaders.end(), optionalIsSet)) {
+        // All four required, HTTP/2 8.1.2.3.
+        return {};
+    }
+
+    const QByteArrayView method = pseudoHeaders[Method].value();
+    if (method.compare("get", Qt::CaseInsensitive) != 0 &&
+        method.compare("head", Qt::CaseInsensitive) != 0) {
+        return {};
+    }
+
+    QUrl url;
+    url.setScheme(QLatin1StringView(pseudoHeaders[Scheme].value()));
+    url.setAuthority(QLatin1StringView(pseudoHeaders[Authority].value()));
+    url.setPath(QLatin1StringView(pseudoHeaders[Path].value()));
+
+    if (!url.isValid())
+        return {};
+    return url;
 }
 
 }

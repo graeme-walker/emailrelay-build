@@ -153,10 +153,10 @@ msvc {
         arch = amd64
     else: !equals(arch, arm):!equals(arch, arm64): \  # may be "win32" or undefined
         arch = x86
-    # Consider only WinRT and ARM64 desktop builds to be cross-builds -
+    # Consider only ARM64 desktop builds to be cross-builds -
     # the host is assumed to be Intel and capable of running the target
     # executables (so building for x64 on x86 will break).
-    winrt|equals(arch, arm64): \
+    equals(arch, arm64): \
         CONFIG += msvc_cross
 }
 
@@ -182,9 +182,14 @@ isEmpty($${target_prefix}.INCDIRS) {
         # UIKit simulator platforms will see the device SDK's sysroot in
         # QMAKE_DEFAULT_*DIRS, because they're handled in a single build pass.
         darwin {
-            # Clang doesn't pick up the architecture from the sysroot, and will
-            # default to the host architecture, so we need to manually set it.
-            cxx_flags += -arch $$QMAKE_APPLE_DEVICE_ARCHS
+            uikit:!isEmpty(QMAKE_APPLE_DEVICE_ARCHS) {
+                # Clang doesn't automatically pick up the architecture, just because
+                # we're passing the iOS sysroot below, and we will end up building the
+                # test for the host architecture, resulting in linker errors when
+                # linking against the iOS libraries. We work around this by passing
+                # the architecture explicitly.
+                cxx_flags += -arch $$first(QMAKE_APPLE_DEVICE_ARCHS)
+            }
 
             uikit:macx-xcode: \
                 cxx_flags += -isysroot $$sdk_path_device.value
@@ -283,9 +288,12 @@ isEmpty($${target_prefix}.INCDIRS) {
                 }
             }
         }
-        isEmpty(QMAKE_DEFAULT_LIBDIRS)|isEmpty(QMAKE_DEFAULT_INCDIRS): \
+        isEmpty(QMAKE_DEFAULT_INCDIRS): \
             !integrity: \
-                error("failed to parse default search paths from compiler output")
+                error("failed to parse default include paths from compiler output")
+        isEmpty(QMAKE_DEFAULT_LIBDIRS): \
+            !integrity:!darwin: \
+                error("failed to parse default library paths from compiler output")
         QMAKE_DEFAULT_LIBDIRS = $$unique(QMAKE_DEFAULT_LIBDIRS)
     } else: ghs {
         cmd = $$QMAKE_CXX $$QMAKE_CXXFLAGS -$${LITERAL_HASH} -o /tmp/fake_output /tmp/fake_input.cpp
@@ -326,9 +334,17 @@ isEmpty($${target_prefix}.INCDIRS) {
             error("Mkspec does not specify MSVC_VER. Cannot continue.")
         versionAtLeast(MSVC_VER, 15.0) {
             dir = $$(VSINSTALLDIR)
-            isEmpty(dir): \
-                dir = $$read_registry(HKLM, \
-                    "Software\\Microsoft\\VisualStudio\\SxS\\VS7\\$$MSVC_VER", 32)
+            isEmpty(dir) {
+                version_parts = $$split(MSVC_VER, .)
+                MSVC_NEXT_MAJOR = $$num_add($$first(version_parts), 1)
+                vswhere = "$$getenv(ProgramFiles\(x86\))/Microsoft Visual Studio/Installer/vswhere.exe"
+                !exists($$vswhere): \
+                    error("Could not find $$vswhere")
+                vswhere = $$system_quote($$system_path($$vswhere))
+                # -version parameter: A version range for instances to find. 15.0 will get all versions >= 15.0
+                # Example: [15.0,16.0) will find versions 15.*.
+                dir = $$system("$$vswhere -latest -version [$$MSVC_VER,$${MSVC_NEXT_MAJOR}.0] -property installationPath")
+            }
             isEmpty(dir): \
                 error("Failed to find the Visual Studio installation directory.")
             cmd += $$system_quote($$dir\\VC\\Auxiliary\\Build\\vcvarsall.bat) $$arch
@@ -341,7 +357,6 @@ isEmpty($${target_prefix}.INCDIRS) {
                 error("Failed to find the Visual C installation directory.")
             cmd += $$system_quote($$dir\\vcvarsall.bat) $$arch
         }
-        winrt: cmd += store
 
         isEmpty(WINSDK_VER): \
             error("Mkspec does not specify WINSDK_VER. Cannot continue.")
@@ -399,7 +414,7 @@ isEmpty($${target_prefix}.INCDIRS) {
         QMAKE_DEFAULT_INCDIRS = $$split(INCLUDE, $$QMAKE_DIRLIST_SEP)
     }
 
-    unix:if(!cross_compile|host_build) {
+    unix:!darwin:if(!cross_compile|host_build) {
         isEmpty(QMAKE_DEFAULT_INCDIRS): QMAKE_DEFAULT_INCDIRS = /usr/include /usr/local/include
         isEmpty(QMAKE_DEFAULT_LIBDIRS): QMAKE_DEFAULT_LIBDIRS = /lib /usr/lib
     }

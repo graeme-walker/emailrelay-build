@@ -1,62 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "mainwindow.h"
 #include "dialog.h"
 
-#include <QtWidgets>
-#include <QtSql>
-#include <QtXml>
-
-extern int uniqueAlbumId;
-extern int uniqueArtistId;
+#include <QApplication>
+#include <QComboBox>
+#include <QHeaderView>
+#include <QFile>
+#include <QGridLayout>
+#include <QGroupBox>
+#include <QLabel>
+#include <QListWidget>
+#include <QMenu>
+#include <QMenuBar>
+#include <QMessageBox>
+#include <QSqlRecord>
+#include <QSqlRelationalTableModel>
+#include <QTableView>
 
 MainWindow::MainWindow(const QString &artistTable, const QString &albumTable,
                        QFile *albumDetails, QWidget *parent)
@@ -75,13 +36,12 @@ MainWindow::MainWindow(const QString &artistTable, const QString &albumTable,
     QGroupBox *details = createDetailsGroupBox();
 
     artistView->setCurrentIndex(0);
-    uniqueAlbumId = model->rowCount();
-    uniqueArtistId = artistView->count();
+    Dialog::setInitialAlbumAndArtistId(model->rowCount(), artistView->count());
 
     connect(model, &QSqlRelationalTableModel::rowsInserted,
-            this, &MainWindow::updateHeader);
+            this, &MainWindow::adjustHeader);
     connect(model, &QSqlRelationalTableModel::rowsRemoved,
-            this, &MainWindow::updateHeader);
+            this, &MainWindow::adjustHeader);
 
     QGridLayout *layout = new QGridLayout;
     layout->addWidget(artists, 0, 0);
@@ -114,7 +74,7 @@ void MainWindow::changeArtist(int row)
     }
 }
 
-void MainWindow::showArtistProfile(QModelIndex index)
+void MainWindow::showArtistProfile(const QModelIndex &index)
 {
     QSqlRecord record = model->relationModel(2)->record(index.row());
 
@@ -131,7 +91,7 @@ void MainWindow::showArtistProfile(QModelIndex index)
     imageLabel->hide();
 }
 
-void MainWindow::showAlbumDetails(QModelIndex index)
+void MainWindow::showAlbumDetails(const QModelIndex &index)
 {
     QSqlRecord record = model->record(index.row());
 
@@ -160,14 +120,11 @@ void MainWindow::getTrackList(QDomNode album)
 {
     trackList->clear();
 
-    QDomNodeList tracks = album.childNodes();
-    QDomNode track;
-    QString trackNumber;
-
+    const QDomNodeList tracks = album.childNodes();
     for (int i = 0; i < tracks.count(); ++i) {
 
-        track = tracks.item(i);
-        trackNumber = track.toElement().attribute("number");
+        const QDomNode track = tracks.item(i);
+        const QString trackNumber = track.toElement().attribute("number");
 
         QListWidgetItem *item = new QListWidgetItem(trackList);
         item->setText(trackNumber + ": " + track.toElement().text());
@@ -179,7 +136,7 @@ void MainWindow::addAlbum()
     Dialog *dialog = new Dialog(model, albumData, file, this);
     int accepted = dialog->exec();
 
-    if (accepted == 1) {
+    if (accepted == QDialog::Accepted) {
         int lastRow = model->rowCount() - 1;
         albumView->selectRow(lastRow);
         albumView->scrollToBottom();
@@ -189,10 +146,10 @@ void MainWindow::addAlbum()
 
 void MainWindow::deleteAlbum()
 {
-    QModelIndexList selection = albumView->selectionModel()->selectedRows(0);
+    const QModelIndexList selection = albumView->selectionModel()->selectedRows(0);
 
     if (!selection.empty()) {
-        QModelIndex idIndex = selection.at(0);
+        const QModelIndex &idIndex = selection.at(0);
         int id = idIndex.data().toInt();
         QString title = idIndex.sibling(idIndex.row(), 1).data().toString();
         QString artist = idIndex.sibling(idIndex.row(), 2).data().toString();
@@ -219,9 +176,7 @@ void MainWindow::deleteAlbum()
 
 void MainWindow::removeAlbumFromFile(int id)
 {
-
     QDomNodeList albums = albumData.elementsByTagName("album");
-
     for (int i = 0; i < albums.count(); ++i) {
         QDomNode node = albums.item(i);
         if (node.toElement().attribute("id").toInt() == id) {
@@ -244,12 +199,14 @@ void MainWindow::removeAlbumFromFile(int id)
 */
 }
 
-void MainWindow::removeAlbumFromDatabase(QModelIndex index)
+void MainWindow::removeAlbumFromDatabase(const QModelIndex &index)
 {
     model->removeRow(index.row());
+    // to avoid a blank row, see QSqlTableModel::removeRows()
+    model->select();
 }
 
-void MainWindow::decreaseAlbumCount(QModelIndex artistIndex)
+void MainWindow::decreaseAlbumCount(const QModelIndex &artistIndex)
 {
     int row = artistIndex.row();
     QModelIndex albumCountIndex = artistIndex.sibling(row, 2);
@@ -262,6 +219,7 @@ void MainWindow::decreaseAlbumCount(QModelIndex artistIndex)
         showImageLabel();
     } else {
         artists->setData(albumCountIndex, QVariant(albumCount - 1));
+        artists->submitAll();
     }
 }
 
@@ -283,7 +241,7 @@ QGroupBox* MainWindow::createArtistGroupBox()
     artistView->setModel(model->relationModel(2));
     artistView->setModelColumn(1);
 
-    connect(artistView, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    connect(artistView, &QComboBox::currentIndexChanged,
             this, &MainWindow::changeArtist);
 
     QGroupBox *box = new QGroupBox(tr("Artist"));
@@ -388,7 +346,7 @@ void MainWindow::createMenuBar()
     connect(deleteAction, &QAction::triggered,
             this, &MainWindow::deleteAlbum);
     connect(quitAction, &QAction::triggered,
-            this, &MainWindow::close);
+            qApp, &QCoreApplication::quit);
     connect(aboutAction, &QAction::triggered,
             this, &MainWindow::about);
     connect(aboutQtAction, &QAction::triggered,
@@ -405,7 +363,7 @@ void MainWindow::showImageLabel()
     imageLabel->show();
 }
 
-QModelIndex MainWindow::indexOfArtist(const QString &artist)
+QModelIndex MainWindow::indexOfArtist(const QString &artist) const
 {
     QSqlTableModel *artistModel = model->relationModel(2);
 
@@ -415,11 +373,6 @@ QModelIndex MainWindow::indexOfArtist(const QString &artist)
             return artistModel->index(i, 1);
     }
     return QModelIndex();
-}
-
-void MainWindow::updateHeader(QModelIndex, int, int)
-{
-    adjustHeader();
 }
 
 void MainWindow::adjustHeader()

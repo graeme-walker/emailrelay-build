@@ -78,24 +78,20 @@ G::OptionMap::const_iterator G::OptionMap::begin() const noexcept
 	return m_map.cbegin() ;
 }
 
-#ifndef G_LIB_SMALL
 G::OptionMap::const_iterator G::OptionMap::cbegin() const noexcept
 {
 	return begin() ;
 }
-#endif
 
 G::OptionMap::const_iterator G::OptionMap::end() const noexcept
 {
 	return m_map.cend() ;
 }
 
-#ifndef G_LIB_SMALL
 G::OptionMap::const_iterator G::OptionMap::cend() const noexcept
 {
 	return end() ;
 }
-#endif
 
 void G::OptionMap::clear()
 {
@@ -155,6 +151,27 @@ std::string G::OptionMap::join( Map::const_iterator p , Map::const_iterator end 
 		if( (*p).second.isOff() )
 			return sv_to_string(off_value) ;
 	}
+	return result ;
+}
+
+std::pair<bool,std::vector<unsigned>> G::OptionMap::numbers( std::string_view key , unsigned int default_ ) const
+{
+	std::pair<bool,std::vector<unsigned>> result { true , {default_} } ;
+	auto range = findRange( key ) ;
+	if( range.first == range.second )
+		return result ;
+
+	if( std::any_of( range.first , range.second ,
+		[](const value_type & v_){return !G::Str::isUInt(v_.second.valueref());}) )
+	{
+		result.first = false ; // invalid
+		return result ;
+	}
+
+	result.first = true ;
+	result.second.clear() ;
+	for( auto p = range.first ; p != range.second ; ++p )
+		result.second.push_back( G::Str::toUInt((*p).second.valueref()) ) ;
 	return result ;
 }
 

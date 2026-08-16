@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QLABEL_P_H
 #define QLABEL_P_H
@@ -62,12 +26,16 @@
 #if QT_CONFIG(movie)
 #include "qmovie.h"
 #endif
-#include "qimage.h"
-#include "qbitmap.h"
 #include "qpicture.h"
+#include "qpixmap.h"
 #if QT_CONFIG(menu)
 #include "qmenu.h"
 #endif
+
+#include <QtCore/qpointer.h>
+
+#include <array>
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 
@@ -84,12 +52,12 @@ public:
     QSize sizeForWidth(int w) const;
 
 #if QT_CONFIG(movie)
-    void _q_movieUpdated(const QRect&);
-    void _q_movieResized(const QSize&);
+    void movieUpdated(const QRect &rect);
+    void movieResized(const QSize &size);
 #endif
 #ifndef QT_NO_SHORTCUT
     void updateShortcut();
-    void _q_buddyDeleted();
+    void buddyDeleted();
 #endif
     inline bool needTextControl() const {
         Q_Q(const QLabel);
@@ -104,7 +72,7 @@ public:
     void ensureTextControl() const;
     void sendControlEvent(QEvent *e);
 
-    void _q_linkHovered(const QString &link);
+    void linkHovered(const QString &link);
 
     QRectF layoutRect() const;
     QRect documentRect() const;
@@ -117,31 +85,31 @@ public:
     mutable QSize sh;
     mutable QSize msh;
     QString text;
-    QPixmap  *pixmap;
-    QPixmap *scaledpixmap;
-    QImage *cachedimage;
+    std::optional<QPixmap> pixmap;
+    std::optional<QPixmap> scaledpixmap;
 #ifndef QT_NO_PICTURE
-    QPicture *picture;
+    std::optional<QPicture> picture;
 #endif
 #if QT_CONFIG(movie)
     QPointer<QMovie> movie;
+    std::array<QMetaObject::Connection, 2> movieConnections;
 #endif
-    mutable QWidgetTextControl *control;
+    mutable QWidgetTextControl *control = nullptr;
     mutable QTextCursor shortcutCursor;
 #ifndef QT_NO_CURSOR
     QCursor cursor;
 #endif
 #ifndef QT_NO_SHORTCUT
     QPointer<QWidget> buddy;
-    int shortcutId;
+    int shortcutId = 0;
 #endif
-    Qt::TextFormat textformat;
-    Qt::TextFormat effectiveTextFormat;
-    Qt::TextInteractionFlags textInteractionFlags;
+    Qt::TextFormat textformat = Qt::AutoText;
+    Qt::TextFormat effectiveTextFormat = Qt::PlainText;
+    Qt::TextInteractionFlags textInteractionFlags = Qt::LinksAccessibleByMouse;
     mutable QSizePolicy sizePolicy;
-    int margin;
-    ushort align;
-    short indent;
+    int margin = 0;
+    int align = Qt::AlignLeft | Qt::AlignVCenter | Qt::TextExpandTabs;
+    int indent = -1;
     mutable uint valid_hints : 1;
     uint scaledcontents : 1;
     mutable uint textLayoutDirty : 1;
@@ -154,6 +122,7 @@ public:
 #endif
     uint openExternalLinks : 1;
     // <-- space for more bit field values here
+    QTextDocument::ResourceProvider resourceProvider = nullptr;
 
     friend class QMessageBoxPrivate;
 };

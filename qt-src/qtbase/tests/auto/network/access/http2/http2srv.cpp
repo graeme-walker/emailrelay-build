@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <QtNetwork/private/http2protocol_p.h>
 #include <QtNetwork/private/bitstreams_p.h>
@@ -109,6 +84,12 @@ Http2Server::~Http2Server()
 {
 }
 
+void Http2Server::setInformationalStatusCode(int code)
+{
+    if (code == 100 || (102 <= code && code <= 199))
+        informationalStatusCode = code;
+}
+
 void Http2Server::enablePushPromise(bool pushEnabled, const QByteArray &path)
 {
     pushPromiseEnabled = pushEnabled;
@@ -118,6 +99,33 @@ void Http2Server::enablePushPromise(bool pushEnabled, const QByteArray &path)
 void Http2Server::setResponseBody(const QByteArray &body)
 {
     responseBody = body;
+}
+
+void Http2Server::setContentEncoding(const QByteArray &encoding)
+{
+    contentEncoding = encoding;
+}
+
+void Http2Server::setAuthenticationHeader(const QByteArray &authentication)
+{
+    authenticationHeader = authentication;
+}
+
+void Http2Server::setAuthenticationRequired(bool enable)
+{
+    Q_ASSERT(!enable || authenticationHeader.isEmpty());
+    authenticationRequired = enable;
+}
+
+void Http2Server::setRedirect(const QByteArray &url, int count)
+{
+    redirectUrl = url;
+    redirectCount = count;
+}
+
+void Http2Server::setSendTrailingHEADERS(bool enable)
+{
+    sendTrailingHEADERS = enable;
 }
 
 void Http2Server::emulateGOAWAY(int timeout)
@@ -136,6 +144,17 @@ void Http2Server::redirectOpenStream(quint16 port)
 bool Http2Server::isClearText() const
 {
     return connectionType == H2Type::h2c || connectionType == H2Type::h2cDirect;
+}
+
+QByteArray Http2Server::requestAuthorizationHeader()
+{
+    const auto isAuthHeader = [](const HeaderField &field) {
+        return field.name == "authorization";
+    };
+    const auto requestHeaders = decoder.decodedHeader();
+    const auto authentication =
+            std::find_if(requestHeaders.cbegin(), requestHeaders.cend(), isAuthHeader);
+    return authentication == requestHeaders.cend() ? QByteArray() : authentication->value;
 }
 
 void Http2Server::startServer()
@@ -172,6 +191,9 @@ void Http2Server::sendServerSettings()
         writer.append(it.value());
         if (it.key() == Settings::INITIAL_WINDOW_SIZE_ID)
             streamRecvWindowSize = it.value();
+        if (it.key() == Settings::HEADER_TABLE_SIZE_ID) {
+            pendingMaxTableSizeUpdate = it.value();
+        }
     }
     writer.write(*socket);
     // Now, let's update our peer on a session recv window size:
@@ -246,9 +268,20 @@ void Http2Server::sendDATA(quint32 streamID, quint32 windowSize)
         return;
 
     if (last) {
-        writer.start(FrameType::DATA, FrameFlag::END_STREAM, streamID);
-        writer.setPayloadSize(0);
-        writer.write(*socket);
+        if (sendTrailingHEADERS) {
+            writer.start(FrameType::HEADERS,
+                    FrameFlag::PRIORITY | FrameFlag::END_HEADERS | FrameFlag::END_STREAM, streamID);
+            const quint32 maxFrameSize(clientSetting(Settings::MAX_FRAME_SIZE_ID,
+                    Http2::maxPayloadSize));
+            // 5 bytes for PRIORITY data:
+            writer.append(quint32(0)); // streamID 0 (32-bit)
+            writer.append(quint8(0)); // + weight 0 (8-bit)
+            writer.writeHEADERS(*socket, maxFrameSize);
+        } else {
+            writer.start(FrameType::DATA, FrameFlag::END_STREAM, streamID);
+            writer.setPayloadSize(0);
+            writer.write(*socket);
+        }
         suspendedStreams.erase(it);
         activeRequests.erase(streamID);
 
@@ -297,11 +330,12 @@ void Http2Server::incomingConnection(qintptr socketDescriptor)
         sslSocket->setProtocol(QSsl::TlsV1_2OrLater);
         connect(sslSocket, SIGNAL(sslErrors(QList<QSslError>)),
                 this, SLOT(ignoreErrorSlot()));
-        QFile file(SRCDIR "certs/fluke.key");
-        file.open(QIODevice::ReadOnly);
+        QFile file(QT_TESTCASE_SOURCEDIR "/certs/fluke.key");
+        if (!file.open(QIODevice::ReadOnly))
+            qFatal("Cannot open certificate file %s", qPrintable(file.fileName()));
         QSslKey key(file.readAll(), QSsl::Rsa, QSsl::Pem, QSsl::PrivateKey);
         sslSocket->setPrivateKey(key);
-        auto localCert = QSslCertificate::fromPath(SRCDIR "certs/fluke.cert");
+        auto localCert = QSslCertificate::fromPath(QT_TESTCASE_SOURCEDIR "/certs/fluke.cert");
         sslSocket->setLocalCertificateChain(localCert);
         sslSocket->setSocketDescriptor(socketDescriptor, QAbstractSocket::ConnectedState);
         // Stop listening.
@@ -359,16 +393,12 @@ bool Http2Server::verifyProtocolUpgradeRequest()
     bool settingsOk = false;
 
     QHttpNetworkReplyPrivate *firstRequestReader = protocolUpgradeHandler->d_func();
+    const auto headers = firstRequestReader->headers();
 
     // That's how we append them, that's what I expect to find:
-    for (const auto &header : firstRequestReader->fields) {
-        if (header.first == "Connection")
-            connectionOk = header.second.contains("Upgrade, HTTP2-Settings");
-        else if (header.first == "Upgrade")
-            upgradeOk = header.second.contains("h2c");
-        else if (header.first == "HTTP2-Settings")
-            settingsOk = true;
-    }
+    connectionOk = headers.combinedValue(QHttpHeaders::WellKnownHeader::Connection).contains("Upgrade, HTTP2-Settings");
+    upgradeOk = headers.combinedValue(QHttpHeaders::WellKnownHeader::Upgrade).contains("h2c");
+    settingsOk = headers.contains("HTTP2-Settings");
 
     return connectionOk && upgradeOk && settingsOk;
 }
@@ -642,6 +672,13 @@ void Http2Server::handleSETTINGS()
             return;
         }
 
+        // The client ACKed our setting, including the new decoder table size,
+        // so we can update it now:
+        if (pendingMaxTableSizeUpdate) {
+            decoder.setMaxDynamicTableSize(*pendingMaxTableSizeUpdate);
+            pendingMaxTableSizeUpdate.reset();
+        }
+
         waitingClientAck = false;
         emit serverSettingsAcked();
         return;
@@ -732,10 +769,15 @@ void Http2Server::handleDATA()
     }
 
     if (inboundFrame.flags().testFlag(FrameFlag::END_STREAM)) {
-        closedStreams.insert(streamID); // Enter "half-closed remote" state.
-        streamWindows.erase(it);
+        if (responseBody.isEmpty()) {
+            closedStreams.insert(streamID); // Enter "half-closed remote" state.
+            streamWindows.erase(it);
+        }
         emit receivedData(streamID);
     }
+    emit receivedDATAFrame(streamID,
+                           QByteArray(reinterpret_cast<const char *>(inboundFrame.dataBegin()),
+                                      inboundFrame.dataSize()));
 }
 
 void Http2Server::handleWINDOW_UPDATE()
@@ -812,9 +854,31 @@ void Http2Server::sendResponse(quint32 streamID, bool emptyBody)
         // Now we'll continue with _normal_ response.
     }
 
+    // Create a header with an informational status code and some random header
+    // fields. The setter ensures that the value is 100 or is between 102 and 199
+    // (inclusive) if set - otherwise it is 0
+
+    if (informationalStatusCode > 0) {
+        writer.start(FrameType::HEADERS, FrameFlag::END_HEADERS, streamID);
+
+        HttpHeader informationalHeader;
+        informationalHeader.push_back({":status", QByteArray::number(informationalStatusCode)});
+        informationalHeader.push_back(HeaderField("a_random_header_field", "it_will_be_dropped"));
+        informationalHeader.push_back(HeaderField("another_random_header_field", "drop_this_too"));
+
+        HPack::BitOStream ostream(writer.outboundFrame().buffer);
+        const bool result = encoder.encodeResponse(ostream, informationalHeader);
+        Q_ASSERT(result);
+
+        writer.writeHEADERS(*socket, maxFrameSize);
+    }
+
     writer.start(FrameType::HEADERS, FrameFlag::END_HEADERS, streamID);
     if (emptyBody)
         writer.addFlag(FrameFlag::END_STREAM);
+
+    // We assume any auth is correct. Leaves the checking to the test itself
+    const bool hasAuth = !requestAuthorizationHeader().isEmpty();
 
     HttpHeader header;
     if (redirectWhileReading) {
@@ -831,7 +895,15 @@ void Http2Server::sendResponse(quint32 streamID, bool emptyBody)
         const QString url("%1://localhost:%2/");
         header.push_back({"location", url.arg(isClearText() ? QStringLiteral("http") : QStringLiteral("https"),
                                               QString::number(targetPort)).toLatin1()});
-
+    } else if (redirectCount > 0) { // Not redirecting while reading, unlike above
+        --redirectCount;
+        header.push_back({":status", "308"});
+        header.push_back({"location", redirectUrl});
+    } else if (!authenticationHeader.isEmpty() && !hasAuth) {
+        header.push_back({ ":status", "401" });
+        header.push_back(HPack::HeaderField("www-authenticate", authenticationHeader));
+    } else if (authenticationRequired) {
+        header.push_back({ ":status", "401" });
     } else {
         header.push_back({":status", "200"});
     }
@@ -840,6 +912,9 @@ void Http2Server::sendResponse(quint32 streamID, bool emptyBody)
         header.push_back(HPack::HeaderField("content-length",
                          QString("%1").arg(responseBody.size()).toLatin1()));
     }
+
+    if (!contentEncoding.isEmpty())
+        header.push_back(HPack::HeaderField("content-encoding", contentEncoding));
 
     HPack::BitOStream ostream(writer.outboundFrame().buffer);
     const bool result = encoder.encodeResponse(ostream, header);

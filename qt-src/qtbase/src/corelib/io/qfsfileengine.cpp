@@ -1,48 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qfsfileengine_p.h"
 #include "qfsfileengine_iterator_p.h"
 #include "qfilesystemengine_p.h"
 #include "qdatetime.h"
-#include "qdiriterator.h"
 #include "qset.h"
 #include <QtCore/qdebug.h>
 
@@ -54,11 +17,13 @@
 #endif
 #include <stdio.h>
 #include <stdlib.h>
-#if defined(Q_OS_MAC)
+#if defined(Q_OS_DARWIN)
 # include <private/qcore_mac_p.h>
 #endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 #ifdef Q_OS_WIN
 #  ifndef S_ISREG
@@ -85,7 +50,7 @@ typedef unsigned int UnsignedIOType;
 #else
 typedef ssize_t SignedIOType;
 typedef size_t UnsignedIOType;
-Q_STATIC_ASSERT_X(sizeof(SignedIOType) == sizeof(UnsignedIOType),
+static_assert(sizeof(SignedIOType) == sizeof(UnsignedIOType),
                   "Unsupported: read/write return a type with different size as the len parameter");
 #endif
 
@@ -173,14 +138,14 @@ ProcessOpenModeResult processOpenModeFlags(QIODevice::OpenMode openMode)
     result.ok = false;
     if ((openMode & QFile::NewOnly) && (openMode & QFile::ExistingOnly)) {
         qWarning("NewOnly and ExistingOnly are mutually exclusive");
-        result.error = QLatin1String("NewOnly and ExistingOnly are mutually exclusive");
+        result.error = "NewOnly and ExistingOnly are mutually exclusive"_L1;
         return result;
     }
 
     if ((openMode & QFile::ExistingOnly) && !(openMode & (QFile::ReadOnly | QFile::WriteOnly))) {
         qWarning("ExistingOnly must be specified alongside ReadOnly, WriteOnly, or ReadWrite");
-        result.error = QLatin1String(
-                    "ExistingOnly must be specified alongside ReadOnly, WriteOnly, or ReadWrite");
+        result.error =
+                    "ExistingOnly must be specified alongside ReadOnly, WriteOnly, or ReadWrite"_L1;
         return result;
     }
 
@@ -226,7 +191,8 @@ void QFSFileEngine::setFileName(const QString &file)
 /*!
     \reimp
 */
-bool QFSFileEngine::open(QIODevice::OpenMode openMode)
+bool QFSFileEngine::open(QIODevice::OpenMode openMode,
+                         std::optional<QFile::Permissions> permissions)
 {
     Q_ASSERT_X(openMode & QIODevice::Unbuffered, "QFSFileEngine::open",
                "QFSFileEngine no longer supports buffered mode; upper layer must buffer");
@@ -234,7 +200,7 @@ bool QFSFileEngine::open(QIODevice::OpenMode openMode)
     Q_D(QFSFileEngine);
     if (d->fileEntry.isEmpty()) {
         qWarning("QFSFileEngine::open: No file name specified");
-        setError(QFile::OpenError, QLatin1String("No file name specified"));
+        setError(QFile::OpenError, "No file name specified"_L1);
         return false;
     }
 
@@ -250,7 +216,7 @@ bool QFSFileEngine::open(QIODevice::OpenMode openMode)
     d->fh = nullptr;
     d->fd = -1;
 
-    return d->nativeOpen(d->openMode);
+    return d->nativeOpen(d->openMode, permissions);
 }
 
 /*!
@@ -277,7 +243,7 @@ bool QFSFileEngine::open(QIODevice::OpenMode openMode, FILE *fh, QFile::FileHand
 
     d->openMode = res.openMode;
     d->lastFlushFailed = false;
-    d->closeFileHandle = (handleFlags & QFile::AutoCloseHandle);
+    d->closeFileHandle = handleFlags.testAnyFlag(QFile::AutoCloseHandle);
     d->fileEntry.clear();
     d->tried_stat = 0;
     d->fd = -1;
@@ -306,7 +272,7 @@ bool QFSFileEnginePrivate::openFh(QIODevice::OpenMode openMode, FILE *fh)
 
         if (ret != 0) {
             q->setError(errno == EMFILE ? QFile::ResourceError : QFile::OpenError,
-                        QSystemError::stdString());
+                        QSystemError::stdString(errno));
 
             this->openMode = QIODevice::NotOpen;
             this->fh = nullptr;
@@ -339,7 +305,7 @@ bool QFSFileEngine::open(QIODevice::OpenMode openMode, int fd, QFile::FileHandle
 
     d->openMode = res.openMode;
     d->lastFlushFailed = false;
-    d->closeFileHandle = (handleFlags & QFile::AutoCloseHandle);
+    d->closeFileHandle = handleFlags.testAnyFlag(QFile::AutoCloseHandle);
     d->fileEntry.clear();
     d->fh = nullptr;
     d->fd = -1;
@@ -361,14 +327,14 @@ bool QFSFileEnginePrivate::openFd(QIODevice::OpenMode openMode, int fd)
 
     // Seek to the end when in Append mode.
     if (openMode & QFile::Append) {
-        int ret;
+        QT_OFF_T ret;
         do {
             ret = QT_LSEEK(fd, 0, SEEK_END);
         } while (ret == -1 && errno == EINTR);
 
         if (ret == -1) {
             q->setError(errno == EMFILE ? QFile::ResourceError : QFile::OpenError,
-                        QSystemError::stdString());
+                        QSystemError::stdString(errno));
 
             this->openMode = QIODevice::NotOpen;
             this->fd = -1;
@@ -427,7 +393,7 @@ bool QFSFileEnginePrivate::closeFdFh()
     if (!flushed || !closed) {
         if (flushed) {
             // If not flushed, we want the flush error to fall through.
-            q->setError(QFile::UnspecifiedError, QSystemError::stdString());
+            q->setError(QFile::UnspecifiedError, QSystemError::stdString(errno));
         }
         return false;
     }
@@ -479,7 +445,7 @@ bool QFSFileEnginePrivate::flushFh()
 
     if (ret != 0) {
         q->setError(errno == ENOSPC ? QFile::ResourceError : QFile::WriteError,
-                    QSystemError::stdString());
+                    QSystemError::stdString(errno));
         return false;
     }
     return true;
@@ -501,7 +467,7 @@ void QFSFileEnginePrivate::unmapAll()
 {
     if (!maps.isEmpty()) {
         const QList<uchar*> keys = maps.keys(); // Make a copy since unmap() modifies the map.
-        for (int i = 0; i < keys.count(); ++i)
+        for (int i = 0; i < keys.size(); ++i)
             unmap(keys.at(i));
     }
 }
@@ -554,11 +520,11 @@ bool QFSFileEngine::seek(qint64 pos)
 /*!
     \reimp
 */
-QDateTime QFSFileEngine::fileTime(FileTime time) const
+QDateTime QFSFileEngine::fileTime(QFile::FileTime time) const
 {
     Q_D(const QFSFileEngine);
 
-    if (time == AccessTime) {
+    if (time == QFile::FileAccessTime) {
         // always refresh for the access time
         d->metaData.clearFlags(QFileSystemMetaData::AccessTime);
     }
@@ -594,14 +560,14 @@ bool QFSFileEnginePrivate::seekFdFh(qint64 pos)
         } while (ret != 0 && errno == EINTR);
 
         if (ret != 0) {
-            q->setError(QFile::ReadError, QSystemError::stdString());
+            q->setError(QFile::ReadError, QSystemError::stdString(errno));
             return false;
         }
     } else {
         // Unbuffered stdio mode.
         if (QT_LSEEK(fd, QT_OFF_T(pos), SEEK_SET) == -1) {
+            q->setError(QFile::PositionError, QSystemError::stdString(errno));
             qWarning("QFile::at: Cannot set file position %lld", pos);
-            q->setError(QFile::PositionError, QSystemError::stdString());
             return false;
         }
     }
@@ -654,17 +620,15 @@ qint64 QFSFileEnginePrivate::readFdFh(char *data, qint64 len)
         // Buffered stdlib mode.
 
         size_t result;
-        bool retry = true;
         do {
             result = fread(data + readBytes, 1, size_t(len - readBytes), fh);
-            eof = feof(fh);
-            if (retry && eof && result == 0) {
+            eof = feof(fh); // Doesn't change errno
+            if (eof && result == 0) {
                 // On OS X, this is needed, e.g., if a file was written to
                 // through another stream since our last read. See test
                 // tst_QFile::appendAndRead
                 QT_FSEEK(fh, QT_FTELL(fh), SEEK_SET); // re-sync stream.
-                retry = false;
-                continue;
+                break;
             }
             readBytes += result;
         } while (!eof && (result == 0 ? errno == EINTR : readBytes < len));
@@ -684,12 +648,13 @@ qint64 QFSFileEnginePrivate::readFdFh(char *data, qint64 len)
             result = QT_READ(fd, data + readBytes, chunkSize);
         } while (result > 0 && (readBytes += result) < len);
 
-        eof = !(result == -1);
+        // QT_READ (::read()) returns 0 to indicate end-of-file
+        eof = result == 0;
     }
 
     if (!eof && readBytes == 0) {
         readBytes = -1;
-        q->setError(QFile::ReadError, QSystemError::stdString());
+        q->setError(QFile::ReadError, QSystemError::stdString(errno));
     }
 
     return readBytes;
@@ -734,8 +699,8 @@ qint64 QFSFileEnginePrivate::readLineFdFh(char *data, qint64 maxlen)
     // does the same, so we'd get two '\0' at the end - passing maxlen + 1
     // solves this.
     if (!fgets(data, int(maxlen + 1), fh)) {
-        if (!feof(fh))
-            q->setError(QFile::ReadError, QSystemError::stdString());
+        if (!feof(fh)) // Doesn't change errno
+            q->setError(QFile::ReadError, QSystemError::stdString(errno));
         return -1;              // error
     }
 
@@ -812,7 +777,8 @@ qint64 QFSFileEnginePrivate::writeFdFh(const char *data, qint64 len)
 
     if (len &&  writtenBytes == 0) {
         writtenBytes = -1;
-        q->setError(errno == ENOSPC ? QFile::ResourceError : QFile::WriteError, QSystemError::stdString());
+        q->setError(errno == ENOSPC ? QFile::ResourceError : QFile::WriteError,
+                    QSystemError::stdString(errno));
     } else {
         // reset the cached size, if any
         metaData.clearFlags(QFileSystemMetaData::SizeAttribute);
@@ -825,27 +791,13 @@ qint64 QFSFileEnginePrivate::writeFdFh(const char *data, qint64 len)
 /*!
     \internal
 */
-QAbstractFileEngine::Iterator *QFSFileEngine::beginEntryList(QDir::Filters filters, const QStringList &filterNames)
+QAbstractFileEngine::IteratorUniquePtr
+QFSFileEngine::beginEntryList(const QString &path, QDirListing::IteratorFlags filters,
+                              const QStringList &filterNames)
 {
-    return new QFSFileEngineIterator(filters, filterNames);
-}
-
-/*!
-    \internal
-*/
-QAbstractFileEngine::Iterator *QFSFileEngine::endEntryList()
-{
-    return nullptr;
+    return std::make_unique<QFSFileEngineIterator>(path, filters, filterNames);
 }
 #endif // QT_NO_FILESYSTEMITERATOR
-
-/*!
-    \internal
-*/
-QStringList QFSFileEngine::entryList(QDir::Filters filters, const QStringList &filterNames) const
-{
-    return QAbstractFileEngine::entryList(filters, filterNames);
-}
 
 /*!
     \reimp
@@ -910,10 +862,6 @@ bool QFSFileEngine::supportsExtension(Extension extension) const
     return false;
 }
 
-/*! \fn bool QFSFileEngine::caseSensitive() const
-  Returns \c false for Windows, true for Unix.
-*/
-
 /*! \fn QString QFSFileEngine::currentPath(const QString &fileName)
   For Unix, returns the current working directory for the file
   engine.
@@ -939,7 +887,7 @@ bool QFSFileEngine::supportsExtension(Extension extension) const
   \reimp
 */
 
-/*! \fn bool QFSFileEngine::setFileTime(const QDateTime &newDate, QAbstractFileEngine::FileTime time)
+/*! \fn bool QFSFileEngine::setFileTime(const QDateTime &newDate, QFile::FileTime time)
   \reimp
 */
 
@@ -981,7 +929,10 @@ QString QFSFileEngine::tempPath()
   Creates a link from the file currently specified by fileName() to
   \a newName. What a link is depends on the underlying filesystem
   (be it a shortcut on Windows or a symbolic link on Unix). Returns
-  true if successful; otherwise returns \c false.
+  \c true if successful; otherwise returns \c false.
+
+  \note On Windows \a newName is expected to end with .lnk as the filename
+  extension.
 */
 
 
@@ -1026,37 +977,42 @@ bool QFSFileEngine::remove()
     return ret;
 }
 
-/*!
-  \reimp
+/*
+    An alternative to setFileName() when you have already constructed
+    a QFileSystemEntry.
 */
-bool QFSFileEngine::rename(const QString &newName)
+void QFSFileEngine::setFileEntry(QFileSystemEntry &&entry)
 {
     Q_D(QFSFileEngine);
-    QSystemError error;
-    bool ret = QFileSystemEngine::renameFile(d->fileEntry, QFileSystemEntry(newName), error);
-    if (!ret)
-        setError(QFile::RenameError, error.toString());
-    return ret;
+    d->init();
+    d->fileEntry = std::move(entry);
 }
-/*!
-  \reimp
-*/
-bool QFSFileEngine::renameOverwrite(const QString &newName)
+
+bool QFSFileEngine::rename_helper(const QString &newName, RenameMode mode)
 {
     Q_D(QFSFileEngine);
+
+    auto func = mode == Rename ? QFileSystemEngine::renameFile
+                               : QFileSystemEngine::renameOverwriteFile;
     QSystemError error;
-    bool ret = QFileSystemEngine::renameOverwriteFile(d->fileEntry, QFileSystemEntry(newName), error);
-    if (!ret)
+    auto newEntry = QFileSystemEntry(newName);
+    const bool ret = func(d->fileEntry, newEntry, error);
+    if (!ret) {
         setError(QFile::RenameError, error.toString());
-    return ret;
+        return false;
+    }
+    setFileEntry(std::move(newEntry));
+    return true;
 }
 
 /*!
   \reimp
 */
-bool QFSFileEngine::mkdir(const QString &name, bool createParentDirectories) const
+bool QFSFileEngine::mkdir(const QString &name, bool createParentDirectories,
+                          std::optional<QFile::Permissions> permissions) const
 {
-    return QFileSystemEngine::createDirectory(QFileSystemEntry(name), createParentDirectories);
+    return QFileSystemEngine::createDirectory(QFileSystemEntry(name), createParentDirectories,
+                                              permissions);
 }
 
 /*!
@@ -1077,6 +1033,16 @@ bool QFSFileEngine::rmdir(const QString &name, bool recurseParentDirectories) co
 bool QFSFileEngine::setCurrentPath(const QString &path)
 {
     return QFileSystemEngine::setCurrentPath(QFileSystemEntry(path));
+}
+
+/*!
+    Returns whether the file system considers the file name to be
+    case sensitive.
+*/
+bool QFSFileEngine::caseSensitive() const
+{
+    Q_D(const QFSFileEngine);
+    return QFileSystemEngine::isCaseSensitive(d->fileEntry, d->metaData);
 }
 
 /*! \fn bool QFSFileEngine::setPermissions(uint perms)

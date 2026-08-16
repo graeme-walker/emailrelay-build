@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "preferencesdialog.h"
 
 #include "centralwidget.h"
-#include "fontpanel.h"
+#include "fontpanel_p.h"
 #include "helpenginewrapper.h"
 #include "openpagesmanager.h"
 #include "helpdocsettingswidget.h"
@@ -45,6 +20,8 @@
 #include <QtDebug>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 PreferencesDialog::PreferencesDialog(QWidget *parent)
     : QDialog(parent)
@@ -68,7 +45,7 @@ PreferencesDialog::PreferencesDialog(QWidget *parent)
     if (m_hideDocsTab) {
         m_ui.tabWidget->removeTab(m_ui.tabWidget->indexOf(m_ui.docsTab));
     } else {
-        connect(m_ui.docSettingsWidget, &HelpDocSettingsWidget::docSettingsChanged,
+        connect(m_ui.docSettingsWidget, &HelpDocSettingsWidget::docSettingsChanged, this,
                 [this](const HelpDocSettings &settings) {
             m_docSettings = settings;
             if (m_hideFiltersTab)
@@ -153,7 +130,7 @@ void PreferencesDialog::applyChanges()
 
     QString homePage = m_ui.homePageLineEdit->text();
     if (homePage.isEmpty())
-        homePage = QLatin1String("help");
+        homePage = "help"_L1;
     helpEngine.setHomePage(homePage);
 
     const int option = m_ui.helpStartComboBox->currentIndex();
@@ -200,13 +177,13 @@ void PreferencesDialog::updateFontSettingsPage()
 
     const QList<QComboBox*> &appCombos = m_appFontPanel->findChildren<QComboBox*>();
     for (QComboBox* box : appCombos) {
-        connect(box, QOverload<int>::of(&QComboBox::currentIndexChanged),
+        connect(box, &QComboBox::currentIndexChanged,
                 this, &PreferencesDialog::appFontSettingChanged);
     }
 
     const QList<QComboBox*> &browserCombos = m_browserFontPanel->findChildren<QComboBox*>();
     for (QComboBox* box : browserCombos) {
-        connect(box, QOverload<int>::of(&QComboBox::currentIndexChanged),
+        connect(box, &QComboBox::currentIndexChanged,
                 this, &PreferencesDialog::browserFontSettingChanged);
     }
 }
@@ -255,14 +232,14 @@ void PreferencesDialog::updateOptionsPage()
 
 void PreferencesDialog::setBlankPage()
 {
-    m_ui.homePageLineEdit->setText(QLatin1String("about:blank"));
+    m_ui.homePageLineEdit->setText("about:blank"_L1);
 }
 
 void PreferencesDialog::setCurrentPage()
 {
     QString homepage = CentralWidget::instance()->currentSource().toString();
     if (homepage.isEmpty())
-        homepage = QLatin1String("help");
+        homepage = "help"_L1;
 
     m_ui.homePageLineEdit->setText(homepage);
 }

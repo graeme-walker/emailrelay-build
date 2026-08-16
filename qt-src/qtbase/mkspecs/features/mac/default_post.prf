@@ -7,11 +7,17 @@ QMAKE_MAC_SDK_VERSION = $$xcodeSDKInfo(SDKVersion)
 contains(TEMPLATE, .*app) {
     !macx-xcode:if(isEmpty(BUILDS)|build_pass) {
         # Detect changes to the platform SDK
-        QMAKE_EXTRA_VARIABLES += QMAKE_MAC_SDK QMAKE_MAC_SDK_VERSION QMAKE_XCODE_DEVELOPER_PATH
+        QMAKE_EXTRA_VARIABLES += \
+            QMAKE_MAC_SDK \
+            QMAKE_MAC_SDK_VERSION \
+            QMAKE_XCODE_DEVELOPER_PATH \
+            _QMAKE_STASH_ \
+
         QMAKE_EXTRA_INCLUDES += $$shell_quote($$PWD/sdk.mk)
     }
 
     # Detect incompatible SDK versions
+    # The CMake equivalent is in cmake/QtPublicAppleHelpers.cmake.
 
     isEmpty(QT_MAC_SDK_VERSION_MIN): \
         QT_MAC_SDK_VERSION_MIN = $$QT_MAC_SDK_VERSION
@@ -25,11 +31,11 @@ contains(TEMPLATE, .*app) {
         !isEmpty($$list($$(QT_MAC_SDK_NO_VERSION_CHECK))): \
             CONFIG += sdk_no_version_check
 
-        QMAKE_MAC_SDK_MAJOR_MINOR_VERSION = $$replace(QMAKE_MAC_SDK_VERSION, "(\\d+)(\\.\\d+)(\\.\\d+)?", \\1\\2)
+        QMAKE_MAC_SDK_MAJOR_VERSION = $$replace(QMAKE_MAC_SDK_VERSION, "(\\d+)(\\.\\d+)(\\.\\d+)?", \\1)
 
-        !sdk_no_version_check:!versionAtMost(QMAKE_MAC_SDK_MAJOR_MINOR_VERSION, $$QT_MAC_SDK_VERSION_MAX) {
+        !sdk_no_version_check:!versionAtMost(QMAKE_MAC_SDK_MAJOR_VERSION, $$QT_MAC_SDK_VERSION_MAX) {
             warning("Qt has only been tested with version $$QT_MAC_SDK_VERSION_MAX"\
-                    "of the platform SDK, you're using $${QMAKE_MAC_SDK_MAJOR_MINOR_VERSION}.")
+                    "of the platform SDK, you're using $${QMAKE_MAC_SDK_MAJOR_VERSION}.")
             warning("This is an unsupported configuration. You may experience build issues," \
                     "and by using")
             warning("the $$QMAKE_MAC_SDK_VERSION SDK you are opting in to new features" \
@@ -44,29 +50,6 @@ contains(TEMPLATE, .*app) {
 }
 
 !no_objective_c:CONFIG += objective_c
-
-qt {
-    qtConfig(static) {
-        # C++11 support means using libc++ instead of libstd++. As the
-        # two libraries are incompatible we need to ensure the end user
-        # project is built using the same C++11 support/no support as Qt.
-        qtConfig(c++11) {
-            CONFIG += c++11
-        } else: c++11 {
-            warning("Qt was not built with C++11 enabled, disabling feature")
-            CONFIG -= c++11
-        }
-
-        !c++11 {
-            # Explicitly use libstdc++ if C++11 support is not enabled,
-            # as otherwise the compiler will choose the standard library
-            # based on the deployment target, which for iOS 7 and OS X 10.9
-            # is libc++, and we can't mix and match the two.
-            QMAKE_CXXFLAGS += -stdlib=libstdc++
-            QMAKE_LFLAGS   += -stdlib=libstdc++
-        }
-    }
-}
 
 # Add the same default rpaths as Xcode does for new projects.
 # This is especially important for iOS/tvOS/watchOS where no other option is possible.
@@ -88,6 +71,19 @@ app_extension_api_only {
     QMAKE_CXXFLAGS            += $$QMAKE_CFLAGS_APPLICATION_EXTENSION
     QMAKE_CXXFLAGS_PRECOMPILE += $$QMAKE_CFLAGS_APPLICATION_EXTENSION
     QMAKE_LFLAGS              += $$QMAKE_CFLAGS_APPLICATION_EXTENSION
+}
+
+macos {
+    !isEmpty(QMAKE_APPLE_DEVICE_ARCHS) {
+        # If the user has requested a specific set of architectures,
+        # build all of those by default, but limited to only those.
+        CONFIG -= only_active_arch
+    } else {
+        # Otherwise allow building all of the architectures available
+        # in Qt, but only build the active arch (unless the user has
+        # manually overridden this via CONFIG -= only_active_arch).
+        QMAKE_APPLE_DEVICE_ARCHS = $$QT_ARCHS
+    }
 }
 
 macx-xcode {
@@ -124,12 +120,14 @@ macx-xcode {
 
     QMAKE_XCODE_ARCHS =
 
-    arch_device.name = "ARCHS[sdk=$${device.sdk}*]"
-    arch_device.value = $$QMAKE_APPLE_DEVICE_ARCHS
-    QMAKE_XCODE_ARCHS += $$QMAKE_APPLE_DEVICE_ARCHS
-    QMAKE_MAC_XCODE_SETTINGS += arch_device
+    !isEmpty(QMAKE_APPLE_DEVICE_ARCHS) {
+        arch_device.name = "ARCHS[sdk=$${device.sdk}*]"
+        arch_device.value = $$QMAKE_APPLE_DEVICE_ARCHS
+        QMAKE_XCODE_ARCHS += $$QMAKE_APPLE_DEVICE_ARCHS
+        QMAKE_MAC_XCODE_SETTINGS += arch_device
+    }
 
-    simulator {
+    ios:simulator {
         arch_simulator.name = "ARCHS[sdk=$${simulator.sdk}*]"
         arch_simulator.value = $$QMAKE_APPLE_SIMULATOR_ARCHS
         QMAKE_XCODE_ARCHS += $$QMAKE_APPLE_SIMULATOR_ARCHS
@@ -142,18 +140,23 @@ macx-xcode {
     QMAKE_MAC_XCODE_SETTINGS += only_active_arch
 } else {
     device|!simulator: VALID_DEVICE_ARCHS = $$QMAKE_APPLE_DEVICE_ARCHS
-    simulator: VALID_SIMULATOR_ARCHS = $$QMAKE_APPLE_SIMULATOR_ARCHS
+    ios:simulator: VALID_SIMULATOR_ARCHS = $$QMAKE_APPLE_SIMULATOR_ARCHS
     VALID_ARCHS = $$VALID_DEVICE_ARCHS $$VALID_SIMULATOR_ARCHS
-
-    isEmpty(VALID_ARCHS): \
-        error("QMAKE_APPLE_DEVICE_ARCHS or QMAKE_APPLE_SIMULATOR_ARCHS must contain at least one architecture")
 
     single_arch: VALID_ARCHS = $$first(VALID_ARCHS)
 
-    ACTIVE_ARCHS = $(filter $(EXPORT_VALID_ARCHS), $(ARCHS))
-    ARCH_ARGS = $(foreach arch, $(if $(EXPORT_ACTIVE_ARCHS), $(EXPORT_ACTIVE_ARCHS), $(EXPORT_VALID_ARCHS)), -arch $(arch))
+    macos {
+        only_active_arch: DEFAULT_ARCHS = $$system("uname -m")
+        else: DEFAULT_ARCHS = $$VALID_ARCHS
+    }
 
-    QMAKE_EXTRA_VARIABLES += VALID_ARCHS ACTIVE_ARCHS ARCH_ARGS
+    ARCHS = $(filter $(EXPORT_VALID_ARCHS), \
+        $(if $(ARCHS), $(ARCHS), \
+            $(if $(EXPORT_DEFAULT_ARCHS), $(EXPORT_DEFAULT_ARCHS), \
+        $(EXPORT_VALID_ARCHS))))
+    ARCH_ARGS = $(foreach arch, $(if $(EXPORT_ARCHS), $(EXPORT_ARCHS), $(EXPORT_VALID_ARCHS)), -arch $(arch))
+
+    QMAKE_EXTRA_VARIABLES += VALID_ARCHS DEFAULT_ARCHS ARCHS ARCH_ARGS
 
     arch_flags = $(EXPORT_ARCH_ARGS)
 
@@ -176,7 +179,7 @@ macx-xcode {
     # and makes it easier for people to override EXPORT_VALID_ARCHS to limit
     # individual rules to a different set of architecture(s) from the overall
     # build (such as machtest in QtCore).
-    simulator:device {
+    ios:simulator:device {
         QMAKE_XARCH_CFLAGS =
         QMAKE_XARCH_LFLAGS =
         QMAKE_EXTRA_VARIABLES += QMAKE_XARCH_CFLAGS QMAKE_XARCH_LFLAGS
@@ -185,9 +188,11 @@ macx-xcode {
             contains(VALID_SIMULATOR_ARCHS, $$arch) {
                 sdk = $$simulator.sdk
                 version_identifier = $$simulator.deployment_identifier
+                platform_identifier = $$simulator.sdk
             } else {
                 sdk = $$device.sdk
                 version_identifier = $$device.deployment_identifier
+                platform_identifier = $$device.sdk
             }
 
             version_min_flags = \
@@ -212,17 +217,25 @@ macx-xcode {
         QMAKE_CXXFLAGS += $(EXPORT_QMAKE_XARCH_CFLAGS)
         QMAKE_LFLAGS += $(EXPORT_QMAKE_XARCH_LFLAGS)
     } else {
-        simulator {
+        ios:simulator {
             version_identifier = $$simulator.deployment_identifier
+            platform_identifier = $$simulator.sdk
             sysroot_path  = $$xcodeSDKInfo(Path, $$simulator.sdk)
         } else {
             version_identifier = $$device.deployment_identifier
+            platform_identifier = $$device.sdk
             sysroot_path  = $$xcodeSDKInfo(Path, $$device.sdk)
         }
-        version_min_flag = -m$${version_identifier}-version-min=$$deployment_target
-        QMAKE_CFLAGS += -isysroot $$sysroot_path $$version_min_flag
-        QMAKE_CXXFLAGS += -isysroot $$sysroot_path $$version_min_flag
-        QMAKE_LFLAGS += -isysroot $$sysroot_path $$version_min_flag
+        QMAKE_CFLAGS += -isysroot $$sysroot_path
+        QMAKE_CXXFLAGS += -isysroot $$sysroot_path
+        QMAKE_LFLAGS += -isysroot $$sysroot_path
+
+        !isEmpty(version_identifier):!isEmpty(deployment_target) {
+            version_min_flag = -m$${version_identifier}-version-min=$$deployment_target
+            QMAKE_CFLAGS += $$version_min_flag
+            QMAKE_CXXFLAGS += $$version_min_flag
+            QMAKE_LFLAGS += $$version_min_flag
+        }
     }
 
     # Enable precompiled headers for multiple architectures

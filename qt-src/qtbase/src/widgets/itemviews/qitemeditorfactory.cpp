@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qplatformdefs.h>
 #include "qitemeditorfactory.h"
@@ -156,7 +120,7 @@ Q_SIGNALS:
 
     Additional editors can be registered with the registerEditor() function.
 
-    \sa QStyledItemDelegate, {Model/View Programming}, {Color Editor Factory Example}
+    \sa QStyledItemDelegate, {Model/View Programming}
 */
 
 /*!
@@ -399,7 +363,7 @@ void QItemEditorFactory::setDefaultFactory(QItemEditorFactory *factory)
     to register widgets without the need to subclass QItemEditorCreatorBase.
 
     \sa QStandardItemEditorCreator, QItemEditorFactory,
-    {Model/View Programming}, {Color Editor Factory Example}
+    {Model/View Programming}
 */
 
 /*!
@@ -432,7 +396,7 @@ QItemEditorCreatorBase::~QItemEditorCreatorBase()
     the creator is registered for. For example, a creator which constructs
     QCheckBox widgets to edit boolean values would return the
     \l{QCheckBox::checkable}{checkable} property name from this function,
-    and must be registered in the item editor factory for the QVariant::Bool
+    and must be registered in the item editor factory for the QMetaType::Bool
     type.
 
     Note: Since Qt 4.2 the item delegates query the user property of widgets,
@@ -468,7 +432,7 @@ QItemEditorCreatorBase::~QItemEditorCreatorBase()
     property, you should use QStandardItemEditorCreator instead.
 
     \sa QItemEditorCreatorBase, QStandardItemEditorCreator,
-        QItemEditorFactory, {Color Editor Factory Example}
+        QItemEditorFactory
 */
 
 /*!
@@ -513,7 +477,7 @@ QItemEditorCreatorBase::~QItemEditorCreatorBase()
 
     Setting the \c editorFactory created above in an item delegate via
     QStyledItemDelegate::setItemEditorFactory() makes sure that all values of type
-    QVariant::DateTime will be edited in \c{MyFancyDateTimeEdit}.
+    QMetaType::QDateTime will be edited in \c{MyFancyDateTimeEdit}.
 
     The editor must provide a user property that will contain the
     editing data. The property is used by \l{QStyledItemDelegate}s to set
@@ -524,7 +488,7 @@ QItemEditorCreatorBase::~QItemEditorCreatorBase()
     \snippet code/src_gui_itemviews_qitemeditorfactory.cpp 3
 
     \sa QItemEditorCreatorBase, QItemEditorCreator,
-        QItemEditorFactory, QStyledItemDelegate, {Color Editor Factory Example}
+        QItemEditorFactory, QStyledItemDelegate
 */
 
 /*!
@@ -577,8 +541,7 @@ void QExpandingLineEdit::updateMinimumWidth()
     QStyleOptionFrame opt;
     initStyleOption(&opt);
 
-    int minWidth = style()->sizeFromContents(QStyle::CT_LineEdit, &opt, QSize(width, 0).
-                                      expandedTo(QApplication::globalStrut()), this).width();
+    int minWidth = style()->sizeFromContents(QStyle::CT_LineEdit, &opt, QSize(width, 0), this).width();
     setMinimumWidth(minWidth);
 }
 
@@ -592,7 +555,7 @@ void QExpandingLineEdit::resizeToContents()
         int hintWidth = minimumWidth() + fontMetrics().horizontalAdvance(displayText());
         int parentWidth = parent->width();
         int maxWidth = isRightToLeft() ? position.x() + oldWidth : parentWidth - position.x();
-        int newWidth = qBound(originalWidth, hintWidth, maxWidth);
+        int newWidth = qBound(qMin(originalWidth, maxWidth), hintWidth, maxWidth);
         if (widgetOwnsGeometry)
             setMaximumWidth(newWidth);
         if (isRightToLeft())

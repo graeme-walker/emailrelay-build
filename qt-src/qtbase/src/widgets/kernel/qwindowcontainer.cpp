@@ -1,45 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwindowcontainer_p.h"
 #include "qwidget_p.h"
+#include "qwidgetwindow_p.h"
 #include <QtGui/qwindow.h>
+#include <QtGui/private/qwindow_p.h>
 #include <QtGui/private/qguiapplication_p.h>
 #include <qpa/qplatformintegration.h>
 #include <QDebug>
@@ -50,7 +16,11 @@
 #include <QAbstractScrollArea>
 #include <QPainter>
 
+#include <QtCore/qpointer.h>
+
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 class QWindowContainerPrivate : public QWidgetPrivate
 {
@@ -59,7 +29,6 @@ public:
 
     QWindowContainerPrivate()
         : window(nullptr)
-        , oldFocusWindow(nullptr)
         , usesNativeWidgets(false)
     {
     }
@@ -93,6 +62,8 @@ public:
         if (window->parent() == nullptr)
             return;
         Q_Q(QWindowContainer);
+        if (q->testAttribute(Qt::WA_DontCreateNativeAncestors))
+            return;
         if (q->internalWinId()) {
             // Allow use native widgets if the window container is already a native widget
             usesNativeWidgets = true;
@@ -134,7 +105,6 @@ public:
     }
 
     QPointer<QWindow> window;
-    QWindow *oldFocusWindow;
     QWindow fakeParent;
 
     uint usesNativeWidgets : 1;
@@ -186,25 +156,45 @@ public:
     instance have any focus policy and it will delegate focus to the
     window via a call to QWindow::requestActivate(). However,
     returning to the normal focus chain from the QWindow instance will
-    be up to the QWindow instance implementation itself. For instance,
-    when entering a Qt Quick based window with tab focus, it is quite
-    likely that further tab presses will only cycle inside the QML
-    application. Also, whether QWindow::requestActivate() actually
-    gives the window focus, is platform dependent.
+    be up to the QWindow instance implementation itself. Also, whether
+    QWindow::requestActivate() actually gives the window focus, is
+    platform dependent.
+
+    Since 6.8, if embedding a Qt Quick based window, tab presses will
+    transition in and out of the embedded QML window, allowing focus to move
+    to the next or previous focusable object in the window container chain.
 
     \li Using many window container instances in a QWidget-based
     application can greatly hurt the overall performance of the
     application.
+
+    \li Since 6.7, if \a window belongs to a widget (that is, \a window
+    was received from calling \l windowHandle()), no container will be
+    created. Instead, this function will return the widget itself, after
+    being reparented to \l parent. Since no container will be created,
+    \a flags will be ignored. In other words, if \a window belongs to
+    a widget, consider just reparenting that widget to \a parent instead
+    of using this function.
 
     \endlist
  */
 
 QWidget *QWidget::createWindowContainer(QWindow *window, QWidget *parent, Qt::WindowFlags flags)
 {
+    // Embedding a QWidget in a window container doesn't make sense,
+    // and has various issues in practice, so just return the widget
+    // itself.
+    if (auto *widgetWindow = qobject_cast<QWidgetWindow *>(window)) {
+        QWidget *widget = widgetWindow->widget();
+        if (flags != Qt::WindowFlags()) {
+            qWarning() << window << "refers to a widget:" << widget
+                       << "WindowFlags" << flags << "will be ignored.";
+        }
+        widget->setParent(parent);
+        return widget;
+    }
     return new QWindowContainer(window, parent, flags);
 }
-
-
 
 /*!
     \internal
@@ -219,24 +209,22 @@ QWindowContainer::QWindowContainer(QWindow *embeddedWindow, QWidget *parent, Qt:
         return;
     }
 
-    // The embedded QWindow must use the same logic as QWidget when it comes to the surface type.
-    // Otherwise we may end up with BadMatch failures on X11.
-    if (embeddedWindow->surfaceType() == QSurface::RasterSurface
-        && QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::RasterGLSurface)
-        && !QCoreApplication::testAttribute(Qt::AA_ForceRasterWidgets))
-        embeddedWindow->setSurfaceType(QSurface::RasterGLSurface);
-
     d->window = embeddedWindow;
+    d->window->installEventFilter(this);
 
     QString windowName = d->window->objectName();
     if (windowName.isEmpty())
         windowName = QString::fromUtf8(d->window->metaObject()->className());
-    d->fakeParent.setObjectName(windowName + QLatin1String("ContainerFakeParent"));
+    d->fakeParent.setObjectName(windowName + "ContainerFakeParent"_L1);
 
     d->window->setParent(&d->fakeParent);
+    d->window->parent()->installEventFilter(this);
+    d->window->setFlag(Qt::SubWindow);
+
     setAcceptDrops(true);
 
-    connect(QGuiApplication::instance(), SIGNAL(focusWindowChanged(QWindow*)), this, SLOT(focusWindowChanged(QWindow*)));
+    connect(containedWindow(), &QWindow::minimumHeightChanged, this, &QWindowContainer::updateGeometry);
+    connect(containedWindow(), &QWindow::minimumWidthChanged, this, &QWindowContainer::updateGeometry);
 }
 
 QWindow *QWindowContainer::containedWindow() const
@@ -257,27 +245,36 @@ QWindowContainer::~QWindowContainer()
     // QEvent::PlatformSurface delivery relies on virtuals. Getting
     // SurfaceAboutToBeDestroyed can be essential for OpenGL, Vulkan, etc.
     // QWindow subclasses in particular. Keep these working.
-    if (d->window)
+    if (d->window) {
+        d->window->removeEventFilter(this);
         d->window->destroy();
+    }
 
     delete d->window;
 }
-
-
 
 /*!
     \internal
  */
 
-void QWindowContainer::focusWindowChanged(QWindow *focusWindow)
+bool QWindowContainer::eventFilter(QObject *o, QEvent *e)
 {
     Q_D(QWindowContainer);
-    d->oldFocusWindow = focusWindow;
-    if (focusWindow == d->window) {
-        QWidget *widget = QApplication::focusWidget();
-        if (widget)
-            widget->clearFocus();
+    if (!d->window)
+        return false;
+
+    if (e->type() == QEvent::ChildRemoved) {
+        QChildEvent *ce = static_cast<QChildEvent *>(e);
+        if (ce->child() == d->window) {
+            o->removeEventFilter(this);
+            d->window->removeEventFilter(this);
+            d->window = nullptr;
+        }
+    } else if (e->type() == QEvent::FocusIn) {
+        if (o == d->window)
+            setFocus(Qt::ActiveWindowFocusReason);
     }
+    return false;
 }
 
 /*!
@@ -292,12 +289,6 @@ bool QWindowContainer::event(QEvent *e)
 
     QEvent::Type type = e->type();
     switch (type) {
-    case QEvent::ChildRemoved: {
-        QChildEvent *ce = static_cast<QChildEvent *>(e);
-        if (ce->child() == d->window)
-            d->window = nullptr;
-        break;
-    }
     // The only thing we are interested in is making sure our sizes stay
     // in sync, so do a catch-all case.
     case QEvent::Resize:
@@ -312,10 +303,13 @@ bool QWindowContainer::event(QEvent *e)
     case QEvent::Show:
         d->updateUsesNativeWidgets();
         if (d->isStillAnOrphan()) {
+            d->window->parent()->removeEventFilter(this);
             d->window->setParent(d->usesNativeWidgets
                                  ? windowHandle()
                                  : window()->windowHandle());
             d->fakeParent.destroy();
+            if (d->window->parent())
+                d->window->parent()->installEventFilter(this);
         }
         if (d->window->parent()) {
             d->markParentChain();
@@ -328,11 +322,16 @@ bool QWindowContainer::event(QEvent *e)
         break;
     case QEvent::FocusIn:
         if (d->window->parent()) {
-            if (d->oldFocusWindow != d->window) {
+            if (QGuiApplication::focusWindow() != d->window) {
+                QFocusEvent *event = static_cast<QFocusEvent *>(e);
+                const auto reason = event->reason();
+                QWindowPrivate::FocusTarget target = QWindowPrivate::FocusTarget::Current;
+                if (reason == Qt::TabFocusReason)
+                    target = QWindowPrivate::FocusTarget::First;
+                else if (reason == Qt::BacktabFocusReason)
+                    target = QWindowPrivate::FocusTarget::Last;
+                qt_window_private(d->window)->setFocusToTarget(target, reason);
                 d->window->requestActivate();
-            } else {
-                QWidget *next = nextInFocusChain();
-                next->setFocus();
             }
         }
         break;
@@ -369,6 +368,11 @@ bool QWindowContainer::event(QEvent *e)
     return QWidget::event(e);
 }
 
+QSize QWindowContainer::minimumSizeHint() const
+{
+    return containedWindow() ? containedWindow()->minimumSize() : QSize(0, 0);
+}
+
 typedef void (*qwindowcontainer_traverse_callback)(QWidget *parent);
 static void qwindowcontainer_traverse(QWidget *parent, qwindowcontainer_traverse_callback callback)
 {
@@ -386,7 +390,10 @@ static void qwindowcontainer_traverse(QWidget *parent, qwindowcontainer_traverse
 void QWindowContainer::toplevelAboutToBeDestroyed(QWidget *parent)
 {
     if (QWindowContainerPrivate *d = QWindowContainerPrivate::get(parent)) {
+        if (d->window->parent())
+            d->window->parent()->removeEventFilter(parent);
         d->window->setParent(&d->fakeParent);
+        d->window->parent()->installEventFilter(parent);
     }
     qwindowcontainer_traverse(parent, toplevelAboutToBeDestroyed);
 }
@@ -404,7 +411,9 @@ void QWindowContainer::parentWasChanged(QWidget *parent)
                 tld->createTLSysExtra();
                 Q_ASSERT(toplevel->windowHandle());
             }
+            d->window->parent()->removeEventFilter(parent);
             d->window->setParent(toplevel->windowHandle());
+            toplevel->windowHandle()->installEventFilter(parent);
             d->fakeParent.destroy();
             d->updateGeometry();
         }
@@ -415,7 +424,9 @@ void QWindowContainer::parentWasChanged(QWidget *parent)
 void QWindowContainer::parentWasMoved(QWidget *parent)
 {
     if (QWindowContainerPrivate *d = QWindowContainerPrivate::get(parent)) {
-        if (d->window->parent())
+        if (!d->window)
+            return;
+        else if (d->window->parent())
             d->updateGeometry();
     }
     qwindowcontainer_traverse(parent, parentWasMoved);
@@ -424,7 +435,9 @@ void QWindowContainer::parentWasMoved(QWidget *parent)
 void QWindowContainer::parentWasRaised(QWidget *parent)
 {
     if (QWindowContainerPrivate *d = QWindowContainerPrivate::get(parent)) {
-        if (d->window->parent())
+        if (!d->window)
+            return;
+        else if (d->window->parent())
             d->window->raise();
     }
     qwindowcontainer_traverse(parent, parentWasRaised);
@@ -433,7 +446,9 @@ void QWindowContainer::parentWasRaised(QWidget *parent)
 void QWindowContainer::parentWasLowered(QWidget *parent)
 {
     if (QWindowContainerPrivate *d = QWindowContainerPrivate::get(parent)) {
-        if (d->window->parent())
+        if (!d->window)
+            return;
+        else if (d->window->parent())
             d->window->lower();
     }
     qwindowcontainer_traverse(parent, parentWasLowered);

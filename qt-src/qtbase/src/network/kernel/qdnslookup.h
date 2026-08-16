@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2012 Jeremy Lainé <jeremy.laine@m4x.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2012 Jeremy Lainé <jeremy.laine@m4x.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QDNSLOOKUP_H
 #define QDNSLOOKUP_H
@@ -44,8 +8,8 @@
 #include <QtCore/qlist.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qshareddata.h>
-#include <QtCore/qsharedpointer.h>
 #include <QtCore/qstring.h>
+#include <QtCore/qproperty.h>
 
 QT_REQUIRE_CONFIG(dnslookup);
 
@@ -58,6 +22,10 @@ class QDnsHostAddressRecordPrivate;
 class QDnsMailExchangeRecordPrivate;
 class QDnsServiceRecordPrivate;
 class QDnsTextRecordPrivate;
+class QDnsTlsAssociationRecordPrivate;
+class QSslConfiguration;
+
+QT_DECLARE_QESDP_SPECIALIZATION_DTOR(QDnsTlsAssociationRecordPrivate)
 
 class Q_NETWORK_EXPORT QDnsDomainNameRecord
 {
@@ -68,7 +36,7 @@ public:
     QDnsDomainNameRecord &operator=(const QDnsDomainNameRecord &other);
     ~QDnsDomainNameRecord();
 
-    void swap(QDnsDomainNameRecord &other) noexcept { qSwap(d, other.d); }
+    void swap(QDnsDomainNameRecord &other) noexcept { d.swap(other.d); }
 
     QString name() const;
     quint32 timeToLive() const;
@@ -90,7 +58,7 @@ public:
     QDnsHostAddressRecord &operator=(const QDnsHostAddressRecord &other);
     ~QDnsHostAddressRecord();
 
-    void swap(QDnsHostAddressRecord &other) noexcept { qSwap(d, other.d); }
+    void swap(QDnsHostAddressRecord &other) noexcept { d.swap(other.d); }
 
     QString name() const;
     quint32 timeToLive() const;
@@ -112,7 +80,7 @@ public:
     QDnsMailExchangeRecord &operator=(const QDnsMailExchangeRecord &other);
     ~QDnsMailExchangeRecord();
 
-    void swap(QDnsMailExchangeRecord &other) noexcept { qSwap(d, other.d); }
+    void swap(QDnsMailExchangeRecord &other) noexcept { d.swap(other.d); }
 
     QString exchange() const;
     QString name() const;
@@ -135,7 +103,7 @@ public:
     QDnsServiceRecord &operator=(const QDnsServiceRecord &other);
     ~QDnsServiceRecord();
 
-    void swap(QDnsServiceRecord &other) noexcept { qSwap(d, other.d); }
+    void swap(QDnsServiceRecord &other) noexcept { d.swap(other.d); }
 
     QString name() const;
     quint16 port() const;
@@ -160,7 +128,7 @@ public:
     QDnsTextRecord &operator=(const QDnsTextRecord &other);
     ~QDnsTextRecord();
 
-    void swap(QDnsTextRecord &other) noexcept { qSwap(d, other.d); }
+    void swap(QDnsTextRecord &other) noexcept { d.swap(other.d); }
 
     QString name() const;
     quint32 timeToLive() const;
@@ -173,14 +141,91 @@ private:
 
 Q_DECLARE_SHARED(QDnsTextRecord)
 
+class QDnsTlsAssociationRecord
+{
+    Q_GADGET_EXPORT(Q_NETWORK_EXPORT)
+    Q_CLASSINFO("RegisterEnumClassesUnscoped", "false")
+public:
+    enum class CertificateUsage : quint8 {
+        // https://www.iana.org/assignments/dane-parameters/dane-parameters.xhtml#certificate-usages
+        // RFC 6698
+        CertificateAuthorityConstrait = 0,
+        ServiceCertificateConstraint = 1,
+        TrustAnchorAssertion = 2,
+        DomainIssuedCertificate = 3,
+        PrivateUse = 255,
+
+        // Aliases by RFC 7218
+        PKIX_TA = 0,
+        PKIX_EE = 1,
+        DANE_TA = 2,
+        DANE_EE = 3,
+        PrivCert = 255,
+    };
+    Q_ENUM(CertificateUsage)
+
+    enum class Selector : quint8 {
+        // https://www.iana.org/assignments/dane-parameters/dane-parameters.xhtml#selectors
+        // RFC 6698
+        FullCertificate = 0,
+        SubjectPublicKeyInfo = 1,
+        PrivateUse = 255,
+
+        // Aliases by RFC 7218
+        Cert = FullCertificate,
+        SPKI = SubjectPublicKeyInfo,
+        PrivSel = PrivateUse,
+    };
+    Q_ENUM(Selector)
+
+    enum class MatchingType : quint8 {
+        // https://www.iana.org/assignments/dane-parameters/dane-parameters.xhtml#matching-types
+        // RFC 6698
+        Exact = 0,
+        Sha256 = 1,
+        Sha512 = 2,
+        PrivateUse = 255,
+        PrivMatch = PrivateUse,
+    };
+    Q_ENUM(MatchingType)
+
+    Q_NETWORK_EXPORT QDnsTlsAssociationRecord();
+    Q_NETWORK_EXPORT QDnsTlsAssociationRecord(const QDnsTlsAssociationRecord &other);
+    QDnsTlsAssociationRecord(QDnsTlsAssociationRecord &&other) noexcept = default;
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QDnsTlsAssociationRecord)
+    Q_NETWORK_EXPORT QDnsTlsAssociationRecord &operator=(const QDnsTlsAssociationRecord &other);
+    Q_NETWORK_EXPORT ~QDnsTlsAssociationRecord();
+
+    void swap(QDnsTlsAssociationRecord &other) noexcept { d.swap(other.d); }
+
+    Q_NETWORK_EXPORT QString name() const;
+    Q_NETWORK_EXPORT quint32 timeToLive() const;
+    Q_NETWORK_EXPORT CertificateUsage usage() const;
+    Q_NETWORK_EXPORT Selector selector() const;
+    Q_NETWORK_EXPORT MatchingType matchType() const;
+    Q_NETWORK_EXPORT QByteArray value() const;
+
+private:
+    QExplicitlySharedDataPointer<QDnsTlsAssociationRecordPrivate> d;
+    friend class QDnsLookupRunnable;
+};
+
+Q_DECLARE_SHARED(QDnsTlsAssociationRecord)
+
 class Q_NETWORK_EXPORT QDnsLookup : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(Error error READ error NOTIFY finished)
+    Q_PROPERTY(bool authenticData READ isAuthenticData NOTIFY finished)
     Q_PROPERTY(QString errorString READ errorString NOTIFY finished)
-    Q_PROPERTY(QString name READ name WRITE setName NOTIFY nameChanged)
-    Q_PROPERTY(Type type READ type WRITE setType NOTIFY typeChanged)
-    Q_PROPERTY(QHostAddress nameserver READ nameserver WRITE setNameserver NOTIFY nameserverChanged)
+    Q_PROPERTY(QString name READ name WRITE setName NOTIFY nameChanged BINDABLE bindableName)
+    Q_PROPERTY(Type type READ type WRITE setType NOTIFY typeChanged BINDABLE bindableType)
+    Q_PROPERTY(QHostAddress nameserver READ nameserver WRITE setNameserver NOTIFY nameserverChanged
+               BINDABLE bindableNameserver)
+    Q_PROPERTY(quint16 nameserverPort READ nameserverPort WRITE setNameserverPort
+               NOTIFY nameserverPortChanged BINDABLE bindableNameserverPort)
+    Q_PROPERTY(Protocol nameserverProtocol READ nameserverProtocol WRITE setNameserverProtocol
+               NOTIFY nameserverProtocolChanged BINDABLE bindableNameserverProtocol)
 
 public:
     enum Error
@@ -192,7 +237,8 @@ public:
         InvalidReplyError,
         ServerFailureError,
         ServerRefusedError,
-        NotFoundError
+        NotFoundError,
+        TimeoutError,
     };
     Q_ENUM(Error)
 
@@ -206,27 +252,51 @@ public:
         NS = 2,
         PTR = 12,
         SRV = 33,
+        TLSA = 52,
         TXT = 16
     };
     Q_ENUM(Type)
 
+    enum Protocol : quint8 {
+        Standard = 0,
+        DnsOverTls,
+    };
+    Q_ENUM(Protocol)
+
     explicit QDnsLookup(QObject *parent = nullptr);
     QDnsLookup(Type type, const QString &name, QObject *parent = nullptr);
     QDnsLookup(Type type, const QString &name, const QHostAddress &nameserver, QObject *parent = nullptr);
+    QDnsLookup(Type type, const QString &name, const QHostAddress &nameserver, quint16 port,
+               QObject *parent = nullptr);
+    QDnsLookup(Type type, const QString &name, Protocol protocol, const QHostAddress &nameserver,
+               quint16 port = 0, QObject *parent = nullptr);
     ~QDnsLookup();
 
+    bool isAuthenticData() const;
     Error error() const;
     QString errorString() const;
     bool isFinished() const;
 
     QString name() const;
     void setName(const QString &name);
+    QBindable<QString> bindableName();
 
     Type type() const;
     void setType(QDnsLookup::Type);
+    QBindable<Type> bindableType();
 
     QHostAddress nameserver() const;
     void setNameserver(const QHostAddress &nameserver);
+    QBindable<QHostAddress> bindableNameserver();
+    quint16 nameserverPort() const;
+    void setNameserverPort(quint16 port);
+    QBindable<quint16> bindableNameserverPort();
+    Protocol nameserverProtocol() const;
+    void setNameserverProtocol(Protocol protocol);
+    QBindable<Protocol> bindableNameserverProtocol();
+    void setNameserver(Protocol protocol, const QHostAddress &nameserver, quint16 port = 0);
+    QT_NETWORK_INLINE_SINCE(6, 8)
+    void setNameserver(const QHostAddress &nameserver, quint16 port);
 
     QList<QDnsDomainNameRecord> canonicalNameRecords() const;
     QList<QDnsHostAddressRecord> hostAddressRecords() const;
@@ -235,7 +305,15 @@ public:
     QList<QDnsDomainNameRecord> pointerRecords() const;
     QList<QDnsServiceRecord> serviceRecords() const;
     QList<QDnsTextRecord> textRecords() const;
+    QList<QDnsTlsAssociationRecord> tlsAssociationRecords() const;
 
+#if QT_CONFIG(ssl)
+    void setSslConfiguration(const QSslConfiguration &sslConfiguration);
+    QSslConfiguration sslConfiguration() const;
+#endif
+
+    static bool isProtocolSupported(Protocol protocol);
+    static quint16 defaultPortForProtocol(Protocol protocol) noexcept Q_DECL_CONST_FUNCTION;
 
 public Q_SLOTS:
     void abort();
@@ -244,13 +322,21 @@ public Q_SLOTS:
 Q_SIGNALS:
     void finished();
     void nameChanged(const QString &name);
-    void typeChanged(Type type);
+    void typeChanged(QDnsLookup::Type type);
     void nameserverChanged(const QHostAddress &nameserver);
+    void nameserverPortChanged(quint16 port);
+    void nameserverProtocolChanged(QDnsLookup::Protocol protocol);
 
 private:
     Q_DECLARE_PRIVATE(QDnsLookup)
-    Q_PRIVATE_SLOT(d_func(), void _q_lookupFinished(const QDnsLookupReply &reply))
 };
+
+#if QT_NETWORK_INLINE_IMPL_SINCE(6, 8)
+void QDnsLookup::setNameserver(const QHostAddress &nameserver, quint16 port)
+{
+    setNameserver(Standard, nameserver, port);
+}
+#endif
 
 QT_END_NAMESPACE
 

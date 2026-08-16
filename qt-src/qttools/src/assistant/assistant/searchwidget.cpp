@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "tracer.h"
 
 #include "mainwindow.h"
@@ -49,6 +24,8 @@
 #include <QtHelp/QHelpSearchResultWidget>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 SearchWidget::SearchWidget(QHelpSearchEngine *engine, QWidget *parent)
     : QWidget(parent)
@@ -186,7 +163,7 @@ void SearchWidget::contextMenuEvent(QContextMenuEvent *contextMenuEvent)
     QKeySequence keySeq;
 #if QT_CONFIG(clipboard)
     keySeq = QKeySequence::Copy;
-    QAction *copyAction = menu.addAction(tr("&Copy") + QLatin1Char('\t') +
+    QAction *copyAction = menu.addAction(tr("&Copy") + u'\t' +
         keySeq.toString(QKeySequence::NativeText));
     copyAction->setEnabled(QTextCursor(browser->textCursor()).hasSelection());
 
@@ -195,16 +172,15 @@ void SearchWidget::contextMenuEvent(QContextMenuEvent *contextMenuEvent)
 #endif
 
     keySeq = QKeySequence(Qt::CTRL);
-    QAction *newTabAction = menu.addAction(tr("Open Link in New Tab") +
-        QLatin1Char('\t') + keySeq.toString(QKeySequence::NativeText) +
-        QLatin1String("LMB"));
+    QAction *newTabAction = menu.addAction(tr("Open Link in New Tab") + u'\t'
+                                           + keySeq.toString(QKeySequence::NativeText) + "LMB"_L1);
     newTabAction->setEnabled(!link.isEmpty() && link.isValid());
 
     menu.addSeparator();
 
     keySeq = QKeySequence::SelectAll;
-    QAction *selectAllAction = menu.addAction(tr("Select All") +
-        QLatin1Char('\t') + keySeq.toString(QKeySequence::NativeText));
+    QAction *selectAllAction =
+            menu.addAction(tr("Select All") + u'\t' + keySeq.toString(QKeySequence::NativeText));
 
     QAction *usedAction = menu.exec(mapToGlobal(contextMenuEvent->pos()));
 #if QT_CONFIG(clipboard)

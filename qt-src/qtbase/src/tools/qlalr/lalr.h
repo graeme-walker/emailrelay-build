@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the utils of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef LALR_H
 #define LALR_H
@@ -32,14 +7,13 @@
 #include <QtCore/qset.h>
 #include <QtCore/qstack.h>
 #include <QtCore/qmap.h>
-#include <QtCore/qlinkedlist.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qtextstream.h>
-#include <QtCore/qpair.h>
 
 #include <algorithm>
 #include <functional>
 #include <set>
+#include <list>
 
 class Rule;
 class State;
@@ -142,8 +116,8 @@ public:
   inline bool operator != (const State &other) const
   { return kernel != other.kernel; }
 
-  QPair<ItemPointer, bool> insert (const Item &item);
-  QPair<ItemPointer, bool> insertClosure (const Item &item);
+  std::pair<ItemPointer, bool> insert(const Item &item);
+  std::pair<ItemPointer, bool> insertClosure(const Item &item);
 
 public: // attributes
   ItemList kernel;
@@ -168,7 +142,7 @@ public:
 public:
   static iterator get (_Tp data);
 
-  QPair<edge_iterator, bool> insertEdge (iterator other) const;
+  std::pair<edge_iterator, bool> insertEdge(iterator other) const;
 
   inline edge_iterator begin () const
   { return outs.begin (); }
@@ -223,15 +197,15 @@ typename Node<_Tp>::iterator Node<_Tp>::get (_Tp data)
 }
 
 template <typename _Tp>
-QPair<typename std::list<typename Node<_Tp>::iterator>::iterator, bool> Node<_Tp>::insertEdge(typename Node<_Tp>::iterator other) const
+std::pair<typename std::list<typename Node<_Tp>::iterator>::iterator, bool> Node<_Tp>::insertEdge(typename Node<_Tp>::iterator other) const
 {
   edge_iterator it = std::find (outs.begin (), outs.end (), other);
 
   if (it != outs.end ())
-    return qMakePair (it, false);
+    return {it, false};
 
   other->root = false;
-  return qMakePair (outs.insert (outs.end (), other), true);
+  return {outs.insert (outs.end (), other), true};
 }
 
 /////////////////////////////////////////////////////////////
@@ -337,7 +311,7 @@ class Automaton
 public:
   Automaton (Grammar *g);
 
-  QPair<StatePointer, bool> internState (const State &state);
+  std::pair<StatePointer, bool> internState (const State &state);
 
   typedef Node<Read> ReadsGraph;
   typedef ReadsGraph::iterator ReadNode;

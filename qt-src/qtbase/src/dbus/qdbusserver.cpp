@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdbusserver.h"
 #include "qdbusconnection_p.h"
@@ -74,9 +38,8 @@ QDBusServer::QDBusServer(const QString &address, QObject *parent)
     if (!instance)
         return;
 
-    emit instance->serverRequested(address, this);
-    QObject::connect(d, SIGNAL(newServerConnection(QDBusConnectionPrivate*)),
-                     this, SLOT(_q_newConnection(QDBusConnectionPrivate*)), Qt::QueuedConnection);
+    instance->createServer(address, this);
+    Q_ASSERT(d != nullptr);
 }
 
 /*!
@@ -85,25 +48,15 @@ QDBusServer::QDBusServer(const QString &address, QObject *parent)
     localhost (elsewhere).
 */
 QDBusServer::QDBusServer(QObject *parent)
-    : QObject(parent), d(nullptr)
-{
+    : QDBusServer(
 #ifdef Q_OS_UNIX
-    // Use Unix sockets on Unix systems only
-    const QString address = QStringLiteral("unix:tmpdir=/tmp");
+            // Use Unix sockets on Unix systems only
+            QStringLiteral("unix:tmpdir=/tmp"),
 #else
-    const QString address = QStringLiteral("tcp:");
+            QStringLiteral("tcp:"),
 #endif
-
-    if (!qdbus_loadLibDBus())
-        return;
-
-    QDBusConnectionManager *instance = QDBusConnectionManager::instance();
-    if (!instance)
-        return;
-
-    emit instance->serverRequested(address, this);
-    QObject::connect(d, SIGNAL(newServerConnection(QDBusConnectionPrivate*)),
-                     this, SLOT(_q_newConnection(QDBusConnectionPrivate*)), Qt::QueuedConnection);
+            parent)
+{
 }
 
 /*!
@@ -111,17 +64,17 @@ QDBusServer::QDBusServer(QObject *parent)
 */
 QDBusServer::~QDBusServer()
 {
-    QMutex *managerMutex = nullptr;
-    if (QDBusConnectionManager::instance())
-        managerMutex = &QDBusConnectionManager::instance()->mutex;
-    QMutexLocker locker(managerMutex);
+    if (!d)
+        return;
+
+    auto manager = QDBusConnectionManager::instance();
+    if (!manager)
+        return;
+
     QWriteLocker writeLocker(&d->lock);
-    if (QDBusConnectionManager::instance()) {
-        for (const QString &name : qAsConst(d->serverConnectionNames))
-            QDBusConnectionManager::instance()->removeConnection(name);
-        d->serverConnectionNames.clear();
-        locker.unlock();
-    }
+    manager->removeConnections(d->serverConnectionNames);
+    d->serverConnectionNames.clear();
+
     d->serverObject = nullptr;
     d->ref.storeRelaxed(0);
     d->deleteLater();
@@ -174,6 +127,9 @@ QString QDBusServer::address() const
 */
 void QDBusServer::setAnonymousAuthenticationAllowed(bool value)
 {
+    if (!d)
+        return;
+
     d->anonymousAuthenticationAllowed = value;
 }
 
@@ -186,6 +142,9 @@ void QDBusServer::setAnonymousAuthenticationAllowed(bool value)
 */
 bool QDBusServer::isAnonymousAuthenticationAllowed() const
 {
+    if (!d)
+        return false;
+
     return d->anonymousAuthenticationAllowed;
 }
 

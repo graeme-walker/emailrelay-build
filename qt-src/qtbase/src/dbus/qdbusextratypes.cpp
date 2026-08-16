@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdbusextratypes.h"
 #include "qdbusutil_p.h"
@@ -43,6 +7,24 @@
 #ifndef QT_NO_DBUS
 
 QT_BEGIN_NAMESPACE
+
+QT_IMPL_METATYPE_EXTERN(QDBusVariant)
+QT_IMPL_METATYPE_EXTERN(QDBusObjectPath)
+QT_IMPL_METATYPE_EXTERN(QDBusSignature)
+
+#ifndef QT_NO_DEBUG_STREAM
+/*!
+    \fn QDebug QDBusObjectPath::operator<<(QDebug dbg, const QDBusObjectPath &path)
+    \since 6.8
+    Writes the contents of \a path to \a dbg.
+*/
+QDebug operator<<(QDebug dbg, const QDBusObjectPath &path)
+{
+    QDebugStateSaver saver(dbg);
+    dbg.nospace() << "QDBusObjectPath(" << path.path() << ')';
+    return dbg;
+}
+#endif
 
 void QDBusObjectPath::doCheck()
 {
@@ -52,11 +34,17 @@ void QDBusObjectPath::doCheck()
     }
 }
 
+QDBusSignature::QDBusSignature() noexcept
+    : m_signature(QLatin1StringView("")) // mark non-null (empty signatures are valid)
+{}
+
 void QDBusSignature::doCheck()
 {
     if (!QDBusUtil::isValidSignature(m_signature)) {
         qWarning("QDBusSignature: invalid signature \"%s\"", qPrintable(m_signature));
         m_signature.clear();
+    } else if (m_signature.isEmpty()) {
+        m_signature.detach();       // we need it to not be null
     }
 }
 
@@ -139,9 +127,9 @@ void QDBusSignature::doCheck()
 */
 
 /*!
-    \fn QDBusObjectPath::QDBusObjectPath(QLatin1String path)
+    \fn QDBusObjectPath::QDBusObjectPath(QLatin1StringView path)
 
-    Constructs a new object path from the given \a path.
+    Constructs a new object path from the Latin-1 string viewed by \a path.
 */
 
 /*!
@@ -200,9 +188,9 @@ QDBusObjectPath::operator QVariant() const { return QVariant::fromValue(*this); 
 */
 
 /*!
-    \fn QDBusSignature::QDBusSignature(QLatin1String signature)
+    \fn QDBusSignature::QDBusSignature(QLatin1StringView signature)
 
-    Constructs a new signature from the given \a signature.
+    Constructs a new signature from the Latin-1 string viewed by \a signature.
 */
 
 /*!
@@ -228,20 +216,17 @@ QDBusObjectPath::operator QVariant() const { return QVariant::fromValue(*this); 
 
 /*!
     \fn void QDBusObjectPath::swap(QDBusObjectPath &other)
-
-    Swaps this QDBusObjectPath instance with \a other.
+    \memberswap{object path}
 */
 
 /*!
     \fn void QDBusSignature::swap(QDBusSignature &other)
-
-    Swaps this QDBusSignature instance with \a other.
+    \memberswap{signature}
 */
 
 /*!
     \fn void QDBusVariant::swap(QDBusVariant &other)
-
-    Swaps this QDBusVariant instance with \a other.
+    \memberswap{variant}
 */
 
 QT_END_NAMESPACE

@@ -3,13 +3,16 @@
 dita.metadata.default.author      = Qt Project
 dita.metadata.default.permissions = all
 dita.metadata.default.publisher   = Qt Project
-dita.metadata.default.copyryear = 2020
+dita.metadata.default.copyryear = 2024
 dita.metadata.default.copyrholder = The Qt Company Ltd
 dita.metadata.default.audience = programmer
 
 #Set the main Qt index.html
 navigation.homepage = index.html
 navigation.hometitle = "Qt $QT_VER"
+
+# Set trademarks page (located in qt/qtdoc)
+navigation.trademarkspage = Trademarks
 
 #Words to ignore for auto-linking
 ignorewords += \
@@ -19,10 +22,21 @@ ignorewords += \
     WebSockets \
     OpenGL
 
+# Omit \since information for items introduced before Qt 6
+ignoresince = 6.0
+
 sourcedirs += includes $$BUILDDIR
+exampledirs += snippets
 
-url = http://doc.qt.io/qt-5
+url = https://doc.qt.io/qt
 
-# Uncomment the following two lines to generate documentation marked as \internal
-# alias.internal = disable
-# macro.internal.HTML = "<span style="color:red">[internal]</span>"
+defines += qt6
+
+# Require Qt modules to define qhp.projects
+qhp = true
+
+# Disable writing host-specific paths into .index files
+locationinfo = false
+
+# Include the warninglimit used for documentation testing in CI
+include(warninglimit.qdocconf)

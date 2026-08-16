@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QNETWORKREPLYWASMIMPL_H
 #define QNETWORKREPLYWASMIMPL_H
@@ -62,6 +26,9 @@
 
 #include <emscripten.h>
 #include <emscripten/fetch.h>
+
+#include <memory>
+#include <mutex>
 
 QT_BEGIN_NAMESPACE
 
@@ -91,10 +58,33 @@ public:
 
     Q_PRIVATE_SLOT(d_func(), void emitReplyError(QNetworkReply::NetworkError errorCode, const QString &errorString))
     Q_PRIVATE_SLOT(d_func(), void emitDataReadProgress(qint64 done, qint64 total))
-    Q_PRIVATE_SLOT(d_func(), void dataReceived(char *buffer, int bufferSize))
+    Q_PRIVATE_SLOT(d_func(), void dataReceived(const QByteArray &buffer))
 
 private:
     QByteArray methodName() const;
+};
+
+class QNetworkReplyWasmImplPrivate;
+
+/*!
+    The FetchContext class ensures the requestData object remains valid
+    while a fetch operation is pending. Since Emscripten fetch is asynchronous,
+    requestData must persist until one of the final callbacks is invoked.
+    Additionally, there's a potential race condition between the thread
+    scheduling the fetch operation and the one executing it. Since fetch must
+    occur on the main thread due to browser limitations,
+    a mutex safeguards the FetchContext to ensure atomic state transitions.
+*/
+struct FetchContext
+{
+    enum class State { SCHEDULED, SENT, FINISHED, CANCELED, TO_BE_DESTROYED };
+
+    FetchContext(QNetworkReplyWasmImplPrivate *networkReply) : reply(networkReply) { }
+
+    QNetworkReplyWasmImplPrivate *reply{ nullptr };
+    std::mutex mutex;
+    QByteArray requestData;
+    State state{ State::SCHEDULED };
 };
 
 class QNetworkReplyWasmImplPrivate: public QNetworkReplyPrivate
@@ -109,7 +99,7 @@ public:
 
     void emitReplyError(QNetworkReply::NetworkError errorCode, const QString &);
     void emitDataReadProgress(qint64 done, qint64 total);
-    void dataReceived(const QByteArray &buffer, int bufferSize);
+    void dataReceived(const QByteArray &buffer);
     void headersReceived(const QByteArray &buffer);
 
     void setStatusCode(int status, const QByteArray &statusText);
@@ -121,8 +111,8 @@ public:
     void _q_bufferOutgoingData();
     void _q_bufferOutgoingDataFinished();
 
-    QSharedPointer<QAtomicInt> pendingDownloadData;
-    QSharedPointer<QAtomicInt> pendingDownloadProgress;
+    std::shared_ptr<QAtomicInt> pendingDownloadData;
+    std::shared_ptr<QAtomicInt> pendingDownloadProgress;
 
     qint64 bytesDownloaded;
     qint64 bytesBuffered;
@@ -134,10 +124,7 @@ public:
     QByteArray downloadBuffer;
 
     QIODevice *outgoingData;
-    QSharedPointer<QRingBuffer> outgoingDataBuffer;
-    QByteArray requestData;
-
-    void doAbort() const;
+    std::shared_ptr<QRingBuffer> outgoingDataBuffer;
 
     static void downloadProgress(emscripten_fetch_t *fetch);
     static void downloadFailed(emscripten_fetch_t *fetch);
@@ -147,7 +134,9 @@ public:
     static QNetworkReply::NetworkError statusCodeFromHttp(int httpStatusCode, const QUrl &url);
 
     emscripten_fetch_t *m_fetch;
+    FetchContext *m_fetchContext;
     void setReplyFinished();
+    void setCanceled();
 
     Q_DECLARE_PUBLIC(QNetworkReplyWasmImpl)
 };

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdatastream.h"
 #include "qdatastream_p.h"
@@ -49,11 +13,17 @@
 #include <stdlib.h>
 #include "qendian.h"
 
+#include <QtCore/q20memory.h>
+
 QT_BEGIN_NAMESPACE
+
+constexpr quint32 QDataStream::NullCode;
+constexpr quint32 QDataStream::ExtendedSize;
 
 /*!
     \class QDataStream
     \inmodule QtCore
+    \ingroup qtserialization
     \reentrant
     \brief The QDataStream class provides serialization of binary data
     to a QIODevice.
@@ -102,16 +72,29 @@ QT_BEGIN_NAMESPACE
     need of manually defining streaming operators. Enum classes are
     serialized using the declared size.
 
-    To take one example, a \c{char *} string is written as a 32-bit
-    integer equal to the length of the string including the '\\0' byte,
-    followed by all the characters of the string including the
-    '\\0' byte. When reading a \c{char *} string, 4 bytes are read to
-    create the 32-bit length value, then that many characters for the
-    \c {char *} string including the '\\0' terminator are read.
-
     The initial I/O device is usually set in the constructor, but can be
     changed with setDevice(). If you've reached the end of the data
     (or if there is no I/O device set) atEnd() will return true.
+
+    \section1 Serializing containers and strings
+
+    The serialization format is a length specifier first, then \a l bytes of data.
+    The length specifier is one quint32 if the version is less than 6.7 or if the
+    number of elements is less than 0xfffffffe (2^32 -2). Otherwise there is
+    an extend value 0xfffffffe followed by one quint64 with the actual value.
+    In addition for containers that support isNull(), it is encoded as a single
+    quint32 with all bits set and no data.
+
+    To take one example, if the string size fits into 32 bits, a \c{char *} string
+    is written as a 32-bit integer equal to the length of the string, including
+    the '\\0' byte, followed by all the characters of the string, including the
+    '\\0' byte. If the string size is greater, the value 0xffffffffe is written
+    as a marker of an extended size, followed by 64 bits of the actual size.
+    When reading a \c {char *} string, 4 bytes are read first. If the value is
+    not equal to 0xffffffffe (the marker of extended size), then these 4 bytes
+    are treated as the 32 bit size of the string. Otherwise, the next 8 bytes are
+    read and treated as a 64 bit size of the string. Then, all the characters for
+    the \c {char *} string, including the '\\0' terminator, are read.
 
     \section1 Versioning
 
@@ -138,9 +121,9 @@ QT_BEGIN_NAMESPACE
     \snippet code/src_corelib_io_qdatastream.cpp 4
 
     You can select which byte order to use when serializing data. The
-    default setting is big endian (MSB first). Changing it to little
-    endian breaks the portability (unless the reader also changes to
-    little endian). We recommend keeping this setting unless you have
+    default setting is big-endian (MSB first). Changing it to little-endian
+    breaks the portability (unless the reader also changes to
+    little-endian). We recommend keeping this setting unless you have
     special requirements.
 
     \target raw
@@ -163,7 +146,7 @@ QT_BEGIN_NAMESPACE
     \section1 Reading and Writing Qt Collection Classes
 
     The Qt container classes can also be serialized to a QDataStream.
-    These include QList, QLinkedList, QVector, QSet, QHash, and QMap.
+    These include QList, QSet, QHash, and QMap.
     The stream operators are declared as non-members of the classes.
 
     \target Serializing Qt Classes
@@ -198,6 +181,27 @@ QT_BEGIN_NAMESPACE
 
     If no full packet is received, this code restores the stream to the
     initial position, after which you need to wait for more data to arrive.
+
+    \section1 Corruption and Security
+
+    QDataStream is not resilient against corrupted data inputs and should
+    therefore not be used for security-sensitive situations, even when using
+    transactions. Transactions will help determine if a valid input can
+    currently be decoded with the data currently available on an asynchronous
+    device, but will assume that the data that is available is correctly
+    formed.
+
+    Additionally, many QDataStream demarshalling operators will allocate memory
+    based on information found in the stream. Those operators perform no
+    verification on whether the requested amount of memory is reasonable or if
+    it is compatible with the amount of data available in the stream (example:
+    demarshalling a QByteArray or QString may see the request for allocation of
+    several gigabytes of data).
+
+    QDataStream should not be used on content whose provenance cannot be
+    trusted. Applications should be designed to attempt to decode only streams
+    whose provenance is at least as trustworthy as that of the application
+    itself or its plugins.
 
     \sa QTextStream, QVariant
 */
@@ -236,6 +240,11 @@ QT_BEGIN_NAMESPACE
                             data in the underlying device.
     \value ReadCorruptData  The data stream has read corrupt data.
     \value WriteFailed      The data stream cannot write to the underlying device.
+    \value [since 6.7] SizeLimitExceeded The data stream cannot read or write
+                            the data because its size is larger than supported
+                            by the current platform. This can happen, for
+                            example, when trying to read more that 2 GiB of
+                            data on a 32-bit platform.
 */
 
 /*****************************************************************************
@@ -264,7 +273,7 @@ QT_BEGIN_NAMESPACE
         return retVal;
 
 #define CHECK_STREAM_TRANSACTION_PRECOND(retVal) \
-    if (!d || d->transactionDepth == 0) { \
+    if (transactionDepth == 0) { \
         qWarning("QDataStream: No transaction in progress"); \
         return retVal; \
     }
@@ -277,12 +286,6 @@ QT_BEGIN_NAMESPACE
 
 QDataStream::QDataStream()
 {
-    dev = nullptr;
-    owndev = false;
-    byteorder = BigEndian;
-    ver = Qt_DefaultCompiledVersion;
-    noswap = QSysInfo::ByteOrder == QSysInfo::BigEndian;
-    q_status = Ok;
 }
 
 /*!
@@ -294,15 +297,10 @@ QDataStream::QDataStream()
 QDataStream::QDataStream(QIODevice *d)
 {
     dev = d;                                // set device
-    owndev = false;
-    byteorder = BigEndian;                        // default byte order
-    ver = Qt_DefaultCompiledVersion;
-    noswap = QSysInfo::ByteOrder == QSysInfo::BigEndian;
-    q_status = Ok;
 }
 
 /*!
-    \fn QDataStream::QDataStream(QByteArray *a, QIODevice::OpenMode mode)
+    \fn QDataStream::QDataStream(QByteArray *a, OpenMode mode)
 
     Constructs a data stream that operates on a byte array, \a a. The
     \a mode describes how the device is to be used.
@@ -314,7 +312,7 @@ QDataStream::QDataStream(QIODevice *d)
     is created to wrap the byte array.
 */
 
-QDataStream::QDataStream(QByteArray *a, QIODevice::OpenMode flags)
+QDataStream::QDataStream(QByteArray *a, OpenMode flags)
 {
     QBuffer *buf = new QBuffer(a);
 #ifndef QT_NO_QOBJECT
@@ -323,10 +321,6 @@ QDataStream::QDataStream(QByteArray *a, QIODevice::OpenMode flags)
     buf->open(flags);
     dev = buf;
     owndev = true;
-    byteorder = BigEndian;
-    ver = Qt_DefaultCompiledVersion;
-    noswap = QSysInfo::ByteOrder == QSysInfo::BigEndian;
-    q_status = Ok;
 }
 
 /*!
@@ -347,10 +341,6 @@ QDataStream::QDataStream(const QByteArray &a)
     buf->open(QIODevice::ReadOnly);
     dev = buf;
     owndev = true;
-    byteorder = BigEndian;
-    ver = Qt_DefaultCompiledVersion;
-    noswap = QSysInfo::ByteOrder == QSysInfo::BigEndian;
-    q_status = Ok;
 }
 
 /*!
@@ -396,19 +386,6 @@ void QDataStream::setDevice(QIODevice *d)
     dev = d;
 }
 
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    \obsolete
-    Unsets the I/O device.
-    Use setDevice(nullptr) instead.
-*/
-
-void QDataStream::unsetDevice()
-{
-    setDevice(nullptr);
-}
-#endif
-
 /*!
     \fn bool QDataStream::atEnd() const
 
@@ -425,16 +402,14 @@ bool QDataStream::atEnd() const
 }
 
 /*!
+    \fn QDataStream::FloatingPointPrecision QDataStream::floatingPointPrecision() const
+
     Returns the floating point precision of the data stream.
 
     \since 4.6
 
     \sa FloatingPointPrecision, setFloatingPointPrecision()
 */
-QDataStream::FloatingPointPrecision QDataStream::floatingPointPrecision() const
-{
-    return d ? d->floatingPointPrecision : QDataStream::DoublePrecision;
-}
 
 /*!
     Sets the floating point precision of the data stream to \a precision. If the floating point precision is
@@ -458,21 +433,16 @@ QDataStream::FloatingPointPrecision QDataStream::floatingPointPrecision() const
 */
 void QDataStream::setFloatingPointPrecision(QDataStream::FloatingPointPrecision precision)
 {
-    if (!d)
-        d.reset(new QDataStreamPrivate());
-    d->floatingPointPrecision = precision;
+    fpPrecision = precision;
 }
 
 /*!
+    \fn QDataStream::status() const
+
     Returns the status of the data stream.
 
     \sa Status, setStatus(), resetStatus()
 */
-
-QDataStream::Status QDataStream::status() const
-{
-    return q_status;
-}
 
 /*!
     Resets the status of the data stream.
@@ -513,7 +483,7 @@ void QDataStream::setStatus(Status status)
     The \a bo parameter can be QDataStream::BigEndian or
     QDataStream::LittleEndian.
 
-    The default setting is big endian. We recommend leaving this
+    The default setting is big-endian. We recommend leaving this
     setting unless you have special requirements.
 
     \sa byteOrder()
@@ -521,11 +491,14 @@ void QDataStream::setStatus(Status status)
 
 void QDataStream::setByteOrder(ByteOrder bo)
 {
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0) && !defined(QT_BOOTSTRAPPED)
+    // accessed by inline byteOrder() prior to Qt 6.8
     byteorder = bo;
+#endif
     if (QSysInfo::ByteOrder == QSysInfo::BigEndian)
-        noswap = (byteorder == BigEndian);
+        noswap = (bo == BigEndian);
     else
-        noswap = (byteorder == LittleEndian);
+        noswap = (bo == LittleEndian);
 }
 
 
@@ -567,6 +540,15 @@ void QDataStream::setByteOrder(ByteOrder bo)
     \value Qt_5_13 Version 19 (Qt 5.13)
     \value Qt_5_14 Same as Qt_5_13
     \value Qt_5_15 Same as Qt_5_13
+    \value Qt_6_0 Version 20 (Qt 6.0)
+    \value Qt_6_1 Same as Qt_6_0
+    \value Qt_6_2 Same as Qt_6_0
+    \value Qt_6_3 Same as Qt_6_0
+    \value Qt_6_4 Same as Qt_6_0
+    \value Qt_6_5 Same as Qt_6_0
+    \value Qt_6_6 Version 21 (Qt 6.6)
+    \value Qt_6_7 Version 22 (Qt 6.7)
+    \value Qt_6_8 Same as Qt_6_7
     \omitvalue Qt_DefaultCompiledVersion
 
     \sa setVersion(), version()
@@ -640,10 +622,7 @@ void QDataStream::startTransaction()
 {
     CHECK_STREAM_PRECOND(Q_VOID)
 
-    if (!d)
-        d.reset(new QDataStreamPrivate());
-
-    if (++d->transactionDepth == 1) {
+    if (++transactionDepth == 1) {
         dev->startTransaction();
         resetStatus();
     }
@@ -672,7 +651,7 @@ void QDataStream::startTransaction()
 bool QDataStream::commitTransaction()
 {
     CHECK_STREAM_TRANSACTION_PRECOND(false)
-    if (--d->transactionDepth == 0) {
+    if (--transactionDepth == 0) {
         CHECK_STREAM_PRECOND(false)
 
         if (q_status == ReadPastEnd) {
@@ -712,7 +691,7 @@ void QDataStream::rollbackTransaction()
     setStatus(ReadPastEnd);
 
     CHECK_STREAM_TRANSACTION_PRECOND(Q_VOID)
-    if (--d->transactionDepth != 0)
+    if (--transactionDepth != 0)
         return;
 
     CHECK_STREAM_PRECOND(Q_VOID)
@@ -748,11 +727,19 @@ void QDataStream::abortTransaction()
     q_status = ReadCorruptData;
 
     CHECK_STREAM_TRANSACTION_PRECOND(Q_VOID)
-    if (--d->transactionDepth != 0)
+    if (--transactionDepth != 0)
         return;
 
     CHECK_STREAM_PRECOND(Q_VOID)
     dev->commitTransaction();
+}
+
+/*!
+   \internal
+*/
+bool QDataStream::isDeviceTransactionStarted() const
+{
+   return dev && dev->isTransactionStarted();
 }
 
 /*****************************************************************************
@@ -763,13 +750,13 @@ void QDataStream::abortTransaction()
     \internal
 */
 
-int QDataStream::readBlock(char *data, int len)
+qint64 QDataStream::readBlock(char *data, qint64 len)
 {
     // Disable reads on failure in transacted stream
     if (q_status != Ok && dev->isTransactionStarted())
         return -1;
 
-    const int readResult = dev->read(data, len);
+    const qint64 readResult = dev->read(data, len);
     if (readResult != len)
         setStatus(ReadPastEnd);
     return readResult;
@@ -993,25 +980,12 @@ QDataStream &QDataStream::operator>>(double &f)
 
 /*!
     \overload
-    \since 5.9
 
-    Reads a floating point number from the stream into \a f,
-    using the standard IEEE 754 format. Returns a reference to the
-    stream.
-*/
-QDataStream &QDataStream::operator>>(qfloat16 &f)
-{
-    return *this >> reinterpret_cast<qint16&>(f);
-}
+    Reads string \a s from the stream and returns a reference to the stream.
 
-
-/*!
-    \overload
-
-    Reads the '\\0'-terminated string \a s from the stream and returns
-    a reference to the stream.
-
-    The string is deserialized using \c{readBytes()}.
+    The string is deserialized using \c{readBytes()} where the serialization
+    format is a \c quint32 length specifier first, followed by that many bytes
+    of data. The resulting string is always '\\0'-terminated.
 
     Space for the string is allocated using \c{new []} -- the caller must
     destroy it with \c{delete []}.
@@ -1021,12 +995,63 @@ QDataStream &QDataStream::operator>>(qfloat16 &f)
 
 QDataStream &QDataStream::operator>>(char *&s)
 {
-    uint len = 0;
+    qint64 len = 0;
     return readBytes(s, len);
 }
 
+/*!
+    \overload
+    \since 6.0
+
+    Reads a 16bit wide char from the stream into \a c and
+    returns a reference to the stream.
+*/
+QDataStream &QDataStream::operator>>(char16_t &c)
+{
+    quint16 u;
+    *this >> u;
+    c = char16_t(u);
+    return *this;
+}
 
 /*!
+    \overload
+    \since 6.0
+
+    Reads a 32bit wide character from the stream into \a c and
+    returns a reference to the stream.
+*/
+QDataStream &QDataStream::operator>>(char32_t &c)
+{
+    quint32 u;
+    *this >> u;
+    c = char32_t(u);
+    return *this;
+}
+
+#if QT_DEPRECATED_SINCE(6, 11)
+
+/*!
+    \deprecated [6.11] Use an overload that takes qint64 length instead.
+*/
+QDataStream &QDataStream::readBytes(char *&s, uint &l)
+{
+    qint64 length = 0;
+    (void)readBytes(s, length);
+    if (length != qint64(uint(length))) {
+        setStatus(SizeLimitExceeded); // Cannot store length in l
+        delete[] s;
+        l = 0;
+        return *this;
+    }
+    l = uint(length);
+    return *this;
+}
+
+#endif // QT_DEPRECATED_SINCE(6, 11)
+
+/*!
+    \since 6.7
     Reads the buffer \a s from the stream and returns a reference to
     the stream.
 
@@ -1036,46 +1061,53 @@ QDataStream &QDataStream::operator>>(char *&s)
     The \a l parameter is set to the length of the buffer. If the
     string read is empty, \a l is set to 0 and \a s is set to \nullptr.
 
-    The serialization format is a quint32 length specifier first,
-    then \a l bytes of data.
+    The serialization format is a length specifier first, then \a l
+    bytes of data. The length specifier is one quint32 if the version
+    is less than 6.7 or if the number of elements is less than 0xfffffffe
+    (2^32 -2), otherwise there is an extend value 0xfffffffe followed by
+    one quint64 with the actual value. In addition for containers that
+    support isNull(), it is encoded as a single quint32 with all bits
+    set and no data.
 
     \sa readRawData(), writeBytes()
 */
 
-QDataStream &QDataStream::readBytes(char *&s, uint &l)
+QDataStream &QDataStream::readBytes(char *&s, qint64 &l)
 {
     s = nullptr;
     l = 0;
     CHECK_STREAM_PRECOND(*this)
 
-    quint32 len;
-    *this >> len;
-    if (len == 0)
+    qint64 length = readQSizeType(*this);
+    if (length == 0)
         return *this;
 
-    const quint32 Step = 1024 * 1024;
-    quint32 allocated = 0;
-    char *prevBuf = nullptr;
-    char *curBuf = nullptr;
+    qsizetype len = qsizetype(length);
+    if (length != len || length < 0) {
+        setStatus(SizeLimitExceeded); // Cannot store len
+        return *this;
+    }
 
+    qsizetype step = (dev->bytesAvailable() >= len) ? len : 1024 * 1024;
+    qsizetype allocated = 0;
+    std::unique_ptr<char[]> curBuf = nullptr;
+
+    constexpr qsizetype StepIncreaseThreshold = std::numeric_limits<qsizetype>::max() / 2;
     do {
-        int blockSize = qMin(Step, len - allocated);
-        prevBuf = curBuf;
-        curBuf = new char[allocated + blockSize + 1];
-        if (prevBuf) {
-            memcpy(curBuf, prevBuf, allocated);
-            delete [] prevBuf;
-        }
-        if (readBlock(curBuf + allocated, blockSize) != blockSize) {
-            delete [] curBuf;
+        qsizetype blockSize = qMin(step, len - allocated);
+        const qsizetype n = allocated + blockSize + 1;
+        if (const auto prevBuf = std::exchange(curBuf, q20::make_unique_for_overwrite<char[]>(n)))
+            memcpy(curBuf.get(), prevBuf.get(), allocated);
+        if (readBlock(curBuf.get() + allocated, blockSize) != blockSize)
             return *this;
-        }
         allocated += blockSize;
+        if (step <= StepIncreaseThreshold)
+            step *= 2;
     } while (allocated < len);
 
-    s = curBuf;
+    s = curBuf.release();
     s[len] = '\0';
-    l = (uint)len;
+    l = len;
     return *this;
 }
 
@@ -1088,12 +1120,22 @@ QDataStream &QDataStream::readBytes(char *&s, uint &l)
     \sa readBytes(), QIODevice::read(), writeRawData()
 */
 
-int QDataStream::readRawData(char *s, int len)
+qint64 QDataStream::readRawData(char *s, qint64 len)
 {
     CHECK_STREAM_PRECOND(-1)
     return readBlock(s, len);
 }
 
+/*! \fn template <class T1, class T2> QDataStream &operator>>(QDataStream &in, std::pair<T1, T2> &pair)
+    \since 6.0
+    \relates QDataStream
+
+    Reads a pair from stream \a in into \a pair.
+
+    This function requires the T1 and T2 types to implement \c operator>>().
+
+    \sa {Serializing Qt Data Types}
+*/
 
 /*****************************************************************************
   QDataStream write functions
@@ -1216,17 +1258,12 @@ QDataStream &QDataStream::operator<<(qint64 i)
 */
 
 /*!
+    \fn QDataStream &QDataStream::operator<<(bool i)
+    \overload
+
     Writes a boolean value, \a i, to the stream. Returns a reference
     to the stream.
 */
-
-QDataStream &QDataStream::operator<<(bool i)
-{
-    CHECK_STREAM_WRITE_PRECOND(*this)
-    if (!dev->putChar(qint8(i)))
-        q_status = WriteFailed;
-    return *this;
-}
 
 /*!
     \overload
@@ -1302,19 +1339,6 @@ QDataStream &QDataStream::operator<<(double f)
 
 
 /*!
-    \fn QDataStream &QDataStream::operator<<(qfloat16 f)
-    \overload
-    \since 5.9
-
-    Writes a floating point number, \a f, to the stream using
-    the standard IEEE 754 format. Returns a reference to the stream.
-*/
-QDataStream &QDataStream::operator<<(qfloat16 f)
-{
-    return *this << reinterpret_cast<qint16&>(f);
-}
-
-/*!
     \overload
 
     Writes the '\\0'-terminated string \a s to the stream and returns a
@@ -1327,35 +1351,59 @@ QDataStream &QDataStream::operator<<(qfloat16 f)
 
 QDataStream &QDataStream::operator<<(const char *s)
 {
-    if (!s) {
-        *this << (quint32)0;
-        return *this;
-    }
-    uint len = qstrlen(s) + 1;                        // also write null terminator
-    *this << (quint32)len;                        // write length specifier
-    writeRawData(s, len);
+    // Include null terminator, unless s itself is null
+    const qint64 len = s ? qint64(qstrlen(s)) + 1 : 0;
+    writeBytes(s, len);
     return *this;
+}
+
+/*!
+  \overload
+  \since 6.0
+
+  Writes a character, \a c, to the stream. Returns a reference to
+  the stream
+*/
+QDataStream &QDataStream::operator<<(char16_t c)
+{
+    return *this << qint16(c);
+}
+
+/*!
+  \overload
+  \since 6.0
+
+  Writes a character, \a c, to the stream. Returns a reference to
+  the stream
+*/
+QDataStream &QDataStream::operator<<(char32_t c)
+{
+    return *this << qint32(c);
 }
 
 /*!
     Writes the length specifier \a len and the buffer \a s to the
     stream and returns a reference to the stream.
 
-    The \a len is serialized as a quint32, followed by \a len bytes
-    from \a s. Note that the data is \e not encoded.
+    The \a len is serialized as a quint32 and an optional quint64,
+    followed by \a len bytes from \a s. Note that the data is
+    \e not encoded.
 
     \sa writeRawData(), readBytes()
 */
 
-QDataStream &QDataStream::writeBytes(const char *s, uint len)
+QDataStream &QDataStream::writeBytes(const char *s, qint64 len)
 {
+    if (len < 0) {
+        q_status = WriteFailed;
+        return *this;
+    }
     CHECK_STREAM_WRITE_PRECOND(*this)
-    *this << (quint32)len;                        // write length specifier
-    if (len)
+    // Write length then, if any, content
+    if (writeQSizeType(*this, len) && len > 0)
         writeRawData(s, len);
     return *this;
 }
-
 
 /*!
     Writes \a len bytes from \a s to the stream. Returns the
@@ -1365,10 +1413,10 @@ QDataStream &QDataStream::writeBytes(const char *s, uint len)
     \sa writeBytes(), QIODevice::write(), readRawData()
 */
 
-int QDataStream::writeRawData(const char *s, int len)
+qint64 QDataStream::writeRawData(const char *s, qint64 len)
 {
     CHECK_STREAM_WRITE_PRECOND(-1)
-    int ret = dev->write(s, len);
+    qint64 ret = dev->write(s, len);
     if (ret != len)
         q_status = WriteFailed;
     return ret;
@@ -1385,17 +1433,29 @@ int QDataStream::writeRawData(const char *s, int len)
 
     \sa QIODevice::seek()
 */
-int QDataStream::skipRawData(int len)
+qint64 QDataStream::skipRawData(qint64 len)
 {
     CHECK_STREAM_PRECOND(-1)
     if (q_status != Ok && dev->isTransactionStarted())
         return -1;
 
-    const int skipResult = dev->skip(len);
+    const qint64 skipResult = dev->skip(len);
     if (skipResult != len)
         setStatus(ReadPastEnd);
     return skipResult;
 }
+
+/*!
+    \fn template <class T1, class T2> QDataStream &operator<<(QDataStream &out, const std::pair<T1, T2> &pair)
+    \since 6.0
+    \relates QDataStream
+
+    Writes the pair \a pair to stream \a out.
+
+    This function requires the T1 and T2 types to implement \c operator<<().
+
+    \sa {Serializing Qt Data Types}
+*/
 
 QT_END_NAMESPACE
 

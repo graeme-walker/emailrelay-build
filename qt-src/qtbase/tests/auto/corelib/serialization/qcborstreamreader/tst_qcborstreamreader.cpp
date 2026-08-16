@@ -1,46 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/qcborstream.h>
-#include <QtTest>
+#include <QTest>
+#include <QBuffer>
 
-#include <QtCore/private/qbytearray_p.h>
+#ifndef QTEST_THROW_ON_FAIL
+# error This test requires QTEST_THROW_ON_FAIL being active.
+#endif
 
 class tst_QCborStreamReader : public QObject
 {
@@ -123,7 +90,7 @@ template<> char *toString<QCborStreamReader::Type>(const QCborStreamReader::Type
 QT_END_NAMESPACE
 
 // Get the data from TinyCBOR (see src/3rdparty/tinycbor/tests/parser/data.cpp)
-#include "data.cpp"
+#include "parser/data.cpp"
 
 void tst_QCborStreamReader::initTestCase_data()
 {
@@ -297,7 +264,10 @@ void tst_QCborStreamReader::integers()
 
 void escapedAppendTo(QString &result, const QByteArray &data)
 {
-    result += "h'" + QString::fromLatin1(data.toHex()) + '\'';
+    QByteArray hex =
+            data.size() < 512*1024 ? data.toHex() :
+                                     "data of size " + QByteArray::number(data.size());
+    result += "h'" + QString::fromLatin1(hex) + '\'';
 }
 
 void escapedAppendTo(QString &result, const QString &data)
@@ -363,7 +333,7 @@ template <typename T> static inline bool canConvertTo(double v)
     // integrals to floating-point with loss of precision has implementation-
     // defined behavior whether the next higher or next lower is returned;
     // converting FP to integral is UB if it can't be represented.;
-    Q_STATIC_ASSERT(std::numeric_limits<T>::is_integer);
+    static_assert(std::numeric_limits<T>::is_integer);
 
     double supremum = ldexp(1, std::numeric_limits<T>::digits);
     if (v >= supremum)
@@ -661,8 +631,6 @@ void tst_QCborStreamReader::strings_data()
 void tst_QCborStreamReader::strings()
 {
     fixed();
-    if (QTest::currentTestFailed())
-        return;
 
     // Extra string checks:
     // We'll compare the reads using readString() and readByteArray()
@@ -689,6 +657,7 @@ void tst_QCborStreamReader::strings()
         QCOMPARE(reader.currentStringChunkSize(), qsizetype(reader.length()));
 
     int chunks = 0;
+    QByteArray fullString;
     forever {
         QCborStreamReader::StringResult<QByteArray> controlData;
         if (reader.isString()) {
@@ -699,6 +668,7 @@ void tst_QCborStreamReader::strings()
             controlData = controlReader.readByteArray();
         }
         QVERIFY(controlData.status != QCborStreamReader::Error);
+        fullString += controlData.data;
 
         for (int i = 0; i < 10; ++i) {
             // this call must work several times with the same result
@@ -721,6 +691,43 @@ void tst_QCborStreamReader::strings()
 
     if (!isChunked)
         QCOMPARE(chunks, 1);
+
+    // Now re-do and compare with toString() and toByteArray(), against
+    // the control data we calculated above
+    reader.reset();
+    QVERIFY(reader.isString() || reader.isByteArray());
+    if (reader.isByteArray()) {
+        QByteArray prefix("some prefix");
+        QByteArray ba = prefix;
+        QVERIFY(reader.readAndAppendToByteArray(ba));
+        QCOMPARE(ba, prefix + fullString);
+    } else {
+        QString prefix("some prefix");
+        QString str = prefix;
+        QVERIFY(reader.readAndAppendToString(str));
+        QCOMPARE(str, prefix + QString::fromUtf8(fullString));
+    }
+
+    // Re-do again using the UTF-8 interface.
+    reader.reset();
+    QVERIFY(reader.isString() || reader.isByteArray());
+    if (reader.isString()) {
+        QByteArray prefix("some prefix");
+        QByteArray utf8 = prefix;
+        QVERIFY(reader.readAndAppendToUtf8String(utf8));
+        QCOMPARE(utf8, prefix + fullString);
+
+        reader.reset();
+        fullString = prefix;
+        forever {
+            auto r = reader.readUtf8String();
+            QCOMPARE_NE(r.status, QCborStreamReader::Error);
+            fullString += r.data;
+            if (r.status == QCborStreamReader::EndOfString)
+                break;
+        }
+        QCOMPARE(fullString, utf8);
+    }
 }
 
 void tst_QCborStreamReader::tags_data()
@@ -809,9 +816,6 @@ void tst_QCborStreamReader::arrays()
     removeIndicators(expected);
 
     checkContainer(1, '\x81' + data, '[' + expected + ']');
-    if (QTest::currentTestFailed())
-        return;
-
     checkContainer(2, '\x82' + data + data, '[' + expected + ", " + expected + ']');
 }
 
@@ -823,19 +827,11 @@ void tst_QCborStreamReader::maps()
 
     // int keys
     checkContainer(1, "\xa1\1" + data, "{1: " + expected + '}');
-    if (QTest::currentTestFailed())
-        return;
-
     checkContainer(2, "\xa2\1" + data + '\x20' + data,
                    "{1: " + expected + ", -1: " + expected + '}');
-    if (QTest::currentTestFailed())
-        return;
 
     // string keys
     checkContainer(1, "\xa1\x65Hello" + data, "{\"Hello\": " + expected + '}');
-    if (QTest::currentTestFailed())
-        return;
-
     checkContainer(2, "\xa2\x65World" + data + "\x65Hello" + data,
                    "{\"World\": " + expected + ", \"Hello\": " + expected + '}');
 }
@@ -847,9 +843,6 @@ void tst_QCborStreamReader::undefLengthArrays()
     removeIndicators(expected);
 
     checkContainer(-1, '\x9f' + data + '\xff', '[' + expected + ']');
-    if (QTest::currentTestFailed())
-        return;
-
     checkContainer(-2, '\x9f' + data + data + '\xff', '[' + expected + ", " + expected + ']');
 }
 
@@ -861,19 +854,11 @@ void tst_QCborStreamReader::undefLengthMaps()
 
     // int keys
     checkContainer(-1, "\xbf\1" + data + '\xff', "{1: " + expected + '}');
-    if (QTest::currentTestFailed())
-        return;
-
     checkContainer(-2, "\xbf\1" + data + '\x20' + data + '\xff',
                    "{1: " + expected + ", -1: " + expected + '}');
-    if (QTest::currentTestFailed())
-        return;
 
     // string keys
     checkContainer(-1, "\xbf\x65Hello" + data + '\xff', "{\"Hello\": " + expected + '}');
-    if (QTest::currentTestFailed())
-        return;
-
     checkContainer(-2, "\xbf\x65World" + data + "\x65Hello" + data + '\xff',
                    "{\"World\": " + expected + ", \"Hello\": " + expected + '}');
 }
@@ -913,7 +898,7 @@ void tst_QCborStreamReader::validation_data()
     // Add QCborStreamReader-specific limitations due to use of QByteArray and
     // QString, which are allocated by QArrayData::allocate().
     const qsizetype MaxInvalid = std::numeric_limits<QByteArray::size_type>::max();
-    const qsizetype MinInvalid = MaxByteArraySize + 1;
+    const qsizetype MinInvalid = QByteArray::maxSize() + 1;
 
     addValidationColumns();
     addValidationData(MinInvalid);
@@ -940,11 +925,57 @@ void tst_QCborStreamReader::validation()
     reader.reset();
     QVERIFY(!reader.next());
     QCOMPARE(reader.lastError(), error);
+
+    // check toString() and toByteArray() too
+    if (reader.isString() || reader.isByteArray()) {
+        reader.reset();
+        if (reader.isString()) {
+            QString prefix = "some prefix";
+            QString str = prefix;
+            QVERIFY(!reader.readAndAppendToString(str));
+            QVERIFY(str.startsWith(prefix));    // but may have decoded some
+        } else if (reader.isByteArray()) {
+            QByteArray prefix = "some prefix";
+            QByteArray ba = prefix;
+            QVERIFY(!reader.readAndAppendToByteArray(ba));
+            QVERIFY(ba.startsWith(prefix));     // but may have decoded some
+        }
+        QCOMPARE(reader.lastError(), error);
+
+        reader.reset();
+        if (reader.isString())
+            QVERIFY(reader.readAllString().isNull());
+        else
+            QVERIFY(reader.readAllByteArray().isNull());
+    }
+
+    reader.reset();
+
+    // and the UTF-8 API
+    if (reader.isString()) {
+        QByteArray prefix = "some prefix";
+        QByteArray ba = prefix;
+        QVERIFY(!reader.readAndAppendToUtf8String(ba));
+        QVERIFY(ba.startsWith(prefix));     // but may have decoded some
+        QCOMPARE(reader.lastError(), error);
+
+        reader.reset();
+        QVERIFY(reader.readAllUtf8String().isNull());
+
+        reader.reset();
+        auto r = reader.readUtf8String();
+        for ( ; r.status == QCborStreamReader::Ok; r = reader.readUtf8String()) {
+            // while the data is valid...
+            QVERIFY(!r.data.isNull());
+        }
+        QCOMPARE_NE(r.status, QCborStreamReader::EndOfString);
+        QCOMPARE(reader.lastError(), error);
+    }
 }
 
 void tst_QCborStreamReader::hugeDeviceValidation_data()
 {
-    addValidationHugeDevice(MaxByteArraySize + 1, MaxStringSize + 1);
+    addValidationHugeDevice(QByteArray::maxSize() + 1, QString::maxSize() + 1);
 }
 
 void tst_QCborStreamReader::hugeDeviceValidation()
@@ -953,8 +984,20 @@ void tst_QCborStreamReader::hugeDeviceValidation()
     if (!useDevice)
         return;
 
+#if (defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer))
+    if (   qstrcmp(QTest::currentDataTag(), "bytearray-just-too-big") == 0
+        || qstrcmp(QTest::currentDataTag(),    "string-just-too-big") == 0)
+        QSKIP("This test tries to allocate a huge memory buffer,"
+              " which Address Sanitizer flags as a problem");
+#endif
+#if defined(Q_OS_WASM)
+   QSKIP("This test tries to allocate a huge memory buffer,"
+              " causes problem on WebAssembly platform which has limited resources.");
+#endif // Q_OS_WASM
+
     QFETCH(QSharedPointer<QIODevice>, device);
     QFETCH(CborError, expectedError);
+    QFETCH(CborError, expectedValidationError);
     QCborError error = { QCborError::Code(expectedError) };
 
     device->open(QIODevice::ReadOnly | QIODevice::Unbuffered);
@@ -963,10 +1006,15 @@ void tst_QCborStreamReader::hugeDeviceValidation()
     QVERIFY(parseOne(reader).isEmpty());
     QCOMPARE(reader.lastError(), error);
 
-    // next() should fail
     reader.reset();
-    QVERIFY(!reader.next());
-    QCOMPARE(reader.lastError(), error);
+    error = { QCborError::Code(expectedValidationError) };
+    if (error == QCborError{}) {
+        // this test actually succeeds, so don't do it to avoid large memory consumption
+    } else {
+        // next() should fail
+        QVERIFY(!reader.next());
+        QCOMPARE(reader.lastError(), error);
+    }
 }
 
 static const int Recursions = 3;

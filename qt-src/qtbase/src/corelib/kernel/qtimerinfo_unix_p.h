@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTIMERINFO_UNIX_P_H
 #define QTIMERINFO_UNIX_P_H
@@ -53,65 +17,76 @@
 
 #include <QtCore/private/qglobal_p.h>
 
-// #define QTIMERINFO_DEBUG
-
 #include "qabstracteventdispatcher.h"
 
-#include <sys/time.h> // struct timeval
+#include <sys/time.h> // struct timespec
+#include <chrono>
 
 QT_BEGIN_NAMESPACE
 
 // internal timer info
-struct QTimerInfo {
-    int id;           // - timer identifier
-    int interval;     // - timer interval in milliseconds
-    Qt::TimerType timerType; // - timer type
-    timespec timeout;  // - when to actually fire
-    QObject *obj;     // - object to receive event
-    QTimerInfo **activateRef; // - ref from activateTimers
+struct QTimerInfo
+{
+    using Duration = QAbstractEventDispatcher::Duration;
+    using TimePoint = std::chrono::time_point<std::chrono::steady_clock, Duration>;
+    QTimerInfo(Qt::TimerId timerId, Duration interval, Qt::TimerType type, QObject *obj)
+        : interval(interval), id(timerId), timerType(type), obj(obj)
+    {
+    }
 
-#ifdef QTIMERINFO_DEBUG
-    timeval expected; // when timer is expected to fire
-    float cumulativeError;
-    uint count;
-#endif
+    TimePoint timeout = {};                     // - when to actually fire
+    Duration interval = Duration{-1};           // - timer interval
+    Qt::TimerId id = Qt::TimerId::Invalid;      // - timer identifier
+    Qt::TimerType timerType; // - timer type
+    QObject *obj = nullptr; // - object to receive event
+    QTimerInfo **activateRef = nullptr; // - ref from activateTimers
 };
 
-class Q_CORE_EXPORT QTimerInfoList : public QList<QTimerInfo*>
+class Q_CORE_EXPORT QTimerInfoList
 {
-#if ((_POSIX_MONOTONIC_CLOCK-0 <= 0) && !defined(Q_OS_MAC)) || defined(QT_BOOTSTRAPPED)
-    timespec previousTime;
-    clock_t previousTicks;
-    int ticksPerSecond;
-    int msPerTick;
-
-    bool timeChanged(timespec *delta);
-    void timerRepair(const timespec &);
-#endif
-
-    // state variables used by activateTimers()
-    QTimerInfo *firstTimerInfo;
-
 public:
+    using Duration = QAbstractEventDispatcher::Duration;
+    using TimerInfo = QAbstractEventDispatcher::TimerInfoV2;
     QTimerInfoList();
 
-    timespec currentTime;
-    timespec updateCurrentTime();
+    mutable std::chrono::steady_clock::time_point currentTime;
 
-    // must call updateCurrentTime() first!
-    void repairTimersIfNeeded();
-
-    bool timerWait(timespec &);
+    std::optional<Duration> timerWait();
     void timerInsert(QTimerInfo *);
 
-    int timerRemainingTime(int timerId);
+    Duration remainingDuration(Qt::TimerId timerId) const;
 
-    void registerTimer(int timerId, int interval, Qt::TimerType timerType, QObject *object);
-    bool unregisterTimer(int timerId);
+    void registerTimer(Qt::TimerId timerId, Duration interval,
+                       Qt::TimerType timerType, QObject *object);
+    bool unregisterTimer(Qt::TimerId timerId);
     bool unregisterTimers(QObject *object);
-    QList<QAbstractEventDispatcher::TimerInfo> registeredTimers(QObject *object) const;
+    QList<TimerInfo> registeredTimers(QObject *object) const;
 
     int activateTimers();
+    bool hasPendingTimers();
+
+    void clearTimers()
+    {
+        qDeleteAll(timers);
+        timers.clear();
+    }
+
+    bool isEmpty() const { return timers.empty(); }
+
+    qsizetype size() const { return timers.size(); }
+
+    auto findTimerById(Qt::TimerId timerId) const
+    {
+        auto matchesId = [timerId](const auto &t) { return t->id == timerId; };
+        return std::find_if(timers.cbegin(), timers.cend(), matchesId);
+    }
+
+private:
+    std::chrono::steady_clock::time_point updateCurrentTime() const;
+
+    // state variables used by activateTimers()
+    QTimerInfo *firstTimerInfo = nullptr;
+    QList<QTimerInfo *> timers;
 };
 
 QT_END_NAMESPACE

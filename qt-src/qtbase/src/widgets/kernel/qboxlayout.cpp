@@ -1,51 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qboxlayout.h"
 #include "qapplication.h"
-#include "qwidget.h"
+#include "qboxlayout.h"
 #include "qlist.h"
 #include "qsizepolicy.h"
-#include "qvector.h"
+#include "qwidget.h"
 
-#include "qlayoutengine_p.h"
 #include "qlayout_p.h"
+#include "qlayoutengine_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -64,7 +27,7 @@ struct QBoxLayoutItem
     }
     int mhfw(int w) {
         if (item->hasHeightForWidth()) {
-            return item->heightForWidth(w);
+            return item->minimumHeightForWidth(w);
         } else {
             return item->minimumSize().height();
         }
@@ -104,7 +67,7 @@ public:
     }
 
     QList<QBoxLayoutItem *> list;
-    QVector<QLayoutStruct> geomArray;
+    QList<QLayoutStruct> geomArray;
     int hfwWidth;
     int hfwHeight;
     int hfwMinHeight;
@@ -125,6 +88,7 @@ public:
 
     void effectiveMargins(int *left, int *top, int *right, int *bottom) const;
     QLayoutItem* replaceAt(int index, QLayoutItem*) override;
+    int validateIndex(int index) const;
 };
 
 QBoxLayoutPrivate::~QBoxLayoutPrivate()
@@ -150,8 +114,8 @@ void QBoxLayoutPrivate::effectiveMargins(int *left, int *top, int *right, int *b
 #ifdef Q_OS_MAC
     Q_Q(const QBoxLayout);
     if (horz(dir)) {
-        QBoxLayoutItem *leftBox = 0;
-        QBoxLayoutItem *rightBox = 0;
+        QBoxLayoutItem *leftBox = nullptr;
+        QBoxLayoutItem *rightBox = nullptr;
 
         if (left || right) {
             leftBox = list.value(0);
@@ -195,8 +159,8 @@ void QBoxLayoutPrivate::effectiveMargins(int *left, int *top, int *right, int *b
             }
         }
     } else {    // vertical layout
-        QBoxLayoutItem *topBox = 0;
-        QBoxLayoutItem *bottomBox = 0;
+        QBoxLayoutItem *topBox = nullptr;
+        QBoxLayoutItem *bottomBox = nullptr;
 
         if (top || bottom) {
             topBox = list.value(0);
@@ -269,9 +233,9 @@ void QBoxLayoutPrivate::setupGeom()
 
     hasHfw = false;
 
-    int n = list.count();
+    int n = list.size();
     geomArray.clear();
-    QVector<QLayoutStruct> a(n);
+    QList<QLayoutStruct> a(n);
 
     QSizePolicy::ControlTypes controlTypes1;
     QSizePolicy::ControlTypes controlTypes2;
@@ -400,8 +364,8 @@ void QBoxLayoutPrivate::setupGeom()
 */
 void QBoxLayoutPrivate::calcHfw(int w)
 {
-    QVector<QLayoutStruct> &a = geomArray;
-    int n = a.count();
+    QList<QLayoutStruct> &a = geomArray;
+    int n = a.size();
     int h = 0;
     int mh = 0;
 
@@ -444,6 +408,15 @@ QLayoutItem* QBoxLayoutPrivate::replaceAt(int index, QLayoutItem *item)
     return r;
 }
 
+int QBoxLayoutPrivate::validateIndex(int index) const
+{
+    if (index < 0)
+        return list.size(); // append
+
+    if (index > list.size())
+        qWarning("QBoxLayout::insert: index %d out of range (max: %d)", index, int(list.size()));
+    return index <= list.size() ? index : list.size();
+}
 
 /*!
     \class QBoxLayout
@@ -548,7 +521,11 @@ QLayoutItem* QBoxLayoutPrivate::replaceAt(int index, QLayoutItem *item)
     Constructs a new QBoxLayout with direction \a dir and parent widget \a
     parent.
 
-    \sa direction()
+    The layout is set directly as the top-level layout for \a parent.
+    There can be only one top-level layout for a widget. It is returned
+    by QWidget::layout().
+
+    \sa direction(), QWidget::setLayout()
 */
 QBoxLayout::QBoxLayout(Direction dir, QWidget *parent)
     : QLayout(*new QBoxLayoutPrivate, nullptr, parent)
@@ -704,7 +681,7 @@ void QBoxLayout::invalidate()
 int QBoxLayout::count() const
 {
     Q_D(const QBoxLayout);
-    return d->list.count();
+    return d->list.size();
 }
 
 /*!
@@ -713,7 +690,7 @@ int QBoxLayout::count() const
 QLayoutItem *QBoxLayout::itemAt(int index) const
 {
     Q_D(const QBoxLayout);
-    return index >= 0 && index < d->list.count() ? d->list.at(index)->item : nullptr;
+    return index >= 0 && index < d->list.size() ? d->list.at(index)->item : nullptr;
 }
 
 /*!
@@ -722,7 +699,7 @@ QLayoutItem *QBoxLayout::itemAt(int index) const
 QLayoutItem *QBoxLayout::takeAt(int index)
 {
     Q_D(QBoxLayout);
-    if (index < 0 || index >= d->list.count())
+    if (index < 0 || index >= d->list.size())
         return nullptr;
     QBoxLayoutItem *b = d->list.takeAt(index);
     QLayoutItem *item = b->item;
@@ -770,10 +747,10 @@ void QBoxLayout::setGeometry(const QRect &r)
                 cr.width() - (left + right),
                 cr.height() - (top + bottom));
 
-        QVector<QLayoutStruct> a = d->geomArray;
+        QList<QLayoutStruct> a = d->geomArray;
         int pos = horz(d->dir) ? s.x() : s.y();
         int space = horz(d->dir) ? s.width() : s.height();
-        int n = a.count();
+        int n = a.size();
         if (d->hasHfw && !horz(d->dir)) {
             for (int i = 0; i < n; i++) {
                 QBoxLayoutItem *box = d->list.at(i);
@@ -835,8 +812,10 @@ void QBoxLayout::addItem(QLayoutItem *item)
 }
 
 /*!
-    Inserts \a item into this box layout at position \a index. If \a
-    index is negative, the item is added at the end.
+    Inserts \a item into this box layout at position \a index.
+    Index must be either negative or within the range 0 to count(),
+    inclusive. If \a index is negative or count(), the item is
+    added at the end.
 
     \sa addItem(), insertWidget(), insertLayout(), insertStretch(),
         insertSpacing()
@@ -844,9 +823,7 @@ void QBoxLayout::addItem(QLayoutItem *item)
 void QBoxLayout::insertItem(int index, QLayoutItem *item)
 {
     Q_D(QBoxLayout);
-    if (index < 0)                                // append
-        index = d->list.count();
-
+    index = d->validateIndex(index);
     QBoxLayoutItem *it = new QBoxLayoutItem(item);
     d->list.insert(index, it);
     invalidate();
@@ -864,9 +841,7 @@ void QBoxLayout::insertItem(int index, QLayoutItem *item)
 void QBoxLayout::insertSpacing(int index, int size)
 {
     Q_D(QBoxLayout);
-    if (index < 0)                                // append
-        index = d->list.count();
-
+    index = d->validateIndex(index);
     QLayoutItem *b;
     if (horz(d->dir))
         b = QLayoutPrivate::createSpacerItem(this, size, 0, QSizePolicy::Fixed, QSizePolicy::Minimum);
@@ -889,9 +864,7 @@ void QBoxLayout::insertSpacing(int index, int size)
 void QBoxLayout::insertStretch(int index, int stretch)
 {
     Q_D(QBoxLayout);
-    if (index < 0)                                // append
-        index = d->list.count();
-
+    index = d->validateIndex(index);
     QLayoutItem *b;
     if (horz(d->dir))
         b = QLayoutPrivate::createSpacerItem(this, 0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum);
@@ -916,9 +889,7 @@ void QBoxLayout::insertStretch(int index, int stretch)
 void QBoxLayout::insertSpacerItem(int index, QSpacerItem *spacerItem)
 {
     Q_D(QBoxLayout);
-    if (index < 0)                                // append
-        index = d->list.count();
-
+    index = d->validateIndex(index);
     QBoxLayoutItem *it = new QBoxLayoutItem(spacerItem);
     it->magic = true;
     d->list.insert(index, it);
@@ -940,8 +911,7 @@ void QBoxLayout::insertLayout(int index, QLayout *layout, int stretch)
         return;
     if (!adoptLayout(layout))
         return;
-    if (index < 0)                                // append
-        index = d->list.count();
+    index = d->validateIndex(index);
     QBoxLayoutItem *it = new QBoxLayoutItem(layout, stretch);
     d->list.insert(index, it);
     invalidate();
@@ -974,8 +944,7 @@ void QBoxLayout::insertWidget(int index, QWidget *widget, int stretch,
     if (!d->checkWidget(widget))
          return;
     addChildWidget(widget);
-    if (index < 0)                                // append
-        index = d->list.count();
+    index = d->validateIndex(index);
     QWidgetItem *b = QLayoutPrivate::createWidgetItem(this, widget);
     b->setAlignment(alignment);
 
@@ -1232,11 +1201,16 @@ QBoxLayout::Direction QBoxLayout::direction() const
     \snippet layouts/layouts.cpp 4
     \snippet layouts/layouts.cpp 5
 
-    First, we create the widgets we want in the layout. Then, we
-    create the QHBoxLayout object and add the widgets into the
-    layout. Finally, we call QWidget::setLayout() to install the
-    QHBoxLayout object onto the widget. At that point, the widgets in
-    the layout are reparented to have \c window as their parent.
+    First, we create the widgets we want to add to the layout. Then,
+    we create the QHBoxLayout object, setting \c window as parent by
+    passing it in the constructor; next we add the widgets to the
+    layout. \c window will be the parent of the widgets that are
+    added to the layout.
+
+    If you don't pass a parent \c window to the constructor, you can
+    at a later point use QWidget::setLayout() to install the QHBoxLayout
+    object onto \c window. At that point, the widgets in the layout are
+    reparented to have \c window as their parent.
 
     \image qhboxlayout-with-5-children.png Horizontal box layout with five child widgets
 
@@ -1245,8 +1219,13 @@ QBoxLayout::Direction QBoxLayout::direction() const
 
 
 /*!
-    Constructs a new top-level horizontal box with
-    parent \a parent.
+    Constructs a new top-level horizontal box with parent \a parent.
+
+    The layout is set directly as the top-level layout for \a parent.
+    There can be only one top-level layout for a widget. It is returned
+    by QWidget::layout().
+
+    \sa QWidget::setLayout()
 */
 QHBoxLayout::QHBoxLayout(QWidget *parent)
     : QBoxLayout(LeftToRight, parent)
@@ -1295,11 +1274,16 @@ QHBoxLayout::~QHBoxLayout()
     \snippet layouts/layouts.cpp 10
     \snippet layouts/layouts.cpp 11
 
-    First, we create the widgets we want in the layout. Then, we
-    create the QVBoxLayout object and add the widgets into the
-    layout. Finally, we call QWidget::setLayout() to install the
-    QVBoxLayout object onto the widget. At that point, the widgets in
-    the layout are reparented to have \c window as their parent.
+    First, we create the widgets we want to add to the layout. Then,
+    we create the QVBoxLayout object, setting \c window as parent by
+    passing it in the constructor; next we add the widgets to the
+    layout. \c window will be the parent of the widgets that are
+    added to the layout.
+
+    If you don't pass a parent \c window to the constructor, you can
+    at a later point use QWidget::setLayout() to install the QVBoxLayout
+    object onto \c window. At that point, the widgets in the layout are
+    reparented to have \c window as their parent.
 
     \image qvboxlayout-with-5-children.png Horizontal box layout with five child widgets
 
@@ -1307,8 +1291,13 @@ QHBoxLayout::~QHBoxLayout()
 */
 
 /*!
-    Constructs a new top-level vertical box with
-    parent \a parent.
+    Constructs a new top-level vertical box with parent \a parent.
+
+    The layout is set directly as the top-level layout for \a parent.
+    There can be only one top-level layout for a widget. It is returned
+    by QWidget::layout().
+
+    \sa QWidget::setLayout()
 */
 QVBoxLayout::QVBoxLayout(QWidget *parent)
     : QBoxLayout(TopToBottom, parent)

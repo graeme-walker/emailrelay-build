@@ -1,20 +1,22 @@
 TEMPLATE=subdirs
 QT_FOR_CONFIG += network-private gui-private
 
-SUBDIRS = bearerex \
+SUBDIRS = \
+assets \
 filetest \
 embeddedintoforeignwindow \
 foreignwindows \
+fontfeatures \
 gestures \
 highdpi \
 inputmethodhints \
 keypadnavigation \
+keyevents \
 lance \
 network_remote_stresstest \
 network_stresstest \
 qcursor \
 qdesktopservices \
-qdesktopwidget \
 qgraphicsitem \
 qgraphicsitemgroup \
 qgraphicslayout/flicker \
@@ -25,11 +27,10 @@ qlocale \
 qmimedatabase \
 qnetconmonitor \
 qnetworkaccessmanager/qget \
-qnetworkconfigurationmanager \
-qnetworkconfiguration \
 qnetworkreply \
 qstorageinfo \
 qscreen \
+qscreen_xrandr \
 qssloptions \
 qsslsocket \
 qsysinfo \
@@ -49,8 +50,7 @@ windowflags \
 windowgeometry \
 windowmodality \
 widgetgrab \
-xembed-raster \
-xembed-widgets \
+xmlstreamlint \
 shortcuts \
 dialogs \
 windowtransparency \
@@ -67,8 +67,6 @@ qtConfig(opengl) {
 
 win32: SUBDIRS -= network_remote_stresstest network_stresstest
 
-lessThan(QT_MAJOR_VERSION, 5): SUBDIRS -= bearerex lance qnetworkaccessmanager/qget qmimedatabase qnetworkreply \
-qpainfo qscreen  socketengine xembed-raster xembed-widgets windowtransparency \
-embeddedintoforeignwindow foreignwindows
-
 qtConfig(vulkan): SUBDIRS += qvulkaninstance
+
+qtConfig(xcb): SUBDIRS += xembed

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QHTTP2PROTOCOLHANDLER_P_H
 #define QHTTP2PROTOCOLHANDLER_P_H
@@ -130,6 +94,7 @@ private:
 
     bool acceptSetting(Http2::Settings identifier, quint32 newValue);
 
+    void handleAuthorization(Stream &stream);
     void updateStream(Stream &stream, const HPack::HttpHeader &headers,
                       Qt::ConnectionType connectionType = Qt::DirectConnection);
     void updateStream(Stream &stream, const Http2::Frame &dataFrame,
@@ -156,16 +121,23 @@ private:
     // the client's preface 24-byte message.
     bool waitingForSettingsACK = false;
 
-    static const quint32 maxAcceptableTableSize = 16 * HPack::FieldLookupTable::DefaultSize;
+    inline static const quint32 maxAcceptableTableSize = 16 * HPack::FieldLookupTable::DefaultSize;
     // HTTP/2 4.3: Header compression is stateful. One compression context and
     // one decompression context are used for the entire connection.
     HPack::Decoder decoder;
     HPack::Encoder encoder;
 
+    // If we receive SETTINGS_HEADER_TABLE_SIZE in a SETTINGS frame we have to perform a dynamic
+    // table size update on the _next_ HEADER block we send.
+    // Because this only happens on the next block we may have multiple pending updates, so we must
+    // notify of the _smallest_ one followed by the _final_ one. We keep them sorted in that order.
+    // @future: keep in mind if we add support for sending PUSH_PROMISE because it is a HEADER block
+    std::array<std::optional<quint32>, 2> pendingTableSizeUpdates;
+
     QHash<QObject *, int> streamIDs;
     QHash<quint32, Stream> activeStreams;
     std::deque<quint32> suspendedStreams[3]; // 3 for priorities: High, Normal, Low.
-    static const std::deque<quint32>::size_type maxRecycledStreams;
+    inline static const std::deque<quint32>::size_type maxRecycledStreams = 10000;
     std::deque<quint32> recycledStreams;
 
     // Peer's max frame size (this min is the default value

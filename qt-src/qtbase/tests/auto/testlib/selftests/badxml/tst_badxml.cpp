@@ -1,35 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QStringList>
-#include <QtTest/QtTest>
+#include <QTest>
 #include <private/qmetaobjectbuilder_p.h>
 
 /*
@@ -68,7 +42,7 @@ public:
         : className("tst_BadXml"), mo(0) {}
     ~tst_BadXmlSub() { free(mo); }
 
-    const QMetaObject* metaObject() const;
+    const QMetaObject* metaObject() const override;
 
     QByteArray className;
 private:
@@ -105,9 +79,9 @@ void tst_BadXml::badDataTag_data() const
 {
     QTest::addColumn<bool>("shouldFail");
 
-    foreach (char const* str, badStrings()) {
-        QTest::newRow(qPrintable(QString("fail %1").arg(str))) << true;
-        QTest::newRow(qPrintable(QString("pass %1").arg(str))) << false;
+    for (const QByteArray &ba: badStrings()) {
+        QTest::addRow("fail %s", ba.constData()) << true;
+        QTest::addRow("pass %s", ba.constData()) << false;
     }
 }
 
@@ -148,9 +122,8 @@ void tst_BadXml::badMessage_data() const
     QTest::addColumn<QByteArray>("message");
 
     int i = 0;
-    foreach (QByteArray const& str, badStrings()) {
+    for (const QByteArray &str : badStrings())
         QTest::newRow(qPrintable(QString::fromLatin1("string %1").arg(i++))) << str;
-    }
 }
 
 /*
@@ -158,13 +131,12 @@ void tst_BadXml::badMessage_data() const
 */
 QList<QByteArray> const& tst_BadXml::badStrings()
 {
-    static QList<QByteArray> out;
-    if (out.isEmpty()) {
-        out << "end cdata ]]> text ]]> more text";
-        out << "quotes \" text\" more text";
-        out << "xml close > open < tags < text";
-        out << "all > \" mixed ]]> up > \" in < the ]]> hopes < of triggering \"< ]]> bugs";
-    }
+    static const QList<QByteArray> out = {
+        "end cdata ]]> text ]]> more text",
+        "quotes \" text\" more text",
+        "xml close > open < tags < text",
+        "all > \" mixed ]]> up > \" in < the ]]> hopes < of triggering \"< ]]> bugs",
+    };
     return out;
 }
 
@@ -178,7 +150,7 @@ int main(int argc, char** argv)
         name.
     */
     int badstring = -1;
-    QVector<char const*> args;
+    QList<char const *> args;
     for (int i = 0; i < argc; ++i) {
         if (!strcmp(argv[i], "-badstring")) {
             bool ok = false;
@@ -205,16 +177,16 @@ int main(int argc, char** argv)
 
     if (badstring == -1) {
         tst_BadXml test;
-        return QTest::qExec(&test, args.count(), const_cast<char**>(args.data()));
+        return QTest::qExec(&test, args.size(), const_cast<char**>(args.data()));
     }
 
     QList<QByteArray> badstrings = tst_BadXml::badStrings();
-    if (badstring >= badstrings.count())
+    if (badstring >= badstrings.size())
         qFatal("`-badstring %d' is out of range", badstring);
 
     tst_BadXmlSub test;
     test.className = badstrings[badstring].constData();
-    return QTest::qExec(&test, args.count(), const_cast<char**>(args.data()));
+    return QTest::qExec(&test, args.size(), const_cast<char**>(args.data()));
 }
 
 #include "tst_badxml.moc"

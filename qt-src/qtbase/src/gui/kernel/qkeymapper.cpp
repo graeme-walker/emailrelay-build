@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 
 #include "qguiapplication.h"
@@ -45,6 +9,7 @@
 
 #include <private/qguiapplication_p.h>
 #include <qpa/qplatformintegration.h>
+#include <qpa/qplatformkeymapper.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -59,8 +24,7 @@ QT_BEGIN_NAMESPACE
 /*!
     Constructs a new key mapper.
 */
-QKeyMapper::QKeyMapper()
-    : QObject(*new QKeyMapperPrivate, nullptr)
+QKeyMapper::QKeyMapper() : QObject()
 {
 }
 
@@ -71,36 +35,34 @@ QKeyMapper::~QKeyMapper()
 {
 }
 
-QList<int> QKeyMapper::possibleKeys(QKeyEvent *e)
+QList<QKeyCombination> QKeyMapper::possibleKeys(const QKeyEvent *e)
 {
-    QList<int> result;
+    qCDebug(lcQpaKeyMapper).verbosity(3) << "Computing possible key combinations for" << e;
 
-    if (!e->nativeScanCode()) {
+    const auto *platformIntegration = QGuiApplicationPrivate::platformIntegration();
+    const auto *platformKeyMapper = platformIntegration->keyMapper();
+    QList<QKeyCombination> result = platformKeyMapper->possibleKeyCombinations(e);
+
+    if (result.isEmpty()) {
         if (e->key() && (e->key() != Qt::Key_unknown))
-            result << int(e->key() + e->modifiers());
+            result << e->keyCombination();
         else if (!e->text().isEmpty())
-            result << int(e->text().at(0).unicode() + e->modifiers());
-        return result;
+            result << (Qt::Key(e->text().at(0).unicode()) | e->modifiers());
     }
 
-    return instance()->d_func()->possibleKeys(e);
-}
-
-extern bool qt_sendSpontaneousEvent(QObject *receiver, QEvent *event); // in qapplication_*.cpp
-void QKeyMapper::changeKeyboard()
-{
-    instance()->d_func()->clearMappings();
-
-    // ## TODO: Support KeyboardLayoutChange on QPA
-#if 0
-    // inform all toplevel widgets of the change
-    QEvent e(QEvent::KeyboardLayoutChange);
-    QWidgetList list = QApplication::topLevelWidgets();
-    for (int i = 0; i < list.size(); ++i) {
-        QWidget *w = list.at(i);
-        qt_sendSpontaneousEvent(w, &e);
+#if QT_CONFIG(shortcut)
+    if (lcQpaKeyMapper().isDebugEnabled()) {
+        qCDebug(lcQpaKeyMapper) << "Resulting possible key combinations:";
+        for (auto keyCombination : result) {
+            auto keySequence = QKeySequence(keyCombination);
+            qCDebug(lcQpaKeyMapper).verbosity(0) << "\t-"
+                << keyCombination << "/" << keySequence << "/"
+                << qUtf8Printable(keySequence.toString(QKeySequence::NativeText));
+        }
     }
 #endif
+
+    return result;
 }
 
 Q_GLOBAL_STATIC(QKeyMapper, keymapper)
@@ -113,37 +75,18 @@ QKeyMapper *QKeyMapper::instance()
     return keymapper();
 }
 
-QKeyMapperPrivate *qt_keymapper_private()
+void *QKeyMapper::resolveInterface(const char *name, int revision) const
 {
-    return QKeyMapper::instance()->d_func();
-}
+    Q_UNUSED(name); Q_UNUSED(revision);
+    using namespace QNativeInterface::Private;
 
-QKeyMapperPrivate::QKeyMapperPrivate()
-{
-    keyboardInputLocale = QLocale::system();
-    keyboardInputDirection = keyboardInputLocale.textDirection();
-}
+#if QT_CONFIG(evdev)
+    QT_NATIVE_INTERFACE_RETURN_IF(QEvdevKeyMapper, QGuiApplicationPrivate::platformIntegration());
+#endif
 
-QKeyMapperPrivate::~QKeyMapperPrivate()
-{
-    // clearMappings();
-}
-
-void QKeyMapperPrivate::clearMappings()
-{
-}
-
-QList<int> QKeyMapperPrivate::possibleKeys(QKeyEvent *e)
-{
-    QList<int> result = QGuiApplicationPrivate::platformIntegration()->possibleKeys(e);
-    if (!result.isEmpty())
-        return result;
-
-    if (e->key() && (e->key() != Qt::Key_unknown))
-        result << int(e->key() + e->modifiers());
-    else if (!e->text().isEmpty())
-        result << int(e->text().at(0).unicode() + e->modifiers());
-    return result;
+    return nullptr;
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qkeymapper_p.cpp"

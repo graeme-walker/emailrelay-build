@@ -1,66 +1,30 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qmimedata.h"
 
 #include "private/qobject_p.h"
 #include "qurl.h"
 #include "qstringlist.h"
-#if QT_CONFIG(textcodec)
-#include "qtextcodec.h"
-#endif
+#include "qstringconverter.h"
 
 QT_BEGIN_NAMESPACE
 
-static inline QString textUriListLiteral() { return QStringLiteral("text/uri-list"); }
-static inline QString textHtmlLiteral() { return QStringLiteral("text/html"); }
-static inline QString textPlainLiteral() { return QStringLiteral("text/plain"); }
-static inline QString textPlainUtf8Literal() { return QStringLiteral("text/plain;charset=utf-8"); }
-static inline QString applicationXColorLiteral() { return QStringLiteral("application/x-color"); }
-static inline QString applicationXQtImageLiteral() { return QStringLiteral("application/x-qt-image"); }
+using namespace Qt::StringLiterals;
+
+static inline QString textUriListLiteral() { return u"text/uri-list"_s; }
+static inline QString textHtmlLiteral() { return u"text/html"_s; }
+static inline QString textPlainLiteral() { return u"text/plain"_s; }
+static inline QString textPlainUtf8Literal() { return u"text/plain;charset=utf-8"_s; }
+static inline QString applicationXColorLiteral() { return u"application/x-color"_s; }
+static inline QString applicationXQtImageLiteral() { return u"application/x-qt-image"_s; }
 
 struct QMimeDataStruct
 {
     QString format;
     QVariant data;
 };
-Q_DECLARE_TYPEINFO(QMimeDataStruct, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QMimeDataStruct, Q_RELOCATABLE_TYPE);
 
 class QMimeDataPrivate : public QObjectPrivate
 {
@@ -70,7 +34,7 @@ public:
     void setData(const QString &format, const QVariant &data);
     QVariant getData(const QString &format) const;
 
-    QVariant retrieveTypedData(const QString &format, QMetaType::Type type) const;
+    QVariant retrieveTypedData(const QString &format, QMetaType type) const;
 
     std::vector<QMimeDataStruct>::iterator find(const QString &format) noexcept {
         const auto formatEquals = [](const QString &format) {
@@ -112,24 +76,48 @@ QVariant QMimeDataPrivate::getData(const QString &format) const
         return it->data;
 }
 
-QVariant QMimeDataPrivate::retrieveTypedData(const QString &format, QMetaType::Type type) const
+static QList<QVariant> dataToUrls(QByteArrayView text)
+{
+    QList<QVariant> list;
+    qsizetype newLineIndex = -1;
+    qsizetype from = 0;
+    const char *begin = text.data();
+    while ((newLineIndex = text.indexOf('\n', from)) != -1) {
+        const auto bav = QByteArrayView(begin + from, begin + newLineIndex).trimmed();
+        if (!bav.isEmpty())
+            list.push_back(QUrl::fromEncoded(bav));
+        from = newLineIndex + 1;
+        if (from >= text.size())
+            break;
+    }
+    if (from != text.size()) {
+        const auto bav = QByteArrayView(begin + from, text.end()).trimmed();
+        if (!bav.isEmpty())
+            list.push_back(QUrl::fromEncoded(bav));
+    }
+    return list;
+}
+
+QVariant QMimeDataPrivate::retrieveTypedData(const QString &format, QMetaType type) const
 {
     Q_Q(const QMimeData);
+    int typeId = type.id();
 
-    QVariant data = q->retrieveData(format, QVariant::Type(type));
+    QVariant data = q->retrieveData(format, type);
 
     // Text data requested: fallback to URL data if available
-    if (format == QLatin1String("text/plain") && !data.isValid()) {
-        data = retrieveTypedData(textUriListLiteral(), QMetaType::QVariantList);
-        if (data.userType() == QMetaType::QUrl) {
+    if (format == "text/plain"_L1 && !data.isValid()) {
+        data = retrieveTypedData(textUriListLiteral(), QMetaType(QMetaType::QVariantList));
+        if (data.metaType().id() == QMetaType::QUrl) {
             data = QVariant(data.toUrl().toDisplayString());
-        } else if (data.userType() == QMetaType::QVariantList) {
+        } else if (data.metaType().id() == QMetaType::QVariantList) {
             QString text;
             int numUrls = 0;
             const QList<QVariant> list = data.toList();
-            for (int i = 0; i < list.size(); ++i) {
-                if (list.at(i).userType() == QMetaType::QUrl) {
-                    text += list.at(i).toUrl().toDisplayString() + QLatin1Char('\n');
+            for (const auto &element : list) {
+                if (element.metaType().id() == QMetaType::QUrl) {
+                    text += element.toUrl().toDisplayString();
+                    text += u'\n';
                     ++numUrls;
                 }
             }
@@ -139,70 +127,64 @@ QVariant QMimeDataPrivate::retrieveTypedData(const QString &format, QMetaType::T
         }
     }
 
-    if (data.userType() == type || !data.isValid())
+    if (data.metaType() == type || !data.isValid())
         return data;
 
-    // provide more conversion possiblities than just what QVariant provides
+    // provide more conversion possibilities than just what QVariant provides
 
     // URLs can be lists as well...
-    if ((type == QMetaType::QUrl && data.userType() == QMetaType::QVariantList)
-        || (type == QMetaType::QVariantList && data.userType() == QMetaType::QUrl))
+    if ((typeId == QMetaType::QUrl && data.metaType().id() == QMetaType::QVariantList)
+        || (typeId == QMetaType::QVariantList && data.metaType().id() == QMetaType::QUrl))
         return data;
 
     // images and pixmaps are interchangeable
-    if ((type == QMetaType::QPixmap && data.userType() == QMetaType::QImage)
-        || (type == QMetaType::QImage && data.userType() == QMetaType::QPixmap))
+    if ((typeId == QMetaType::QPixmap && data.metaType().id() == QMetaType::QImage)
+        || (typeId == QMetaType::QImage && data.metaType().id() == QMetaType::QPixmap))
         return data;
 
-    if (data.userType() == QMetaType::QByteArray) {
+    if (data.metaType().id() == QMetaType::QByteArray) {
         // see if we can convert to the requested type
-        switch(type) {
-#if QT_CONFIG(textcodec)
+        switch (typeId) {
         case QMetaType::QString: {
             const QByteArray ba = data.toByteArray();
             if (ba.isNull())
-                return QString();
-            QTextCodec *codec = QTextCodec::codecForName("utf-8");
-            if (format == QLatin1String("text/html"))
-                codec = QTextCodec::codecForHtml(ba, codec);
-            return codec->toUnicode(ba);
+                return QVariant();
+            if (format == "text/html"_L1) {
+                QStringDecoder decoder = QStringDecoder::decoderForHtml(ba);
+                if (decoder.isValid()) {
+                    return QString(decoder(ba));
+                }
+                // fall back to utf8
+            }
+            return QString::fromUtf8(ba);
         }
-#endif // textcodec
         case QMetaType::QColor: {
             QVariant newData = data;
-            newData.convert(QMetaType::QColor);
+            newData.convert(QMetaType(QMetaType::QColor));
             return newData;
         }
         case QMetaType::QVariantList: {
-            if (format != QLatin1String("text/uri-list"))
+            if (format != "text/uri-list"_L1)
                 break;
             Q_FALLTHROUGH();
         }
         case QMetaType::QUrl: {
-            QByteArray ba = data.toByteArray();
+            auto bav = data.view<QByteArrayView>();
             // Qt 3.x will send text/uri-list with a trailing
             // null-terminator (that is *not* sent for any other
             // text/* mime-type), so chop it off
-            if (ba.endsWith('\0'))
-                ba.chop(1);
-
-            QList<QByteArray> urls = ba.split('\n');
-            QList<QVariant> list;
-            for (int i = 0; i < urls.size(); ++i) {
-                QByteArray ba = urls.at(i).trimmed();
-                if (!ba.isEmpty())
-                    list.append(QUrl::fromEncoded(ba));
-            }
-            return list;
+            if (bav.endsWith('\0'))
+                bav.chop(1);
+            return dataToUrls(bav);
         }
         default:
             break;
         }
 
-    } else if (type == QMetaType::QByteArray) {
+    } else if (typeId == QMetaType::QByteArray) {
 
         // try to convert to bytearray
-        switch (data.userType()) {
+        switch (data.metaType().id()) {
         case QMetaType::QByteArray:
         case QMetaType::QColor:
             return data.toByteArray();
@@ -213,10 +195,10 @@ QVariant QMimeDataPrivate::retrieveTypedData(const QString &format, QMetaType::T
         case QMetaType::QVariantList: {
             // has to be list of URLs
             QByteArray result;
-            QList<QVariant> list = data.toList();
-            for (int i = 0; i < list.size(); ++i) {
-                if (list.at(i).userType() == QMetaType::QUrl) {
-                    result += list.at(i).toUrl().toEncoded();
+            const QList<QVariant> list = data.toList();
+            for (const auto &element : list) {
+                if (element.metaType().id() == QMetaType::QUrl) {
+                    result += element.toUrl().toEncoded();
                     result += "\r\n";
                 }
             }
@@ -313,12 +295,12 @@ QVariant QMimeDataPrivate::retrieveTypedData(const QString &format, QMetaType::T
     \snippet code/src_corelib_kernel_qmimedata.cpp 8
 
     On Windows, the MIME format does not always map directly to the
-    clipboard formats. Qt provides QWinMime to map clipboard
+    clipboard formats. Qt provides QWindowsMimeConverter to map clipboard
     formats to open-standard MIME formats. Similarly, the
-    QMacPasteboardMime maps MIME to Mac flavors.
+    QUtiMimeConverter maps MIME to Uniform Type Identifiers on macOS and iOS.
 
     \sa QClipboard, QDragEnterEvent, QDragMoveEvent, QDropEvent, QDrag,
-        QMacPasteboardMime, {Drag and Drop}
+        {Drag and Drop}
 */
 
 /*!
@@ -346,15 +328,15 @@ QMimeData::~QMimeData()
 QList<QUrl> QMimeData::urls() const
 {
     Q_D(const QMimeData);
-    QVariant data = d->retrieveTypedData(textUriListLiteral(), QMetaType::QVariantList);
+    QVariant data = d->retrieveTypedData(textUriListLiteral(), QMetaType(QMetaType::QVariantList));
     QList<QUrl> urls;
-    if (data.userType() == QMetaType::QUrl)
+    if (data.metaType().id() == QMetaType::QUrl)
         urls.append(data.toUrl());
-    else if (data.userType() == QMetaType::QVariantList) {
-        QList<QVariant> list = data.toList();
-        for (int i = 0; i < list.size(); ++i) {
-            if (list.at(i).userType() == QMetaType::QUrl)
-                urls.append(list.at(i).toUrl());
+    else if (data.metaType().id() == QMetaType::QVariantList) {
+        const QList<QVariant> list = data.toList();
+        for (const auto &element : list) {
+            if (element.metaType().id() == QMetaType::QUrl)
+                urls.append(element.toUrl());
         }
     }
     return urls;
@@ -374,13 +356,7 @@ QList<QUrl> QMimeData::urls() const
 void QMimeData::setUrls(const QList<QUrl> &urls)
 {
     Q_D(QMimeData);
-    QList<QVariant> list;
-    const int numUrls = urls.size();
-    list.reserve(numUrls);
-    for (int i = 0; i < numUrls; ++i)
-        list.append(urls.at(i));
-
-    d->setData(textUriListLiteral(), list);
+    d->setData(textUriListLiteral(), QList<QVariant>(urls.cbegin(), urls.cend()));
 }
 
 /*!
@@ -398,19 +374,20 @@ bool QMimeData::hasUrls() const
 
 
 /*!
-    Returns a plain text (MIME type \c text/plain) representation of
-    the data.
+    Returns the plain text (MIME type \c text/plain) representation of
+    the data if this object contains plain text. If it contains some other
+    content, this function makes a best effort to convert it to plain text.
 
     \sa hasText(), html(), data()
 */
 QString QMimeData::text() const
 {
     Q_D(const QMimeData);
-    QVariant utf8Text = d->retrieveTypedData(textPlainUtf8Literal(), QMetaType::QString);
+    QVariant utf8Text = d->retrieveTypedData(textPlainUtf8Literal(), QMetaType(QMetaType::QString));
     if (!utf8Text.isNull())
         return utf8Text.toString();
 
-    QVariant data = d->retrieveTypedData(textPlainLiteral(), QMetaType::QString);
+    QVariant data = d->retrieveTypedData(textPlainLiteral(), QMetaType(QMetaType::QString));
     return data.toString();
 }
 
@@ -434,7 +411,7 @@ void QMimeData::setText(const QString &text)
 */
 bool QMimeData::hasText() const
 {
-    return hasFormat(textPlainLiteral()) || hasUrls();
+    return hasFormat(textPlainLiteral()) || hasFormat(textPlainUtf8Literal()) || hasUrls();
 }
 
 /*!
@@ -446,7 +423,7 @@ bool QMimeData::hasText() const
 QString QMimeData::html() const
 {
     Q_D(const QMimeData);
-    QVariant data = d->retrieveTypedData(textHtmlLiteral(), QMetaType::QString);
+    QVariant data = d->retrieveTypedData(textHtmlLiteral(), QMetaType(QMetaType::QString));
     return data.toString();
 }
 
@@ -488,7 +465,7 @@ bool QMimeData::hasHtml() const
 QVariant QMimeData::imageData() const
 {
     Q_D(const QMimeData);
-    return d->retrieveTypedData(applicationXQtImageLiteral(), QMetaType::QImage);
+    return d->retrieveTypedData(applicationXQtImageLiteral(), QMetaType(QMetaType::QImage));
 }
 
 /*!
@@ -535,7 +512,7 @@ bool QMimeData::hasImage() const
 QVariant QMimeData::colorData() const
 {
     Q_D(const QMimeData);
-    return d->retrieveTypedData(applicationXColorLiteral(), QMetaType::QColor);
+    return d->retrieveTypedData(applicationXColorLiteral(), QMetaType(QMetaType::QColor));
 }
 
 /*!
@@ -565,12 +542,16 @@ bool QMimeData::hasColor() const
 
 /*!
     Returns the data stored in the object in the format described by
-    the MIME type specified by \a mimeType.
+    the MIME type specified by \a mimeType. If this object does not contain
+    data for the \a mimeType MIME type (see hasFormat()), this function may
+    perform a best effort conversion to it.
+
+    \sa hasFormat(), setData()
 */
 QByteArray QMimeData::data(const QString &mimeType) const
 {
     Q_D(const QMimeData);
-    QVariant data = d->retrieveTypedData(mimeType, QMetaType::QByteArray);
+    QVariant data = d->retrieveTypedData(mimeType, QMetaType(QMetaType::QByteArray));
     return data.toByteArray();
 }
 
@@ -584,28 +565,19 @@ QByteArray QMimeData::data(const QString &mimeType) const
 
     Note that if you want to use a custom data type in an item view drag and drop
     operation, you must register it as a Qt \l{QMetaType}{meta type}, using the
-    Q_DECLARE_METATYPE() macro, and implement stream operators for it. The stream
-    operators must then be registered with the qRegisterMetaTypeStreamOperators()
-    function.
+    Q_DECLARE_METATYPE() macro, and implement stream operators for it.
 
-    \sa hasFormat(), QMetaType, {QMetaType::}{qRegisterMetaTypeStreamOperators()}
+    \sa hasFormat(), QMetaType, {QMetaType::}{Q_DECLARE_METATYPE()}
 */
 void QMimeData::setData(const QString &mimeType, const QByteArray &data)
 {
     Q_D(QMimeData);
 
-    if (mimeType == QLatin1String("text/uri-list")) {
-        QByteArray ba = data;
+    if (mimeType == "text/uri-list"_L1) {
+        auto ba = QByteArrayView(data);
         if (ba.endsWith('\0'))
             ba.chop(1);
-        QList<QByteArray> urls = ba.split('\n');
-        QList<QVariant> list;
-        for (int i = 0; i < urls.size(); ++i) {
-            QByteArray ba = urls.at(i).trimmed();
-            if (!ba.isEmpty())
-                list.append(QUrl::fromEncoded(ba));
-        }
-        d->setData(mimeType, list);
+        d->setData(mimeType, dataToUrls(ba));
     } else {
         d->setData(mimeType, QVariant(data));
     }
@@ -662,7 +634,7 @@ QStringList QMimeData::formats() const
 
     \sa data()
 */
-QVariant QMimeData::retrieveData(const QString &mimeType, QVariant::Type type) const
+QVariant QMimeData::retrieveData(const QString &mimeType, QMetaType type) const
 {
     Q_UNUSED(type);
     Q_D(const QMimeData);

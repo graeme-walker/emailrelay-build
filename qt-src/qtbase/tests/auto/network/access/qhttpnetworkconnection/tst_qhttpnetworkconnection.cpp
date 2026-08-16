@@ -1,37 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
-#include <QtTest/QtTest>
-#include "private/qhttpnetworkconnection_p.h"
-#include "private/qnoncontiguousbytedevice_p.h"
+#include <QTest>
+#include <QTestEventLoop>
 #include <QAuthenticator>
 #include <QTcpServer>
+
+#include "private/qhttpnetworkconnection_p.h"
+#include "private/qnoncontiguousbytedevice_p.h"
 
 #include "../../../network-settings.h"
 
@@ -148,7 +125,7 @@ void tst_QHttpNetworkConnection::head()
     QFETCH(QString, statusString);
     QFETCH(int, contentLength);
 
-    QHttpNetworkConnection connection(host, port, encrypt);
+    QHttpNetworkConnection connection(QHttpNetworkConnectionPrivate::defaultHttpChannelCount, host, port, encrypt);
     QCOMPARE(connection.port(), port);
     QCOMPARE(connection.hostName(), host);
     QCOMPARE(connection.isSsl(), encrypt);
@@ -198,7 +175,7 @@ void tst_QHttpNetworkConnection::get()
     QFETCH(int, contentLength);
     QFETCH(int, downloadSize);
 
-    QHttpNetworkConnection connection(host, port, encrypt);
+    QHttpNetworkConnection connection(QHttpNetworkConnectionPrivate::defaultHttpChannelCount, host, port, encrypt);
     QCOMPARE(connection.port(), port);
     QCOMPARE(connection.hostName(), host);
     QCOMPARE(connection.isSsl(), encrypt);
@@ -233,7 +210,7 @@ void tst_QHttpNetworkConnection::finishedReply()
 
 void tst_QHttpNetworkConnection::finishedWithError(QNetworkReply::NetworkError errorCode, const QString &detail)
 {
-    Q_UNUSED(detail)
+    Q_UNUSED(detail);
     finishedWithErrorCalled = true;
     netErrorCode = errorCode;
 }
@@ -264,7 +241,7 @@ void tst_QHttpNetworkConnection::put()
     QFETCH(QString, data);
     QFETCH(bool, succeed);
 
-    QHttpNetworkConnection connection(host, port, encrypt);
+    QHttpNetworkConnection connection(QHttpNetworkConnectionPrivate::defaultHttpChannelCount, host, port, encrypt);
     QCOMPARE(connection.port(), port);
     QCOMPARE(connection.hostName(), host);
     QCOMPARE(connection.isSsl(), encrypt);
@@ -272,7 +249,7 @@ void tst_QHttpNetworkConnection::put()
     QHttpNetworkRequest request(protocol + host + path, QHttpNetworkRequest::Put);
 
     QByteArray array = data.toLatin1();
-    QNonContiguousByteDevice *bd = QNonContiguousByteDeviceFactory::create(&array);
+    QNonContiguousByteDevice *bd = QNonContiguousByteDeviceFactory::create(array);
     bd->setParent(this);
     request.setUploadByteDevice(bd);
 
@@ -346,7 +323,7 @@ void tst_QHttpNetworkConnection::post()
     QFETCH(int, contentLength);
     QFETCH(int, downloadSize);
 
-    QHttpNetworkConnection connection(host, port, encrypt);
+    QHttpNetworkConnection connection(QHttpNetworkConnectionPrivate::defaultHttpChannelCount, host, port, encrypt);
     QCOMPARE(connection.port(), port);
     QCOMPARE(connection.hostName(), host);
     QCOMPARE(connection.isSsl(), encrypt);
@@ -354,7 +331,7 @@ void tst_QHttpNetworkConnection::post()
     QHttpNetworkRequest request(protocol + host + path, QHttpNetworkRequest::Post);
 
     QByteArray array = data.toLatin1();
-    QNonContiguousByteDevice *bd = QNonContiguousByteDeviceFactory::create(&array);
+    QNonContiguousByteDevice *bd = QNonContiguousByteDeviceFactory::create(array);
     bd->setParent(this);
     request.setUploadByteDevice(bd);
 
@@ -425,7 +402,7 @@ void tst_QHttpNetworkConnection::_connect()
 void tst_QHttpNetworkConnection::challenge401(const QHttpNetworkRequest &request,
                                                         QAuthenticator *authenticator)
 {
-    Q_UNUSED(request)
+    Q_UNUSED(request);
 
     QHttpNetworkReply *reply = qobject_cast<QHttpNetworkReply*>(sender());
     if (reply) {
@@ -473,7 +450,7 @@ void tst_QHttpNetworkConnection::get401()
     QFETCH(QString, password);
     QFETCH(int, statusCode);
 
-    QHttpNetworkConnection connection(host, port, encrypt);
+    QHttpNetworkConnection connection(QHttpNetworkConnectionPrivate::defaultHttpChannelCount, host, port, encrypt);
     QCOMPARE(connection.port(), port);
     QCOMPARE(connection.hostName(), host);
     QCOMPARE(connection.isSsl(), encrypt);
@@ -533,7 +510,7 @@ void tst_QHttpNetworkConnection::compression()
     QFETCH(bool, autoCompress);
     QFETCH(QString, contentCoding);
 
-    QHttpNetworkConnection connection(host, port, encrypt);
+    QHttpNetworkConnection connection(QHttpNetworkConnectionPrivate::defaultHttpChannelCount, host, port, encrypt);
     QCOMPARE(connection.port(), port);
     QCOMPARE(connection.hostName(), host);
     QCOMPARE(connection.isSsl(), encrypt);
@@ -563,7 +540,7 @@ void tst_QHttpNetworkConnection::compression()
 #ifndef QT_NO_SSL
 void tst_QHttpNetworkConnection::sslErrors(const QList<QSslError> &errors)
 {
-    Q_UNUSED(errors)
+    Q_UNUSED(errors);
 
     QHttpNetworkReply *reply = qobject_cast<QHttpNetworkReply*>(sender());
     if (reply) {
@@ -607,7 +584,7 @@ void tst_QHttpNetworkConnection::ignoresslerror()
     QFETCH(bool, ignoreFromSignal);
     QFETCH(int, statusCode);
 
-    QHttpNetworkConnection connection(host, port, encrypt);
+    QHttpNetworkConnection connection(QHttpNetworkConnectionPrivate::defaultHttpChannelCount, host, port, encrypt);
     QCOMPARE(connection.port(), port);
     QCOMPARE(connection.hostName(), host);
     if (ignoreInit)
@@ -652,7 +629,7 @@ void tst_QHttpNetworkConnection::nossl()
     QFETCH(bool, encrypt);
     QFETCH(QNetworkReply::NetworkError, networkError);
 
-    QHttpNetworkConnection connection(host, port, encrypt);
+    QHttpNetworkConnection connection(QHttpNetworkConnectionPrivate::defaultHttpChannelCount, host, port, encrypt);
     QCOMPARE(connection.port(), port);
     QCOMPARE(connection.hostName(), host);
 
@@ -689,7 +666,7 @@ void tst_QHttpNetworkConnection::getMultiple_data()
 static bool allRepliesFinished(const QList<QHttpNetworkReply*> *_replies)
 {
     const QList<QHttpNetworkReply*> &replies = *_replies;
-    for (int i = 0; i < replies.length(); i++)
+    for (int i = 0; i < replies.size(); i++)
         if (!replies.at(i)->isFinished())
             return false;
     return true;
@@ -734,7 +711,7 @@ void tst_QHttpNetworkConnection::getMultipleWithPipeliningAndMultiplePriorities(
     QList<QHttpNetworkReply*> replies;
 
     for (int i = 0; i < requestCount; i++) {
-        QHttpNetworkRequest *request = 0;
+        QHttpNetworkRequest *request = nullptr;
         if (i % 3)
             request = new QHttpNetworkRequest("http://" + httpServerName() + "/qtest/rfc3252.txt", QHttpNetworkRequest::Get);
         else
@@ -758,7 +735,7 @@ void tst_QHttpNetworkConnection::getMultipleWithPipeliningAndMultiplePriorities(
     QTRY_VERIFY_WITH_TIMEOUT(allRepliesFinished(&replies), 60000);
 
     int pipelinedCount = 0;
-    for (int i = 0; i < replies.length(); i++) {
+    for (int i = 0; i < replies.size(); i++) {
         QVERIFY (!(replies.at(i)->request().isPipeliningAllowed() == false
             && replies.at(i)->isPipeliningUsed()));
 
@@ -812,7 +789,7 @@ void tst_QHttpNetworkConnection::getMultipleWithPriorities()
     QList<QHttpNetworkReply*> replies;
 
     for (int i = 0; i < requestCount; i++) {
-        QHttpNetworkRequest *request = 0;
+        QHttpNetworkRequest *request = nullptr;
         if (i % 3)
             request = new QHttpNetworkRequest(url, QHttpNetworkRequest::Get);
         else
@@ -867,7 +844,7 @@ void tst_QHttpNetworkConnection::getEmptyWithPipelining()
     QList<QHttpNetworkReply*> replies;
 
     for (int i = 0; i < requestCount; i++) {
-        QHttpNetworkRequest *request = 0;
+        QHttpNetworkRequest *request = nullptr;
         request = new QHttpNetworkRequest(url, QHttpNetworkRequest::Get);
         request->setPipeliningAllowed(true);
 
@@ -914,7 +891,7 @@ void tst_QHttpNetworkConnection::getAndEverythingShouldBePipelined()
     GetAndEverythingShouldBePipelinedReceiver receiver(requestCount);
 
     for (int i = 0; i < requestCount; i++) {
-        QHttpNetworkRequest *request = 0;
+        QHttpNetworkRequest *request = nullptr;
         request = new QHttpNetworkRequest(url, QHttpNetworkRequest::Get);
         request->setPipeliningAllowed(true);
         requests.append(request);
@@ -942,7 +919,7 @@ void tst_QHttpNetworkConnection::getAndThenDeleteObject_data()
 void tst_QHttpNetworkConnection::getAndThenDeleteObject()
 {
     // yes, this will leak if the testcase fails. I don't care. It must not fail then :P
-    QHttpNetworkConnection *connection = new QHttpNetworkConnection(httpServerName());
+    QHttpNetworkConnection *connection = new QHttpNetworkConnection(QHttpNetworkConnectionPrivate::defaultHttpChannelCount, httpServerName());
     QHttpNetworkRequest request("http://" + httpServerName() + "/qtest/bigfile");
     QHttpNetworkReply *reply = connection->sendRequest(request);
     reply->setDownstreamLimited(true);

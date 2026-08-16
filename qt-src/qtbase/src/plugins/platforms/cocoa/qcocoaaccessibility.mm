@@ -1,49 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
+#include <AppKit/AppKit.h>
+
 #include "qcocoaaccessibility.h"
 #include "qcocoaaccessibilityelement.h"
 #include <QtGui/qaccessible.h>
+#include <QtCore/qmap.h>
 #include <private/qcore_mac_p.h>
 
 QT_BEGIN_NAMESPACE
 
-#ifndef QT_NO_ACCESSIBILITY
+using namespace Qt::StringLiterals;
+
+#if QT_CONFIG(accessibility)
 
 QCocoaAccessibility::QCocoaAccessibility()
 {
@@ -66,10 +36,30 @@ void QCocoaAccessibility::notifyAccessibilityUpdate(QAccessibleEvent *event)
     }
 
     switch (event->type()) {
+    case QAccessible::Announcement: {
+        auto *announcementEvent = static_cast<QAccessibleAnnouncementEvent *>(event);
+        auto priorityLevel = (announcementEvent->politeness() == QAccessible::AnnouncementPoliteness::Assertive)
+                ? NSAccessibilityPriorityHigh
+                : NSAccessibilityPriorityMedium;
+        NSDictionary *announcementInfo = @{
+            NSAccessibilityPriorityKey: [NSNumber numberWithInt:priorityLevel],
+            NSAccessibilityAnnouncementKey: announcementEvent->message().toNSString()
+        };
+        // post event for application element, as the comment for
+        // NSAccessibilityAnnouncementRequestedNotification in the
+        // NSAccessibilityConstants.h header says
+        NSAccessibilityPostNotificationWithUserInfo(NSApp,
+                                                    NSAccessibilityAnnouncementRequestedNotification,
+                                                    announcementInfo);
+        break;
+    }
     case QAccessible::Focus: {
         NSAccessibilityPostNotification(element, NSAccessibilityFocusedUIElementChangedNotification);
         break;
     }
+    case QAccessible::PopupMenuStart:
+        NSAccessibilityPostNotification(element, NSAccessibilityFocusedUIElementChangedNotification);
+        break;
     case QAccessible::StateChanged:
     case QAccessible::ValueChanged:
     case QAccessible::TextInserted:
@@ -84,6 +74,10 @@ void QCocoaAccessibility::notifyAccessibilityUpdate(QAccessibleEvent *event)
     case QAccessible::NameChanged:
         NSAccessibilityPostNotification(element, NSAccessibilityTitleChangedNotification);
         break;
+    case QAccessible::TableModelChanged:
+        // ### Could NSAccessibilityRowCountChangedNotification be relevant here?
+        [element updateTableModel];
+        break;
     default:
         break;
     }
@@ -91,7 +85,7 @@ void QCocoaAccessibility::notifyAccessibilityUpdate(QAccessibleEvent *event)
 
 void QCocoaAccessibility::setRootObject(QObject *o)
 {
-    Q_UNUSED(o)
+    Q_UNUSED(o);
 }
 
 void QCocoaAccessibility::initialize()
@@ -143,7 +137,6 @@ static void populateRoleMap()
     roleMap[QAccessible::ColumnHeader] = NSAccessibilityColumnRole;
     roleMap[QAccessible::Row] = NSAccessibilityRowRole;
     roleMap[QAccessible::RowHeader] = NSAccessibilityRowRole;
-    roleMap[QAccessible::Cell] = NSAccessibilityTextFieldRole;
     roleMap[QAccessible::Button] = NSAccessibilityButtonRole;
     roleMap[QAccessible::EditableText] = NSAccessibilityTextFieldRole;
     roleMap[QAccessible::Link] = NSAccessibilityLinkRole;
@@ -151,7 +144,7 @@ static void populateRoleMap()
     roleMap[QAccessible::Splitter] = NSAccessibilitySplitGroupRole;
     roleMap[QAccessible::List] = NSAccessibilityListRole;
     roleMap[QAccessible::ListItem] = NSAccessibilityStaticTextRole;
-    roleMap[QAccessible::Cell] = NSAccessibilityStaticTextRole;
+    roleMap[QAccessible::Cell] = NSAccessibilityCellRole;
     roleMap[QAccessible::Client] = NSAccessibilityGroupRole;
     roleMap[QAccessible::Paragraph] = NSAccessibilityGroupRole;
     roleMap[QAccessible::Section] = NSAccessibilityGroupRole;
@@ -163,6 +156,7 @@ static void populateRoleMap()
     roleMap[QAccessible::Note] = NSAccessibilityGroupRole;
     roleMap[QAccessible::ComplementaryContent] = NSAccessibilityGroupRole;
     roleMap[QAccessible::Graphic] = NSAccessibilityImageRole;
+    roleMap[QAccessible::Tree] = NSAccessibilityOutlineRole;
 }
 
 /*
@@ -181,6 +175,8 @@ NSString *macRole(QAccessibleInterface *interface)
 
     if (roleMap.contains(qtRole)) {
        // MAC_ACCESSIBILTY_DEBUG() << "return" <<  roleMap[qtRole];
+        if (roleMap[qtRole] == NSAccessibilityComboBoxRole && !interface->state().editable)
+            return NSAccessibilityMenuButtonRole;
         if (roleMap[qtRole] == NSAccessibilityTextFieldRole && interface->state().multiLine)
             return NSAccessibilityTextAreaRole;
         return roleMap[qtRole];
@@ -228,7 +224,8 @@ bool shouldBeIgnored(QAccessibleInterface *interface)
         role == QAccessible::Application || // We use the system-provided application element.
         role == QAccessible::ToolBar ||     // Access the tool buttons directly.
         role == QAccessible::Pane ||        // Scroll areas.
-        role == QAccessible::Client)        // The default for QWidget.
+        role == QAccessible::Client ||      // The default for QWidget.
+        role == QAccessible::PopupMenu)     // Access the menu items directly
         return true;
 
     NSString *mac_role = macRole(interface);
@@ -244,12 +241,12 @@ bool shouldBeIgnored(QAccessibleInterface *interface)
         return true;
 
     if (QObject * const object = interface->object()) {
-        const QString className = QLatin1String(object->metaObject()->className());
+        const QString className = QLatin1StringView(object->metaObject()->className());
 
         // VoiceOver focusing on tool tips can be confusing. The contents of the
         // tool tip is available through the description attribute anyway, so
         // we disable accessibility for tool tips.
-        if (className == QLatin1String("QTipLabel"))
+        if (className == "QTipLabel"_L1)
             return true;
     }
 
@@ -259,7 +256,6 @@ bool shouldBeIgnored(QAccessibleInterface *interface)
 NSArray<QMacAccessibilityElement *> *unignoredChildren(QAccessibleInterface *interface)
 {
     int numKids = interface->childCount();
-    // qDebug() << "Children for: " << axid << iface << " are: " << numKids;
 
     NSMutableArray<QMacAccessibilityElement *> *kids = [NSMutableArray<QMacAccessibilityElement *> arrayWithCapacity:numKids];
     for (int i = 0; i < numKids; ++i) {
@@ -268,7 +264,6 @@ NSArray<QMacAccessibilityElement *> *unignoredChildren(QAccessibleInterface *int
             continue;
 
         QAccessible::Id childId = QAccessible::uniqueId(child);
-        //qDebug() << "    kid: " << childId << child;
 
         QMacAccessibilityElement *element = [QMacAccessibilityElement elementWithId: childId];
         if (element)
@@ -386,6 +381,8 @@ id getValueAttribute(QAccessibleInterface *interface)
     }
 
     if (interface->state().checkable) {
+        if (interface->state().checkStateMixed)
+            return @(2);
         return interface->state().checked ? @(1) : @(0);
     }
 
@@ -394,7 +391,7 @@ id getValueAttribute(QAccessibleInterface *interface)
 
 } // namespace QCocoaAccessible
 
-#endif // QT_NO_ACCESSIBILITY
+#endif // QT_CONFIG(accessibility)
 
 QT_END_NAMESPACE
 

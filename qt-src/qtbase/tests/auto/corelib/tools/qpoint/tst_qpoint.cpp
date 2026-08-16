@@ -1,34 +1,35 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QPoint>
+#ifdef QVARIANT_H
+# error "This test requires qpoint.h to not include qvariant.h"
+#endif
+#include <private/qcomparisontesthelper_p.h>
+
+// don't assume <type_traits>
+template <typename T, typename U>
+constexpr inline bool my_is_same_v = false;
+template <typename T>
+constexpr inline bool my_is_same_v<T, T> = true;
+
+#define CHECK(cvref) \
+    static_assert(my_is_same_v<decltype(get<0>(std::declval<QPoint cvref >())), int cvref >); \
+    static_assert(my_is_same_v<decltype(get<1>(std::declval<QPoint cvref >())), int cvref >)
+
+CHECK(&);
+CHECK(const &);
+CHECK(&&);
+CHECK(const &&);
+
+#undef CHECK
+
+#include <QTest>
+#include <QBuffer>
 
 #include <qpoint.h>
+
+#include <array>
 
 class tst_QPoint : public QObject
 {
@@ -43,6 +44,9 @@ private slots:
     void getSet();
 
     void transposed();
+
+    void toPointF_data();
+    void toPointF();
 
     void rx();
     void ry();
@@ -68,6 +72,7 @@ private slots:
     void operator_unary_minus_data();
     void operator_unary_minus();
 
+    void operatorsCompile();
     void operator_eq_data();
     void operator_eq();
 
@@ -75,6 +80,8 @@ private slots:
     void stream_data();
     void stream();
 #endif
+
+    void structuredBinding();
 };
 
 void tst_QPoint::isNull()
@@ -126,6 +133,32 @@ void tst_QPoint::getSet()
 
     point.setY(i);
     QCOMPARE(point.y(), i);
+}
+
+void tst_QPoint::toPointF_data()
+{
+    QTest::addColumn<QPoint>("input");
+    QTest::addColumn<QPointF>("result");
+
+    auto row = [](int x, int y) {
+        QTest::addRow("(%d, %d)", x, y) << QPoint(x, y) << QPointF(x, y);
+    };
+    constexpr std::array samples = {-1, 0, 1};
+    for (int x : samples) {
+        for (int y : samples) {
+            row(x, y);
+        }
+    }
+}
+
+void tst_QPoint::toPointF()
+{
+    QFETCH(const QPoint, input);
+    QFETCH(const QPointF, result);
+
+    QCOMPARE(input.toPointF(), result);
+    // test also mixed-type comparison
+    QT_TEST_EQUALITY_OPS(input, result, true);
 }
 
 void tst_QPoint::transposed()
@@ -321,6 +354,12 @@ void tst_QPoint::operator_unary_minus()
     QCOMPARE(-point, expected);
 }
 
+void tst_QPoint::operatorsCompile()
+{
+    // Mixed-type comparison is tested in tst_QPointF.
+    QTestPrivate::testEqualityOperatorsCompile<QPoint>();
+}
+
 void tst_QPoint::operator_eq_data()
 {
     QTest::addColumn<QPoint>("point1");
@@ -342,10 +381,10 @@ void tst_QPoint::operator_eq()
     QFETCH(QPoint, point2);
     QFETCH(bool, expectEqual);
 
-    bool equal = point1 == point2;
-    QCOMPARE(equal, expectEqual);
-    bool notEqual = point1 != point2;
-    QCOMPARE(notEqual, !expectEqual);
+    QT_TEST_EQUALITY_OPS(point1, point2, expectEqual);
+
+    if (expectEqual)
+        QCOMPARE(qHash(point1), qHash(point2));
 }
 
 #ifndef QT_NO_DATASTREAM
@@ -377,6 +416,63 @@ void tst_QPoint::stream()
     QCOMPARE(pointFromStream, point);
 }
 #endif
+
+void tst_QPoint::structuredBinding()
+{
+    {
+        QPoint p(1, 2);
+        auto [x, y] = p;
+        QCOMPARE(x, 1);
+        QCOMPARE(y, 2);
+
+        p.setX(42);
+        QCOMPARE(x, 1);
+        QCOMPARE(y, 2);
+
+        p.setY(-123);
+        QCOMPARE(x, 1);
+        QCOMPARE(y, 2);
+    }
+    {
+        QPoint p(1, 2);
+
+        auto &[x, y] = p;
+        QCOMPARE(x, 1);
+        QCOMPARE(y, 2);
+
+        x = 42;
+        QCOMPARE(x, 42);
+        QCOMPARE(p.x(), 42);
+        QCOMPARE(p.rx(), 42);
+        QCOMPARE(y, 2);
+        QCOMPARE(p.y(), 2);
+        QCOMPARE(p.ry(), 2);
+
+        y = -123;
+        QCOMPARE(x, 42);
+        QCOMPARE(p.x(), 42);
+        QCOMPARE(p.rx(), 42);
+        QCOMPARE(y, -123);
+        QCOMPARE(p.y(), -123);
+        QCOMPARE(p.ry(), -123);
+
+        p.setX(0);
+        QCOMPARE(x, 0);
+        QCOMPARE(p.x(), 0);
+        QCOMPARE(p.rx(), 0);
+        QCOMPARE(y, -123);
+        QCOMPARE(p.y(), -123);
+        QCOMPARE(p.ry(), -123);
+
+        p.ry() = 10;
+        QCOMPARE(x, 0);
+        QCOMPARE(p.x(), 0);
+        QCOMPARE(p.rx(), 0);
+        QCOMPARE(y, 10);
+        QCOMPARE(p.y(), 10);
+        QCOMPARE(p.ry(), 10);
+    }
+}
 
 QTEST_MAIN(tst_QPoint)
 #include "tst_qpoint.moc"

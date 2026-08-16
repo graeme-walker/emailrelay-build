@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "private/qabstractfileengine_p.h"
 #include "private/qfsfileengine_p.h"
@@ -46,7 +10,7 @@
 #include "qreadwritelock.h"
 #include "qvariant.h"
 // built-in handlers
-#include "qdiriterator.h"
+#include "qdirlisting.h"
 #include "qstringbuilder.h"
 
 #include <QtCore/private/qfilesystementry_p.h>
@@ -54,6 +18,22 @@
 #include <QtCore/private/qfilesystemengine_p.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+static QString appendSlashIfNeeded(const QString &path)
+{
+    if (!path.isEmpty() && !path.endsWith(u'/')
+#ifdef Q_OS_ANDROID
+        && !path.startsWith("content:/"_L1)
+#endif
+        )
+        return QString{path + u'/'};
+    return path;
+}
+
+QAbstractFileEnginePrivate::~QAbstractFileEnginePrivate()
+    = default;
 
 /*!
     \class QAbstractFileEngineHandler
@@ -101,17 +81,20 @@ QT_BEGIN_NAMESPACE
     \sa QAbstractFileEngine, QAbstractFileEngine::create()
 */
 
-static bool qt_file_engine_handlers_in_use = false;
+Q_CONSTINIT static QBasicAtomicInt qt_file_engine_handlers_in_use = Q_BASIC_ATOMIC_INITIALIZER(false);
 
 /*
     All application-wide handlers are stored in this list. The mutex must be
     acquired to ensure thread safety.
  */
-Q_GLOBAL_STATIC_WITH_ARGS(QReadWriteLock, fileEngineHandlerMutex, (QReadWriteLock::Recursive))
-static bool qt_abstractfileenginehandlerlist_shutDown = false;
+Q_GLOBAL_STATIC(QReadWriteLock, fileEngineHandlerMutex, QReadWriteLock::Recursive)
+Q_CONSTINIT static bool qt_abstractfileenginehandlerlist_shutDown = false;
 class QAbstractFileEngineHandlerList : public QList<QAbstractFileEngineHandler *>
 {
+    Q_DISABLE_COPY_MOVE(QAbstractFileEngineHandlerList)
 public:
+    QAbstractFileEngineHandlerList() = default;
+
     ~QAbstractFileEngineHandlerList()
     {
         QWriteLocker locker(fileEngineHandlerMutex());
@@ -132,7 +115,7 @@ Q_GLOBAL_STATIC(QAbstractFileEngineHandlerList, fileEngineHandlers)
 QAbstractFileEngineHandler::QAbstractFileEngineHandler()
 {
     QWriteLocker locker(fileEngineHandlerMutex());
-    qt_file_engine_handlers_in_use = true;
+    qt_file_engine_handlers_in_use.storeRelaxed(true);
     fileEngineHandlers()->prepend(this);
 }
 
@@ -148,7 +131,7 @@ QAbstractFileEngineHandler::~QAbstractFileEngineHandler()
         QAbstractFileEngineHandlerList *handlers = fileEngineHandlers();
         handlers->removeOne(this);
         if (handlers->isEmpty())
-            qt_file_engine_handlers_in_use = false;
+            qt_file_engine_handlers_in_use.storeRelaxed(false);
     }
 }
 
@@ -157,29 +140,27 @@ QAbstractFileEngineHandler::~QAbstractFileEngineHandler()
 
    Handles calls to custom file engine handlers.
 */
-QAbstractFileEngine *qt_custom_file_engine_handler_create(const QString &path)
+std::unique_ptr<QAbstractFileEngine> qt_custom_file_engine_handler_create(const QString &path)
 {
-    QAbstractFileEngine *engine = nullptr;
-
-    if (qt_file_engine_handlers_in_use) {
+    if (qt_file_engine_handlers_in_use.loadRelaxed()) {
         QReadLocker locker(fileEngineHandlerMutex());
 
         // check for registered handlers that can load the file
-        QAbstractFileEngineHandlerList *handlers = fileEngineHandlers();
-        for (int i = 0; i < handlers->size(); i++) {
-            if ((engine = handlers->at(i)->create(path)))
-                break;
+        for (QAbstractFileEngineHandler *handler : std::as_const(*fileEngineHandlers())) {
+            if (auto engine = handler->create(path))
+                return engine;
         }
     }
 
-    return engine;
+    return nullptr;
 }
 
 /*!
-    \fn QAbstractFileEngine *QAbstractFileEngineHandler::create(const QString &fileName) const
+    \fn std::unique_ptr<QAbstractFileEngine> QAbstractFileEngineHandler::create(const QString &fileName) const
 
-    Creates a file engine for file \a fileName. Returns 0 if this
-    file handler cannot handle \a fileName.
+    If this file handler can handle \a fileName, this method creates a file
+    engine and returns it wrapped in a std::unique_ptr; otherwise returns
+    nullptr.
 
     Example:
 
@@ -201,16 +182,15 @@ QAbstractFileEngine *qt_custom_file_engine_handler_create(const QString &path)
 
     \sa QAbstractFileEngineHandler
 */
-QAbstractFileEngine *QAbstractFileEngine::create(const QString &fileName)
+std::unique_ptr<QAbstractFileEngine> QAbstractFileEngine::create(const QString &fileName)
 {
     QFileSystemEntry entry(fileName);
     QFileSystemMetaData metaData;
-    QAbstractFileEngine *engine = QFileSystemEngine::resolveEntryAndCreateLegacyEngine(entry, metaData);
+    auto engine = QFileSystemEngine::createLegacyEngine(entry, metaData);
 
 #ifndef QT_NO_FSFILEENGINE
-    if (!engine)
-        // fall back to regular file engine
-        return new QFSFileEngine(entry.filePath());
+    if (!engine) // fall back to regular file engine
+        engine = std::make_unique<QFSFileEngine>(entry.filePath());
 #endif
 
     return engine;
@@ -262,11 +242,15 @@ QAbstractFileEngine *QAbstractFileEngine::create(const QString &fileName)
     the base name).
     \value AbsolutePathName The absolute path to the file (excluding
     the base name).
-    \value LinkName The full file name of the file that this file is a
+    \value AbsoluteLinkTarget The full file name of the file that this file is a
     link to. (This will be empty if this file is not a link.)
-    \value CanonicalName Often very similar to LinkName. Will return the true path to the file.
+    \value RawLinkPath The raw link path of the file that this file is a
+    link to. (This will be empty if this file is not a link.)
+    \value CanonicalName Often very similar to AbsoluteLinkTarget. Will return the true path to the file.
     \value CanonicalPathName Same as CanonicalName, excluding the base name.
     \value BundleName Returns the name of the bundle implies BundleType is set.
+    \value JunctionName The full name of the directory that this NTFS junction
+    is linked to. (This will be empty if this file is not an NTFS junction.)
 
     \omitvalue NFileNames
 
@@ -324,20 +308,6 @@ QAbstractFileEngine *QAbstractFileEngine::create(const QString &fileName)
 */
 
 /*!
-    \enum QAbstractFileEngine::FileTime
-
-    These are used by the fileTime() function.
-
-    \value BirthTime When the file was born (created).
-    \value MetadataChangeTime When the file's metadata was last changed.
-    \value ModificationTime When the file was most recently modified.
-    \value AccessTime When the file was most recently accessed (e.g.
-    read or written to).
-
-    \sa setFileName()
-*/
-
-/*!
     \enum QAbstractFileEngine::FileOwner
 
     \value OwnerUser The user who owns the file.
@@ -381,10 +351,16 @@ QAbstractFileEngine::~QAbstractFileEngine()
 
     The \a mode is an OR combination of QIODevice::OpenMode and
     QIODevice::HandlingMode values.
+
+    If the file is created as a result of this call, its permissions are
+    set according to \a permissision. Null value means an implementation-
+    specific default.
 */
-bool QAbstractFileEngine::open(QIODevice::OpenMode openMode)
+bool QAbstractFileEngine::open(QIODevice::OpenMode openMode,
+                               std::optional<QFile::Permissions> permissions)
 {
     Q_UNUSED(openMode);
+    Q_UNUSED(permissions);
     return false;
 }
 
@@ -461,7 +437,7 @@ bool QAbstractFileEngine::seek(qint64 pos)
     Returns \c true if the file is a sequential access device; returns
     false if the file is a direct access device.
 
-    Operations involving size() and seek(int) are not valid on
+    Operations involving size() and seek(qint64) are not valid on
     sequential devices.
 */
 bool QAbstractFileEngine::isSequential() const
@@ -472,8 +448,6 @@ bool QAbstractFileEngine::isSequential() const
 /*!
     Requests that the file is deleted from the file system. If the
     operation succeeds return true; otherwise return false.
-
-    This virtual function must be reimplemented by all subclasses.
 
     \sa setFileName(), rmdir()
  */
@@ -497,8 +471,6 @@ bool QAbstractFileEngine::copy(const QString &newName)
     system. If the operation succeeds return true; otherwise return
     false.
 
-    This virtual function must be reimplemented by all subclasses.
-
     \sa setFileName()
  */
 bool QAbstractFileEngine::rename(const QString &newName)
@@ -514,8 +486,6 @@ bool QAbstractFileEngine::rename(const QString &newName)
     system. If the new name already exists, it must be overwritten.
     If the operation succeeds, returns \c true; otherwise returns
     false.
-
-    This virtual function must be reimplemented by all subclasses.
 
     \sa setFileName()
  */
@@ -538,21 +508,24 @@ bool QAbstractFileEngine::link(const QString &newName)
 }
 
 /*!
-    Requests that the directory \a dirName be created. If
-    \a createParentDirectories is true, then any sub-directories in \a dirName
+    Requests that the directory \a dirName be created with the specified \a permissions.
+    If \a createParentDirectories is true, then any sub-directories in \a dirName
     that don't exist must be created. If \a createParentDirectories is false then
     any sub-directories in \a dirName must already exist for the function to
     succeed. If the operation succeeds return true; otherwise return
     false.
 
-    This virtual function must be reimplemented by all subclasses.
+    If \a permissions is null then implementation-specific default permissions are
+    used.
 
     \sa setFileName(), rmdir(), isRelativePath()
  */
-bool QAbstractFileEngine::mkdir(const QString &dirName, bool createParentDirectories) const
+bool QAbstractFileEngine::mkdir(const QString &dirName, bool createParentDirectories,
+                                std::optional<QFile::Permissions> permissions) const
 {
     Q_UNUSED(dirName);
     Q_UNUSED(createParentDirectories);
+    Q_UNUSED(permissions);
     return false;
 }
 
@@ -564,8 +537,6 @@ bool QAbstractFileEngine::mkdir(const QString &dirName, bool createParentDirecto
     should be deleted. In most file systems a directory cannot be deleted
     using this function if it is non-empty. If the operation succeeds
     return true; otherwise return false.
-
-    This virtual function must be reimplemented by all subclasses.
 
     \sa setFileName(), remove(), mkdir(), isRelativePath()
  */
@@ -582,8 +553,6 @@ bool QAbstractFileEngine::rmdir(const QString &dirName, bool recurseParentDirect
     simply truncated. If the operations succceeds return true; otherwise
     return false;
 
-    This virtual function must be reimplemented by all subclasses.
-
     \sa size()
 */
 bool QAbstractFileEngine::setSize(qint64 size)
@@ -595,8 +564,6 @@ bool QAbstractFileEngine::setSize(qint64 size)
 /*!
     Should return true if the underlying file system is case-sensitive;
     otherwise return false.
-
-    This virtual function must be reimplemented by all subclasses.
  */
 bool QAbstractFileEngine::caseSensitive() const
 {
@@ -606,8 +573,6 @@ bool QAbstractFileEngine::caseSensitive() const
 /*!
     Return true if the file referred to by this file engine has a
     relative path; otherwise return false.
-
-    This virtual function must be reimplemented by all subclasses.
 
     \sa setFileName()
  */
@@ -625,19 +590,35 @@ bool QAbstractFileEngine::isRelativePath() const
     rather than a directory, or if the directory is unreadable or does
     not exist or if nothing matches the specifications.
 
-    This virtual function must be reimplemented by all subclasses.
-
     \sa setFileName()
  */
 QStringList QAbstractFileEngine::entryList(QDir::Filters filters, const QStringList &filterNames) const
 {
     QStringList ret;
-    QDirIterator it(fileName(), filterNames, filters);
-    while (it.hasNext()) {
-        it.next();
-        ret << it.fileName();
-    }
+#ifdef QT_BOOTSTRAPPED
+    Q_UNUSED(filters);
+    Q_UNUSED(filterNames);
+    Q_UNREACHABLE_RETURN(ret);
+#else
+    for (const auto &dirEntry : QDirListing(fileName(), filterNames, filters.toInt()))
+        ret.emplace_back(dirEntry.fileName());
     return ret;
+#endif
+}
+
+QStringList QAbstractFileEngine::entryList(QDirListing::IteratorFlags filters,
+                                           const QStringList &filterNames) const
+{
+    QStringList ret;
+#ifdef QT_BOOTSTRAPPED
+    Q_UNUSED(filters);
+    Q_UNUSED(filterNames);
+    Q_UNREACHABLE_RETURN(ret);
+#else
+    for (const auto &dirEntry : QDirListing(fileName(), filterNames, filters))
+        ret.emplace_back(dirEntry.fileName());
+    return ret;
+#endif
 }
 
 /*!
@@ -650,8 +631,6 @@ QStringList QAbstractFileEngine::entryList(QDir::Filters filters, const QStringL
     true and that match those in \a type; in other words you can
     ignore any members not mentioned in \a type, thus avoiding some
     potentially expensive lookups or system calls.
-
-    This virtual function must be reimplemented by all subclasses.
 
     \sa setFileName()
 */
@@ -667,8 +646,6 @@ QAbstractFileEngine::FileFlags QAbstractFileEngine::fileFlags(FileFlags type) co
     QAbstractFileEngine::FileInfo, with only the QAbstractFileEngine::PermsMask being
     honored. If the operations succceeds return true; otherwise return
     false;
-
-    This virtual function must be reimplemented by all subclasses.
 
     \sa size()
 */
@@ -697,8 +674,6 @@ QByteArray QAbstractFileEngine::id() const
     file name set in setFileName() when an unhandled format is
     requested.
 
-    This virtual function must be reimplemented by all subclasses.
-
     \sa setFileName(), FileName
  */
 QString QAbstractFileEngine::fileName(FileName file) const
@@ -711,8 +686,6 @@ QString QAbstractFileEngine::fileName(FileName file) const
     If \a owner is \c OwnerUser return the ID of the user who owns
     the file. If \a owner is \c OwnerGroup return the ID of the group
     that own the file. If you can't determine the owner return -2.
-
-    This virtual function must be reimplemented by all subclasses.
 
     \sa owner(), setFileName(), FileOwner
  */
@@ -727,8 +700,6 @@ uint QAbstractFileEngine::ownerId(FileOwner owner) const
     the file. If \a owner is \c OwnerGroup return the name of the group
     that own the file. If you can't determine the owner return
     QString().
-
-    This virtual function must be reimplemented by all subclasses.
 
     \sa ownerId(), setFileName(), FileOwner
  */
@@ -745,11 +716,9 @@ QString QAbstractFileEngine::owner(FileOwner owner) const
     Sets the file \a time to \a newDate, returning true if successful;
     otherwise returns false.
 
-    This virtual function must be reimplemented by all subclasses.
-
     \sa fileTime()
 */
-bool QAbstractFileEngine::setFileTime(const QDateTime &newDate, FileTime time)
+bool QAbstractFileEngine::setFileTime(const QDateTime &newDate, QFile::FileTime time)
 {
     Q_UNUSED(newDate);
     Q_UNUSED(time);
@@ -764,11 +733,9 @@ bool QAbstractFileEngine::setFileTime(const QDateTime &newDate, FileTime time)
     most recently accessed (e.g. read or written). If the time cannot be
     determined return QDateTime() (an invalid date time).
 
-    This virtual function must be reimplemented by all subclasses.
-
     \sa setFileName(), QDateTime, QDateTime::isValid(), FileTime
  */
-QDateTime QAbstractFileEngine::fileTime(FileTime time) const
+QDateTime QAbstractFileEngine::fileTime(QFile::FileTime time) const
 {
     Q_UNUSED(time);
     return QDateTime();
@@ -777,8 +744,6 @@ QDateTime QAbstractFileEngine::fileTime(FileTime time) const
 /*!
     Sets the file engine's file name to \a file. This file name is the
     file that the rest of the virtual functions will operate on.
-
-    This virtual function must be reimplemented by all subclasses.
 
     \sa rename()
  */
@@ -832,10 +797,7 @@ bool QAbstractFileEngine::atEnd() const
 
 uchar *QAbstractFileEngine::map(qint64 offset, qint64 size, QFile::MemoryMapFlags flags)
 {
-    MapExtensionOption option;
-    option.offset = offset;
-    option.size = size;
-    option.flags = flags;
+    const MapExtensionOption option(offset, size, flags);
     MapExtensionReturn r;
     if (!extension(MapExtension, &option, &r))
         return nullptr;
@@ -856,8 +818,7 @@ uchar *QAbstractFileEngine::map(qint64 offset, qint64 size, QFile::MemoryMapFlag
  */
 bool QAbstractFileEngine::unmap(uchar *address)
 {
-    UnMapExtensionOption options;
-    options.address = address;
+    const UnMapExtensionOption options(address);
     return extension(UnMapExtension, &options);
 }
 
@@ -884,11 +845,12 @@ bool QAbstractFileEngine::cloneTo(QAbstractFileEngine *target)
     \internal
 
     If all you want is to iterate over entries in a directory, see
-    QDirIterator instead. This class is only for custom file engine authors.
+    QDirListing instead. This class is useful only for custom file engine
+    authors.
 
     QAbstractFileEngineIterator is a unidirectional single-use virtual
-    iterator that plugs into QDirIterator, providing transparent proxy
-    iteration for custom file engines.
+    iterator that plugs into QDirListing, providing transparent proxy
+    iteration for custom file engines (for example, QResourceFileEngine).
 
     You can subclass QAbstractFileEngineIterator to provide an iterator when
     writing your own file engine. To plug the iterator into your file system,
@@ -909,10 +871,11 @@ bool QAbstractFileEngine::cloneTo(QAbstractFileEngine *target)
     You can call dirName() to get the directory name, nameFilters() to get a
     stringlist of name filters, and filters() to get the entry filters.
 
-    The pure virtual function hasNext() returns \c true if the current directory
-    has at least one more entry (i.e., the directory name is valid and
-    accessible, and we have not reached the end of the entry list), and false
-    otherwise. Reimplement next() to seek to the next entry.
+    The pure virtual function advance(), as its name implies, advances the
+    iterator to the next entry in the current directory; if the operation
+    was successful this method returns \c true, otherwise it returns \c
+    false. You have to reimplement this function in your sub-class to work
+    with your file engine implementation.
 
     The pure virtual function currentFileName() returns the name of the
     current entry without advancing the iterator. The currentFilePath()
@@ -927,15 +890,7 @@ bool QAbstractFileEngine::cloneTo(QAbstractFileEngine *target)
     Note: QAbstractFileEngineIterator does not deal with QDir::IteratorFlags;
     it simply returns entries for a single directory.
 
-    \sa QDirIterator
-*/
-
-/*!
-    \enum QAbstractFileEngineIterator::EntryInfoType
-    \internal
-
-    This enum describes the different types of information that can be
-    requested through the QAbstractFileEngineIterator::entryInfo() function.
+    \sa QDirListing
 */
 
 /*!
@@ -945,56 +900,54 @@ bool QAbstractFileEngine::cloneTo(QAbstractFileEngine *target)
     Synonym for QAbstractFileEngineIterator.
 */
 
-class QAbstractFileEngineIteratorPrivate
-{
-public:
-    QString path;
-    QDir::Filters filters;
-    QStringList nameFilters;
-    QFileInfo fileInfo;
-};
+/*!
+    \typedef QAbstractFileEngine::IteratorUniquePtr
+    \since 6.8
+
+    Synonym for std::unique_ptr<Iterator> (that is a
+    std::unique_ptr<QAbstractFileEngineIterator>).
+*/
 
 /*!
     Constructs a QAbstractFileEngineIterator, using the entry filters \a
     filters, and wildcard name filters \a nameFilters.
 */
-QAbstractFileEngineIterator::QAbstractFileEngineIterator(QDir::Filters filters,
+QAbstractFileEngineIterator::QAbstractFileEngineIterator(const QString &path, QDir::Filters filters,
                                                          const QStringList &nameFilters)
-    : d(new QAbstractFileEngineIteratorPrivate)
+    : m_filters(filters),
+      m_nameFilters(nameFilters),
+      m_path(appendSlashIfNeeded(path))
 {
-    d->nameFilters = nameFilters;
-    d->filters = filters;
+}
+
+QAbstractFileEngineIterator::QAbstractFileEngineIterator(const QString &path,
+                                                         QDirListing::IteratorFlags filters,
+                                                         const QStringList &nameFilters)
+    : m_listingFilters(filters),
+      m_nameFilters(nameFilters),
+      m_path(appendSlashIfNeeded(path))
+{
 }
 
 /*!
     Destroys the QAbstractFileEngineIterator.
 
-    \sa QDirIterator
+    \sa QDirListing
 */
 QAbstractFileEngineIterator::~QAbstractFileEngineIterator()
 {
 }
 
 /*!
-    Returns the path for this iterator. QDirIterator is responsible for
-    assigning this path; it cannot change during the iterator's lifetime.
+
+    Returns the path for this iterator. The path is set by beginEntryList().
+    The path should't be changed once iteration begins.
 
     \sa nameFilters(), filters()
 */
 QString QAbstractFileEngineIterator::path() const
 {
-    return d->path;
-}
-
-/*!
-    \internal
-
-    Sets the iterator path to \a path. This function is called from within
-    QDirIterator.
-*/
-void QAbstractFileEngineIterator::setPath(const QString &path)
-{
-    d->path = path;
+    return m_path;
 }
 
 /*!
@@ -1004,7 +957,7 @@ void QAbstractFileEngineIterator::setPath(const QString &path)
 */
 QStringList QAbstractFileEngineIterator::nameFilters() const
 {
-    return d->nameFilters;
+    return m_nameFilters;
 }
 
 /*!
@@ -1014,7 +967,7 @@ QStringList QAbstractFileEngineIterator::nameFilters() const
 */
 QDir::Filters QAbstractFileEngineIterator::filters() const
 {
-    return d->filters;
+    return m_filters;
 }
 
 /*!
@@ -1035,15 +988,10 @@ QDir::Filters QAbstractFileEngineIterator::filters() const
 QString QAbstractFileEngineIterator::currentFilePath() const
 {
     QString name = currentFileName();
-    if (!name.isNull()) {
-        QString tmp = path();
-        if (!tmp.isEmpty()) {
-            if (!tmp.endsWith(QLatin1Char('/')))
-                tmp.append(QLatin1Char('/'));
-            name.prepend(tmp);
-        }
-    }
-    return name;
+    if (name.isNull())
+        return name;
+
+    return path() + name;
 }
 
 /*!
@@ -1058,75 +1006,42 @@ QString QAbstractFileEngineIterator::currentFilePath() const
 QFileInfo QAbstractFileEngineIterator::currentFileInfo() const
 {
     QString path = currentFilePath();
-    if (d->fileInfo.filePath() != path)
-        d->fileInfo.setFile(path);
+    if (m_fileInfo.filePath() != path)
+        m_fileInfo.setFile(path);
 
     // return a shallow copy
-    return d->fileInfo;
+    return m_fileInfo;
 }
 
 /*!
-    \internal
-
-    Returns the entry info \a type for this iterator's current directory entry
-    as a QVariant. If \a type is undefined for this entry, a null QVariant is
-    returned.
-
-    \sa QAbstractFileEngine::beginEntryList(), QDir::beginEntryList()
-*/
-QVariant QAbstractFileEngineIterator::entryInfo(EntryInfoType type) const
-{
-    Q_UNUSED(type)
-    return QVariant();
-}
-
-/*!
-    \fn virtual QString QAbstractFileEngineIterator::next() = 0
+    \fn virtual bool QAbstractFileEngineIterator::advance() = 0
 
     This pure virtual function advances the iterator to the next directory
-    entry, and returns the file path to the current entry.
+    entry; if the operation was successful this method returns \c true,
+    otherwise it returs \c false.
 
     This function can optionally make use of nameFilters() and filters() to
     optimize its performance.
 
     Reimplement this function in a subclass to advance the iterator.
-
-    \sa QDirIterator::next()
 */
 
 /*!
-    \fn virtual bool QAbstractFileEngineIterator::hasNext() const = 0
+    Returns a QAbstractFileEngine::IteratorUniquePtr, that can be used
+    to iterate over the entries in \a path, using \a filters for entry
+    filtering and \a filterNames for name filtering. This function is called
+    by QDirListing to initiate directory iteration.
 
-    This pure virtual function returns \c true if there is at least one more
-    entry in the current directory (i.e., the iterator path is valid and
-    accessible, and the iterator has not reached the end of the entry list).
-
-    \sa QDirIterator::hasNext()
+    \sa QDirListing
 */
-
-/*!
-    Returns an instance of a QAbstractFileEngineIterator using \a filters for
-    entry filtering and \a filterNames for name filtering. This function is
-    called by QDirIterator to initiate directory iteration.
-
-    QDirIterator takes ownership of the returned instance, and deletes it when
-    it's done.
-
-    \sa QDirIterator
-*/
-QAbstractFileEngine::Iterator *QAbstractFileEngine::beginEntryList(QDir::Filters filters, const QStringList &filterNames)
+QAbstractFileEngine::IteratorUniquePtr
+QAbstractFileEngine::beginEntryList(const QString &path, QDirListing::IteratorFlags filters,
+                                    const QStringList &filterNames)
 {
+    Q_UNUSED(path);
     Q_UNUSED(filters);
     Q_UNUSED(filterNames);
-    return nullptr;
-}
-
-/*!
-    \internal
-*/
-QAbstractFileEngine::Iterator *QAbstractFileEngine::endEntryList()
-{
-    return nullptr;
+    return {};
 }
 
 /*!
@@ -1199,7 +1114,7 @@ qint64 QAbstractFileEngine::readLine(char *data, qint64 maxlen)
    QIODevice can provide a faster implementation by making use of its
    internal buffer. For engines that already provide a fast readLine()
    implementation, returning false for this extension can avoid
-   unnnecessary double-buffering in QIODevice.
+   unnecessary double-buffering in QIODevice.
 
    \value MapExtension Whether the file engine provides the ability to map
    a file to memory.

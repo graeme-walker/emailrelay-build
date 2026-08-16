@@ -1,45 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include <QtTest/qtest.h>
 
-#include <QtTest/QtTest>
-#include <qlayout.h>
-#include <qapplication.h>
-#include <qwidget.h>
-#include <qproxystyle.h>
-#include <qsizepolicy.h>
-//#include <QtGui>
+#include <QtWidgets/qapplication.h>
+#include <QtWidgets/qlabel.h>
+#include <QtWidgets/qlayout.h>
+#include <QtWidgets/qlineedit.h>
+#include <QtWidgets/qproxystyle.h>
+#include <QtWidgets/qradiobutton.h>
+#include <QtWidgets/qsizepolicy.h>
+#include <QtWidgets/qstylefactory.h>
 
-#include <QtWidgets/QLabel>
-#include <QtWidgets/QLineEdit>
-#include <QtWidgets/QRadioButton>
-#include <QStyleFactory>
-#include <QSharedPointer>
+#include <QtCore/qsharedpointer.h>
 
 #include <QtTest/private/qtesthelpers_p.h>
 
@@ -75,6 +48,7 @@ private slots:
     void taskQTBUG_40609_addingWidgetToItsOwnLayout();
     void taskQTBUG_40609_addingLayoutToItself();
     void taskQTBUG_52357_spacingWhenItemIsHidden();
+    void taskQTBUG_91261_itemIndexRange();
     void replaceWidget();
     void dontCrashWhenExtendsToEnd();
 };
@@ -82,7 +56,8 @@ private slots:
 static inline int visibleTopLevelWidgetCount()
 {
     int result= 0;
-    foreach (const QWidget *topLevel, QApplication::topLevelWidgets()) {
+    const auto topLevels = QApplication::topLevelWidgets();
+    for (const QWidget *topLevel : topLevels) {
         if (topLevel->isVisible())
             ++result;
     }
@@ -234,6 +209,9 @@ void tst_QGridLayout::badDistributionBug()
 
 void tst_QGridLayout::setMinAndMaxSize()
 {
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
+        QSKIP("This test crashes on Wayland, see also QTBUG-107184");
+
     QWidget widget;
     setFrameless(&widget);
     QGridLayout layout(&widget);
@@ -381,12 +359,12 @@ void tst_QGridLayout::setMinAndMaxSize()
 class SizeHinter : public QWidget
 {
 public:
-    SizeHinter(const QSize &s, QWidget *parent = 0)
+    SizeHinter(const QSize &s, QWidget *parent = nullptr)
         : QWidget(parent), sh(s) { }
-    SizeHinter(int w, int h, QWidget *parent = 0)
+    SizeHinter(int w, int h, QWidget *parent = nullptr)
         : QWidget(parent), sh(QSize(w,h)) {}
     void setSizeHint(QSize s) { sh = s; }
-    QSize sizeHint() const { return sh; }
+    QSize sizeHint() const override { return sh; }
 private:
     QSize sh;
 };
@@ -449,33 +427,33 @@ class Qt42Style : public QProxyStyle
 public:
     Qt42Style() : QProxyStyle(QStyleFactory::create("windows"))
     {
-        spacing = 6;
-        margin = 9;
-        margin_toplevel = 11;
     }
 
-    virtual int pixelMetric(PixelMetric metric, const QStyleOption * option = 0,
-                            const QWidget * widget = 0 ) const;
+    virtual int pixelMetric(PixelMetric metric, const QStyleOption * option = nullptr,
+                            const QWidget * widget = nullptr ) const override;
 
-    int spacing;
-    int margin;
-    int margin_toplevel;
+    int spacing = 6;
+    int margin = 9;
+    int margin_toplevel = 11;
 
 };
 
-int Qt42Style::pixelMetric(PixelMetric metric, const QStyleOption * option /*= 0*/,
-                                   const QWidget * widget /*= 0*/ ) const
+int Qt42Style::pixelMetric(PixelMetric metric, const QStyleOption * option,
+                           const QWidget * widget) const
 {
     switch (metric) {
-        case PM_DefaultLayoutSpacing:
-            return spacing;
-        break;
-        case PM_DefaultTopLevelMargin:
-            return margin_toplevel;
-        break;
-        case PM_DefaultChildMargin:
+        case PM_LayoutLeftMargin:
+        case PM_LayoutRightMargin:
+        case PM_LayoutTopMargin:
+        case PM_LayoutBottomMargin:
+            if (option && option->state & State_Window)
+                return margin_toplevel;
+            if (widget && widget->isWindow())
+                return margin_toplevel;
             return margin;
-        break;
+        case PM_LayoutHorizontalSpacing:
+        case PM_LayoutVerticalSpacing:
+            return spacing;
         default:
             break;
     }
@@ -489,7 +467,7 @@ typedef QList<QPoint> PointList;
 class SizeHinterFrame : public QLabel
 {
 public:
-    SizeHinterFrame(QWidget *parent = 0)
+    SizeHinterFrame(QWidget *parent = nullptr)
     : QLabel(parent)
     {
         init(-1);
@@ -508,11 +486,11 @@ public:
     }
 
     void setSizeHint(const QSize &s) { sh = s; }
-    QSize sizeHint() const { return sh; }
+    QSize sizeHint() const override { return sh; }
     void setMinimumSizeHint(const QSize &s) { msh = s; }
-    QSize minimumSizeHint() const { return msh; }
+    QSize minimumSizeHint() const override { return msh; }
 
-    virtual int heightForWidth(int width) const;
+    virtual int heightForWidth(int width) const override;
 
     void setNumberOfPixels(int numPixels) {
         m_numPixels = numPixels;
@@ -682,7 +660,7 @@ void tst_QGridLayout::spacingsAndMargins()
         QSKIP("The screen is too small to run this test case");
 
 // We are relying on the order here...
-    for (int pi = 0; pi < sizehinters.count(); ++pi) {
+    for (int pi = 0; pi < sizehinters.size(); ++pi) {
         QPoint pt = sizehinters.at(pi)->mapTo(&toplevel, QPoint(0, 0));
         QCOMPARE(pt, expectedpositions.at(pi));
     }
@@ -852,7 +830,7 @@ void tst_QGridLayout::minMaxSize()
         QList<QPointer<SizeHinterFrame> > sizehinters;
         for (int i = 0; i < rows; ++i) {
             for (int j = 0; j < columns; ++j) {
-                SizeInfo si = sizeinfos.at(sizehinters.count());
+                SizeInfo si = sizeinfos.at(sizehinters.size());
                 int numpixels = si.hfwNumPixels;
                 if (pass == 1 && numpixels == -1)
                     numpixels = -2; //### yuk, (and don't fake it if it already tests sizehint)
@@ -881,7 +859,7 @@ void tst_QGridLayout::minMaxSize()
             QTRY_COMPARE(toplevel.size(), toplevel.sizeHint());
         }
         // We are relying on the order here...
-        for (int pi = 0; pi < sizehinters.count(); ++pi) {
+        for (int pi = 0; pi < sizehinters.size(); ++pi) {
             QPoint pt = sizehinters.at(pi)->mapTo(&toplevel, QPoint(0, 0));
             QCOMPARE(pt, sizeinfos.at(pi).expectedPos);
         }
@@ -900,10 +878,10 @@ public:
         reimplementSubelementRect = false;
     }
 
-    virtual int pixelMetric(PixelMetric metric, const QStyleOption * option = 0,
-                            const QWidget * widget = 0 ) const;
+    virtual int pixelMetric(PixelMetric metric, const QStyleOption * option = nullptr,
+                            const QWidget * widget = nullptr ) const override;
     virtual QRect subElementRect(SubElement sr, const QStyleOption *opt,
-                                const QWidget *widget) const;
+                                const QWidget *widget) const override;
 
     int hspacing;
     int vspacing;
@@ -912,8 +890,8 @@ public:
     int layoutSpacing(QSizePolicy::ControlType control1,
                       QSizePolicy::ControlType control2,
                       Qt::Orientation orientation,
-                      const QStyleOption *option = 0,
-                      const QWidget *widget = 0) const;
+                      const QStyleOption *option = nullptr,
+                      const QWidget *widget = nullptr) const override;
 
 };
 
@@ -945,8 +923,8 @@ QRect CustomLayoutStyle::subElementRect(SubElement sr, const QStyleOption *opt,
 int CustomLayoutStyle::layoutSpacing(QSizePolicy::ControlType control1,
                                 QSizePolicy::ControlType control2,
                                 Qt::Orientation orientation,
-                                const QStyleOption * /*option = 0*/,
-                                const QWidget * /*widget = 0*/) const
+                                const QStyleOption * /*option = nullptr*/,
+                                const QWidget * /*widget = nullptr*/) const
 {
     if (orientation == Qt::Horizontal) {
         switch (CT2(control1, control2)) {
@@ -966,8 +944,8 @@ int CustomLayoutStyle::layoutSpacing(QSizePolicy::ControlType control1,
     }
 }
 
-int CustomLayoutStyle::pixelMetric(PixelMetric metric, const QStyleOption * option /*= 0*/,
-                                   const QWidget * widget /*= 0*/ ) const
+int CustomLayoutStyle::pixelMetric(PixelMetric metric, const QStyleOption * option /*= nullptr*/,
+                                   const QWidget * widget /*= nullptr*/ ) const
 {
     switch (metric) {
         case PM_LayoutLeftMargin:
@@ -1051,7 +1029,7 @@ void tst_QGridLayout::styleDependentSpacingsAndMargins()
     widget.adjustSize();
     QApplication::processEvents();
 
-    for (int pi = 0; pi < expectedpositions.count(); ++pi) {
+    for (int pi = 0; pi < expectedpositions.size(); ++pi) {
         QCOMPARE(sizehinters.at(pi)->pos(), expectedpositions.at(pi));
     }
 }
@@ -1441,7 +1419,7 @@ void tst_QGridLayout::layoutSpacing()
 
     QLayout *layout = widget->layout();
     QVERIFY(layout);
-    for (int pi = 0; pi < expectedpositions.count(); ++pi) {
+    for (int pi = 0; pi < expectedpositions.size(); ++pi) {
         QLayoutItem *item = layout->itemAt(pi);
         //qDebug()  << item->widget()->pos();
         QCOMPARE(item->widget()->pos(), expectedpositions.at(pi));
@@ -1664,6 +1642,56 @@ void tst_QGridLayout::taskQTBUG_52357_spacingWhenItemIsHidden()
     int tempWidth = button1.width() + button2.width() + button3.width() + 2 * layout.spacing();
     button2.hide();
     QTRY_COMPARE_WITH_TIMEOUT(tempWidth, button1.width() + button3.width() + layout.spacing(), 1000);
+}
+
+void tst_QGridLayout::taskQTBUG_91261_itemIndexRange()
+{
+    QWidget widget;
+    QGridLayout lay(&widget);
+    QPushButton *btn = new QPushButton(&widget);
+    lay.addWidget(btn, 0, 0);
+
+    {
+        auto ptr = lay.itemAt(-1);
+        QCOMPARE(ptr, nullptr);
+
+        ptr = lay.itemAt(0);
+        QCOMPARE(ptr->widget(), btn);
+
+        ptr = lay.itemAt(1);
+        QCOMPARE(ptr, nullptr);
+    }
+
+    {
+        int row = -1;
+        int column = -1;
+        int rowSpan;
+        int columnSpan;
+
+        lay.getItemPosition(-1, &row, &column, &rowSpan, &columnSpan);
+        QCOMPARE(row, -1);
+        QCOMPARE(column, -1);
+
+        lay.getItemPosition(1, &row, &column, &rowSpan, &columnSpan);
+        QCOMPARE(row, -1);
+        QCOMPARE(column, -1);
+
+        lay.getItemPosition(0, &row, &column, &rowSpan, &columnSpan);
+        QCOMPARE(row, 0);
+        QCOMPARE(column, 0);
+    }
+
+    {
+        auto ptr = lay.takeAt(-1);
+        QCOMPARE(ptr, nullptr);
+
+        ptr = lay.takeAt(1);
+        QCOMPARE(ptr, nullptr);
+
+        ptr = lay.takeAt(0);
+        QCOMPARE(ptr->widget(), btn);
+        delete ptr;
+    }
 }
 
 void tst_QGridLayout::replaceWidget()

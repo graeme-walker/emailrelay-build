@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QFILEINFO_P_H
 #define QFILEINFO_P_H
@@ -81,6 +45,8 @@ public:
         CachedPerms             = 0x100
     };
 
+    static QFileInfoPrivate *get(QFileInfo *fi) { return fi->d_func(); }
+
     inline QFileInfoPrivate()
         : QSharedData(), fileEngine(nullptr),
         cachedFlags(0),
@@ -91,7 +57,7 @@ public:
         : QSharedData(copy),
         fileEntry(copy.fileEntry),
         metaData(copy.metaData),
-        fileEngine(QFileSystemEngine::resolveEntryAndCreateLegacyEngine(fileEntry, metaData)),
+        fileEngine(QFileSystemEngine::createLegacyEngine(fileEntry, metaData)),
         cachedFlags(0),
 #ifndef QT_NO_FSFILEENGINE
         isDefaultConstructed(false),
@@ -101,8 +67,8 @@ public:
         cache_enabled(copy.cache_enabled), fileFlags(0), fileSize(0)
     {}
     inline QFileInfoPrivate(const QString &file)
-        : fileEntry(QDir::fromNativeSeparators(file)),
-        fileEngine(QFileSystemEngine::resolveEntryAndCreateLegacyEngine(fileEntry, metaData)),
+        : fileEntry(file),
+        fileEngine(QFileSystemEngine::createLegacyEngine(fileEntry, metaData)),
         cachedFlags(0),
 #ifndef QT_NO_FSFILEENGINE
         isDefaultConstructed(file.isEmpty()),
@@ -117,7 +83,7 @@ public:
         : QSharedData(),
         fileEntry(file),
         metaData(data),
-        fileEngine(QFileSystemEngine::resolveEntryAndCreateLegacyEngine(fileEntry, metaData)),
+        fileEngine(QFileSystemEngine::createLegacyEngine(fileEntry, metaData)),
         cachedFlags(0),
         isDefaultConstructed(false),
         cache_enabled(true), fileFlags(0), fileSize(0)
@@ -158,7 +124,7 @@ public:
     }
 
     uint getFileFlags(QAbstractFileEngine::FileFlags) const;
-    QDateTime &getFileTime(QAbstractFileEngine::FileTime) const;
+    QDateTime &getFileTime(QFile::FileTime) const;
     QString getFileName(QAbstractFileEngine::FileName) const;
     QString getFileOwner(QAbstractFileEngine::FileOwner own) const;
 
@@ -169,7 +135,7 @@ public:
 
     mutable QString fileNames[QAbstractFileEngine::NFileNames];
     mutable QString fileOwners[2];  // QAbstractFileEngine::FileOwner: OwnerUser and OwnerGroup
-    mutable QDateTime fileTimes[4]; // QAbstractFileEngine::FileTime: BirthTime, MetadataChangeTime, ModificationTime, AccessTime
+    mutable QDateTime fileTimes[4]; // QFile::FileTime: FileBirthTime, FileMetadataChangeTime, FileModificationTime, FileAccessTime
 
     mutable uint cachedFlags : 30;
     bool const isDefaultConstructed : 1; // QFileInfo is a default constructed instance
@@ -182,8 +148,8 @@ public:
     { if (cache_enabled) cachedFlags |= c; }
 
     template <typename Ret, typename FSLambda, typename EngineLambda>
-    Ret checkAttribute(Ret defaultValue, QFileSystemMetaData::MetaDataFlags fsFlags, const FSLambda &fsLambda,
-                       const EngineLambda &engineLambda) const
+    Ret checkAttribute(Ret defaultValue, QFileSystemMetaData::MetaDataFlags fsFlags,
+                       FSLambda fsLambda, EngineLambda engineLambda) const
     {
         if (isDefaultConstructed)
             return defaultValue;
@@ -197,10 +163,10 @@ public:
     }
 
     template <typename Ret, typename FSLambda, typename EngineLambda>
-    Ret checkAttribute(QFileSystemMetaData::MetaDataFlags fsFlags, const FSLambda &fsLambda,
-                       const EngineLambda &engineLambda) const
+    Ret checkAttribute(QFileSystemMetaData::MetaDataFlags fsFlags, FSLambda fsLambda,
+                       EngineLambda engineLambda) const
     {
-        return checkAttribute(Ret(), fsFlags, fsLambda, engineLambda);
+        return checkAttribute(Ret(), std::move(fsFlags), std::move(fsLambda), engineLambda);
     }
 };
 

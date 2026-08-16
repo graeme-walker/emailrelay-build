@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtTest module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtTest/qtestcase.h>
 #include <QtTest/qtestassert.h>
@@ -51,7 +15,7 @@ QT_BEGIN_NAMESPACE
   */
 Qt::Key QTest::asciiToKey(char ascii)
 {
-    switch ((unsigned char)ascii) {
+    switch (static_cast<unsigned char>(ascii)) {
     case 0x08: return Qt::Key_Backspace;
     case 0x09: return Qt::Key_Tab;
     case 0x0b: return Qt::Key_Backtab;
@@ -177,7 +141,7 @@ Qt::Key QTest::asciiToKey(char ascii)
     case 0xb2: return Qt::Key_twosuperior;
     case 0xb3: return Qt::Key_threesuperior;
     case 0xb4: return Qt::Key_acute;
-    case 0xb5: return Qt::Key_mu;
+    case 0xb5: return Qt::Key_micro;
     case 0xb6: return Qt::Key_paragraph;
     case 0xb7: return Qt::Key_periodcentered;
     case 0xb8: return Qt::Key_cedilla;
@@ -405,7 +369,7 @@ char QTest::keyToAscii(Qt::Key key)
     case Qt::Key_twosuperior: return char(0xb2);
     case Qt::Key_threesuperior: return char(0xb3);
     case Qt::Key_acute: return char(0xb4);
-    case Qt::Key_mu: return char(0xb5);
+    case Qt::Key_micro: return char(0xb5);
     case Qt::Key_paragraph: return char(0xb6);
     case Qt::Key_periodcentered: return char(0xb7);
     case Qt::Key_cedilla: return char(0xb8);
@@ -497,6 +461,11 @@ char QTest::keyToAscii(Qt::Key key)
     case Qt::Key_LaunchD : return 0; // = 0x10af,
     case Qt::Key_LaunchE : return 0; // = 0x10b0,
     case Qt::Key_LaunchF : return 0; // = 0x10b1,
+
+    // Keypad navigation keys
+    case Qt::Key_Select : return 0; // = 0x01010000
+    case Qt::Key_Yes : return 0; // = 0x01010001
+    case Qt::Key_No : return 0; // = 0x01010002
 
     default: QTEST_ASSERT(false); return 0;
     }

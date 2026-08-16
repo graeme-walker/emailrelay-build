@@ -1,55 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWINDOWSWINDOW_H
 #define QWINDOWSWINDOW_H
 
 #include <QtCore/qt_windows.h>
 #include <QtCore/qpointer.h>
+#include "qwindowsapplication.h"
 #include "qwindowscursor.h"
 
 #include <qpa/qplatformwindow.h>
-#include <QtPlatformHeaders/qwindowswindowfunctions.h>
+#include <qpa/qplatformwindow_p.h>
 
 #if QT_CONFIG(vulkan)
 #include "qwindowsvulkaninstance.h"
 #endif
+
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 
@@ -59,10 +26,11 @@ class QDebug;
 
 struct QWindowsGeometryHint
 {
-    static QMargins frameOnPrimaryScreen(DWORD style, DWORD exStyle);
-    static QMargins frameOnPrimaryScreen(HWND hwnd);
-    static QMargins frame(DWORD style, DWORD exStyle, qreal dpi);
-    static QMargins frame(HWND hwnd, DWORD style, DWORD exStyle);
+    static QMargins frameOnPrimaryScreen(const QWindow *w, DWORD style, DWORD exStyle);
+    static QMargins frameOnPrimaryScreen(const QWindow *w, HWND hwnd);
+    static QMargins frame(const QWindow *w, DWORD style, DWORD exStyle, qreal dpi);
+    static QMargins frame(const QWindow *w, HWND hwnd, DWORD style, DWORD exStyle);
+    static QMargins frame(const QWindow *w, HWND hwnd);
     static QMargins frame(const QWindow *w, const QRect &geometry,
                           DWORD style, DWORD exStyle);
     static bool handleCalculateSize(const QMargins &customMargins, const MSG &msg, LRESULT *result);
@@ -110,6 +78,7 @@ struct QWindowsWindowData
 {
     Qt::WindowFlags flags;
     QRect geometry;
+    QRect restoreGeometry;
     QMargins fullFrameMargins; // Do not use directly for windows, see FrameDirty.
     QMargins customMargins;    // User-defined, additional frame for NCCALCSIZE
     HWND hwnd = nullptr;
@@ -121,10 +90,14 @@ struct QWindowsWindowData
                                      const QString &title);
 };
 
-class QWindowsBaseWindow : public QPlatformWindow
+class QWindowsBaseWindow : public QPlatformWindow,
+                           public QNativeInterface::Private::QWindowsWindow
 {
     Q_DISABLE_COPY_MOVE(QWindowsBaseWindow)
 public:
+    using TouchWindowTouchType = QNativeInterface::Private::QWindowsApplication::TouchWindowTouchType;
+    using TouchWindowTouchTypes = QNativeInterface::Private::QWindowsApplication::TouchWindowTouchTypes;
+
     explicit QWindowsBaseWindow(QWindow *window) : QPlatformWindow(window) {}
 
     WId winId() const override { return WId(handle()); }
@@ -133,6 +106,12 @@ public:
     QPoint mapToGlobal(const QPoint &pos) const override;
     QPoint mapFromGlobal(const QPoint &pos) const override;
     virtual QMargins fullFrameMargins() const { return frameMargins_sys(); }
+
+    void setHasBorderInFullScreen(bool border) override;
+    bool hasBorderInFullScreen() const override;
+
+    QMargins customMargins() const override;
+    void setCustomMargins(const QMargins &margins) override;
 
     using QPlatformWindow::screenForGeometry;
 
@@ -149,10 +128,14 @@ public:
 protected:
     HWND parentHwnd() const { return GetAncestor(handle(), GA_PARENT); }
     bool isTopLevel_sys() const;
+    inline bool hasMaximumHeight() const;
+    inline bool hasMaximumWidth() const;
+    inline bool hasMaximumSize() const;
     QRect frameGeometry_sys() const;
     QRect geometry_sys() const;
     void setGeometry_sys(const QRect &rect) const;
     QMargins frameMargins_sys() const;
+    std::optional<TouchWindowTouchTypes> touchWindowTouchTypes_sys() const;
     void hide_sys();
     void raise_sys();
     void lower_sys();
@@ -179,6 +162,7 @@ class QWindowsForeignWindow : public QWindowsBaseWindow
 {
 public:
     explicit QWindowsForeignWindow(QWindow *window, HWND hwnd);
+    ~QWindowsForeignWindow();
 
     void setParent(const QPlatformWindow *window) override;
     void setGeometry(const QRect &rect) override { setGeometry_sys(rect); }
@@ -205,7 +189,6 @@ public:
         WithinSetParent = 0x2,
         WithinSetGeometry = 0x8,
         OpenGLSurface = 0x10,
-        OpenGL_ES2 = 0x20,
         OpenGLDoubleBuffered = 0x40,
         OpenGlPixelFormatInitialized = 0x80,
         BlockedByModal = 0x100,
@@ -222,10 +205,11 @@ public:
         MaximizeToFullScreen = 0x80000,
         Compositing = 0x100000,
         HasBorderInFullScreen = 0x200000,
-        WithinDpiChanged = 0x400000,
-        VulkanSurface = 0x800000,
-        ResizeMoveActive = 0x1000000,
-        DisableNonClientScaling = 0x2000000
+        VulkanSurface = 0x400000,
+        ResizeMoveActive = 0x800000,
+        DisableNonClientScaling = 0x1000000,
+        Direct3DSurface = 0x2000000,
+        RestoreOverrideCursor = 0x4000000
     };
 
     QWindowsWindow(QWindow *window, const QWindowsWindowData &data);
@@ -239,6 +223,8 @@ public:
     void setGeometry(const QRect &rect) override;
     QRect geometry() const override { return m_data.geometry; }
     QRect normalGeometry() const override;
+    QRect restoreGeometry() const { return m_data.restoreGeometry; }
+    void updateRestoreGeometry();
 
     void setVisible(bool visible) override;
     bool isVisible() const;
@@ -293,18 +279,21 @@ public:
     QWindowsMenuBar *menuBar() const;
     void setMenuBar(QWindowsMenuBar *mb);
 
-    QMargins customMargins() const { return m_data.customMargins; }
-    void setCustomMargins(const QMargins &m);
+    QMargins customMargins() const override;
+    void setCustomMargins(const QMargins &m) override;
 
     void setStyle(unsigned s) const;
     void setExStyle(unsigned s) const;
 
-    bool handleWmPaint(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+    bool handleWmPaint(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, LRESULT *result);
 
     void handleMoved();
-    void handleResized(int wParam);
+    void handleResized(int wParam, LPARAM lParam);
     void handleHidden();
     void handleCompositionSettingsChanged();
+    void handleDpiScaledSize(WPARAM wParam, LPARAM lParam, LRESULT *result);
+    void handleDpiChanged(HWND hwnd, WPARAM wParam, LPARAM lParam);
+    void handleDpiChangedAfterParent(HWND hwnd);
 
     static void displayChanged();
     static void settingsChanged();
@@ -314,6 +303,7 @@ public:
     static inline void *userDataOf(HWND hwnd);
     static inline void setUserDataOf(HWND hwnd, void *ud);
 
+    static bool hasNoNativeFrame(HWND hwnd, Qt::WindowFlags flags);
     static bool setWindowLayered(HWND hwnd, Qt::WindowFlags flags, bool hasAlpha, qreal opacity);
     bool isLayered() const;
 
@@ -338,7 +328,6 @@ public:
 
     void *surface(void *nativeConfig, int *err);
     void invalidateSurface() override;
-    void aboutToMakeCurrent();
 
     void setAlertState(bool enabled) override;
     bool isAlertState() const override { return testFlag(AlertState); }
@@ -348,15 +337,21 @@ public:
     enum ScreenChangeMode { FromGeometryChange, FromDpiChange };
     void checkForScreenChanged(ScreenChangeMode mode = FromGeometryChange);
 
-    static void setTouchWindowTouchTypeStatic(QWindow *window, QWindowsWindowFunctions::TouchWindowTouchTypes touchTypes);
-    void registerTouchWindow(QWindowsWindowFunctions::TouchWindowTouchTypes touchTypes = QWindowsWindowFunctions::NormalTouch);
+    void registerTouchWindow();
     static void setHasBorderInFullScreenStatic(QWindow *window, bool border);
     static void setHasBorderInFullScreenDefault(bool border);
-    void setHasBorderInFullScreen(bool border);
+    void setHasBorderInFullScreen(bool border) override;
+    bool hasBorderInFullScreen() const override;
     static QString formatWindowTitle(const QString &title);
 
     static const char *embeddedNativeParentHandleProperty;
     static const char *hasBorderInFullScreenProperty;
+
+    void setSavedDpi(int dpi) { m_savedDpi = dpi; }
+    int savedDpi() const { return m_savedDpi; }
+    qreal dpiRelativeScale(const UINT dpi) const;
+
+    bool isFrameless() const { return m_data.flags.testFlag(Qt::FramelessWindowHint); }
 
 private:
     inline void show_sys() const;
@@ -375,6 +370,7 @@ private:
     void fireExpose(const QRegion &region, bool force=false);
     void fireFullExpose(bool force=false);
     void calculateFullFrameMargins();
+    void correctWindowPlacement(WINDOWPLACEMENT &windowPlacement);
 
     mutable QWindowsWindowData m_data;
     QPointer<QWindowsMenuBar> m_menuBar;
@@ -391,6 +387,7 @@ private:
     HICON m_iconSmall = nullptr;
     HICON m_iconBig = nullptr;
     void *m_surface = nullptr;
+    int m_savedDpi = 96;
 
     static bool m_screenForGLInitialized;
 
@@ -399,6 +396,7 @@ private:
     VkSurfaceKHR m_vkSurface = VK_NULL_HANDLE;
 #endif
     static bool m_borderInFullScreenDefault;
+    static bool m_inSetgeometry;
 };
 
 #ifndef QT_NO_DEBUG_STREAM

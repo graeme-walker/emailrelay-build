@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qpaintdevice.h"
 
@@ -43,7 +7,6 @@ QT_BEGIN_NAMESPACE
 
 QPaintDevice::QPaintDevice() noexcept
 {
-    reserved = nullptr;
     painters = 0;
 }
 
@@ -54,6 +17,39 @@ QPaintDevice::~QPaintDevice()
                   "painted");
 }
 
+/*!
+    \internal
+*/
+// ### Qt 7: Replace this workaround mechanism: virtual devicePixelRatio() and virtual metricF()
+double QPaintDevice::getDecodedMetricF(PaintDeviceMetric metricA, PaintDeviceMetric metricB) const
+{
+    qint32 buf[2];
+    // The Encoded metric enum values come in pairs of one odd and one even value.
+    // We map those to the 0 and 1 indexes of buf by taking just the least significant bit.
+    // Same mapping here as in the encodeMetricF() function, to ensure correct order.
+    buf[metricA & 1] = metric(metricA);
+    buf[metricB & 1] = metric(metricB);
+    double res;
+    memcpy(&res, buf, sizeof(res));
+    return res;
+}
+
+qreal QPaintDevice::devicePixelRatio() const
+{
+    Q_STATIC_ASSERT((PdmDevicePixelRatioF_EncodedA & 1) != (PdmDevicePixelRatioF_EncodedB & 1));
+    double res;
+    int scaledDpr = metric(PdmDevicePixelRatioScaled);
+    if (scaledDpr == int(devicePixelRatioFScale())) {
+        res = 1; // Shortcut for common case
+    } else if (scaledDpr == 2 * int(devicePixelRatioFScale())) {
+        res = 2; // Shortcut for common case
+    } else {
+        res = getDecodedMetricF(PdmDevicePixelRatioF_EncodedA, PdmDevicePixelRatioF_EncodedB);
+        if (res <= 0) // These metrics not implemented, fall back to PdmDevicePixelRatioScaled
+            res = scaledDpr / devicePixelRatioFScale();
+    }
+    return res;
+}
 
 /*!
     \internal
@@ -89,22 +85,36 @@ int QPaintDevice::metric(PaintDeviceMetric m) const
     // have implemented PdmDevicePixelRatio.
     if (m == PdmDevicePixelRatioScaled)
         return this->metric(PdmDevicePixelRatio) * devicePixelRatioFScale();
+    if (m == PdmNumColors)
+        return 0;
+    if (m == PdmDevicePixelRatio)
+        return 1;
 
     qWarning("QPaintDevice::metrics: Device has no metric information");
 
-    if (m == PdmDpiX) {
+    switch (m) {
+    case PdmDevicePixelRatioScaled:
+    case PdmDevicePixelRatio:
+    case PdmNumColors:
+        Q_UNREACHABLE();
+        break;
+    case PdmDpiX:
+    case PdmDpiY:
         return 72;
-    } else if (m == PdmDpiY) {
-        return 72;
-    } else if (m == PdmNumColors) {
-        // FIXME: does this need to be a real value?
-        return 256;
-    } else if (m == PdmDevicePixelRatio) {
-        return 1;
-    } else {
-        qDebug("Unrecognised metric %d!",m);
+    case PdmDevicePixelRatioF_EncodedA:
+    case PdmDevicePixelRatioF_EncodedB:
+        return 0;
+    case PdmWidth:
+    case PdmHeight:
+    case PdmWidthMM:
+    case PdmHeightMM:
+    case PdmDepth:
+    case PdmPhysicalDpiX:
+    case PdmPhysicalDpiY:
         return 0;
     }
+    qDebug("Unrecognized metric %d!", m);
+    return 0;
 }
 
 QT_END_NAMESPACE

@@ -1,279 +1,25 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qhelpenginecore.h"
 #include "qhelpsearchengine.h"
+#include "qhelpenginecore.h"
+#include "qhelpsearchenginecore.h"
 #include "qhelpsearchquerywidget.h"
 #include "qhelpsearchresultwidget.h"
 
-#include "qhelpsearchindexreader_p.h"
-#include "qhelpsearchindexreader_default_p.h"
-#include "qhelpsearchindexwriter_default_p.h"
-
-#include <QtCore/QDir>
-#include <QtCore/QFile>
-#include <QtCore/QFileInfo>
-#include <QtCore/QVariant>
-#include <QtCore/QThread>
-#include <QtCore/QPointer>
-#include <QtCore/QTimer>
-
 QT_BEGIN_NAMESPACE
 
-using namespace fulltextsearch::qt;
-
-class QHelpSearchResultData : public QSharedData
+class QHelpSearchEnginePrivate
 {
 public:
-    QUrl m_url;
-    QString m_title;
-    QString m_snippet;
-};
-
-/*!
-    \class QHelpSearchResult
-    \since 5.9
-    \inmodule QtHelp
-    \brief The QHelpSearchResult class provides the data associated with the
-    search result.
-
-    The QHelpSearchResult object is a data object that describes a single search result.
-    The vector of search result objects is returned by QHelpSearchEngine::searchResults().
-    The description of the search result contains the document title and URL
-    that the search input matched. It also contains the snippet from
-    the document content containing the best match of the search input.
-    \sa QHelpSearchEngine
-*/
-
-/*!
-    Constructs a new empty QHelpSearchResult.
-*/
-QHelpSearchResult::QHelpSearchResult()
-    : d(new QHelpSearchResultData)
-{
-}
-
-/*!
-    Constructs a copy of \a other.
-*/
-QHelpSearchResult::QHelpSearchResult(const QHelpSearchResult &other)
-    : d(other.d)
-{
-}
-
-/*!
-    Constructs the search result containing \a url, \a title and \a snippet
-    as the description of the result.
-*/
-QHelpSearchResult::QHelpSearchResult(const QUrl &url, const QString &title, const QString &snippet)
-    : d(new QHelpSearchResultData)
-{
-    d->m_url = url;
-    d->m_title = title;
-    d->m_snippet = snippet;
-}
-
-/*!
-    Destroys the search result.
-*/
-QHelpSearchResult::~QHelpSearchResult()
-{
-}
-
-/*!
-    Assigns \a other to this search result and returns a reference to this search result.
-*/
-QHelpSearchResult &QHelpSearchResult::operator=(const QHelpSearchResult &other)
-{
-    d = other.d;
-    return *this;
-}
-
-/*!
-    Returns the document title of the search result.
-*/
-QString QHelpSearchResult::title() const
-{
-    return d->m_title;
-}
-
-/*!
-    Returns the document URL of the search result.
-*/
-QUrl QHelpSearchResult::url() const
-{
-    return d->m_url;
-}
-
-/*!
-    Returns the document snippet containing the search phrase of the search result.
-*/
-QString QHelpSearchResult::snippet() const
-{
-    return d->m_snippet;
-}
-
-
-class QHelpSearchEnginePrivate : public QObject
-{
-    Q_OBJECT
-
-signals:
-    void indexingStarted();
-    void indexingFinished();
-
-    void searchingStarted();
-    void searchingFinished(int searchResultCount);
-
-private:
-    QHelpSearchEnginePrivate(QHelpEngineCore *helpEngine)
-        : helpEngine(helpEngine)
-    {
-    }
-
-    ~QHelpSearchEnginePrivate()
-    {
-        delete indexReader;
-        delete indexWriter;
-    }
-
-    int searchResultCount() const
-    {
-        return indexReader ? indexReader->searchResultCount() : 0;
-    }
-
-    QVector<QHelpSearchResult> searchResults(int start, int end) const
-    {
-        return indexReader ?
-               indexReader->searchResults(start, end) :
-               QVector<QHelpSearchResult>();
-    }
-
-    void updateIndex(bool reindex = false)
-    {
-        if (helpEngine.isNull())
-            return;
-
-        if (!QFile::exists(QFileInfo(helpEngine->collectionFile()).path()))
-            return;
-
-        if (!indexWriter) {
-            indexWriter = new QHelpSearchIndexWriter();
-
-            connect(indexWriter, &QHelpSearchIndexWriter::indexingStarted,
-                    this, &QHelpSearchEnginePrivate::indexingStarted);
-            connect(indexWriter, &QHelpSearchIndexWriter::indexingFinished,
-                    this, &QHelpSearchEnginePrivate::indexingFinished);
-        }
-
-        indexWriter->cancelIndexing();
-        indexWriter->updateIndex(helpEngine->collectionFile(),
-                                 indexFilesFolder(), reindex);
-    }
-
-    void cancelIndexing()
-    {
-        if (indexWriter)
-            indexWriter->cancelIndexing();
-    }
-
-    void search(const QString &searchInput)
-    {
-        if (helpEngine.isNull())
-            return;
-
-        if (!QFile::exists(QFileInfo(helpEngine->collectionFile()).path()))
-            return;
-
-        if (!indexReader) {
-            indexReader = new QHelpSearchIndexReaderDefault();
-            connect(indexReader, &fulltextsearch::QHelpSearchIndexReader::searchingStarted,
-                    this, &QHelpSearchEnginePrivate::searchingStarted);
-            connect(indexReader, &fulltextsearch::QHelpSearchIndexReader::searchingFinished,
-                    this, &QHelpSearchEnginePrivate::searchingFinished);
-        }
-
-        m_searchInput = searchInput;
-        indexReader->cancelSearching();
-        indexReader->search(helpEngine->collectionFile(), indexFilesFolder(),
-                            searchInput, helpEngine->usesFilterEngine());
-    }
-
-    void cancelSearching()
-    {
-        if (indexReader)
-            indexReader->cancelSearching();
-    }
-
-    QString indexFilesFolder() const
-    {
-        QString indexFilesFolder = QLatin1String(".fulltextsearch");
-        if (helpEngine && !helpEngine->collectionFile().isEmpty()) {
-            QFileInfo fi(helpEngine->collectionFile());
-            indexFilesFolder = fi.absolutePath() + QDir::separator()
-                + QLatin1Char('.')
-                + fi.fileName().left(fi.fileName().lastIndexOf(QLatin1String(".qhc")));
-        }
-        return indexFilesFolder;
-    }
-
-private:
-    friend class QHelpSearchEngine;
-
-    bool m_isIndexingScheduled = false;
-
+    QHelpSearchEngineCore m_searchEngine;
     QHelpSearchQueryWidget *queryWidget = nullptr;
     QHelpSearchResultWidget *resultWidget = nullptr;
-
-    fulltextsearch::QHelpSearchIndexReader *indexReader = nullptr;
-    QHelpSearchIndexWriter *indexWriter = nullptr;
-
-    QPointer<QHelpEngineCore> helpEngine;
-
-    QString m_searchInput;
 };
-
-#include "qhelpsearchengine.moc"
 
 /*!
     \class QHelpSearchQuery
-    \obsolete
+    \deprecated
     \since 4.4
     \inmodule QtHelp
     \brief The QHelpSearchQuery class contains the field name and the associated
@@ -306,14 +52,14 @@ private:
 
     \value DEFAULT  the default field provided by the search widget, several terms should be
                     split and stored in the word list except search terms enclosed in quotes.
-    \value FUZZY    \obsolete Terms should be split in separate
+    \value FUZZY    \deprecated Terms should be split in separate
                     words and passed to the search engine.
-    \value WITHOUT  \obsolete  Terms should be split in separate
+    \value WITHOUT  \deprecated  Terms should be split in separate
                     words and passed to the search engine.
-    \value PHRASE   \obsolete  Terms should not be split in separate words.
-    \value ALL      \obsolete  Terms should be split in separate
+    \value PHRASE   \deprecated  Terms should not be split in separate words.
+    \value ALL      \deprecated  Terms should be split in separate
                     words and passed to the search engine
-    \value ATLEAST  \obsolete  Terms should be split in separate
+    \value ATLEAST  \deprecated  Terms should be split in separate
                     words and passed to the search engine
 */
 
@@ -386,20 +132,16 @@ private:
 */
 QHelpSearchEngine::QHelpSearchEngine(QHelpEngineCore *helpEngine, QObject *parent)
     : QObject(parent)
+      , d(new QHelpSearchEnginePrivate{QHelpSearchEngineCore(helpEngine)})
 {
-    d = new QHelpSearchEnginePrivate(helpEngine);
-
-    connect(helpEngine, &QHelpEngineCore::setupFinished,
-            this, &QHelpSearchEngine::scheduleIndexDocumentation);
-
-    connect(d, &QHelpSearchEnginePrivate::indexingStarted,
+    connect(&d->m_searchEngine, &QHelpSearchEngineCore::indexingStarted,
             this, &QHelpSearchEngine::indexingStarted);
-    connect(d, &QHelpSearchEnginePrivate::indexingFinished,
+    connect(&d->m_searchEngine, &QHelpSearchEngineCore::indexingFinished,
             this, &QHelpSearchEngine::indexingFinished);
-    connect(d, &QHelpSearchEnginePrivate::searchingStarted,
+    connect(&d->m_searchEngine, &QHelpSearchEngineCore::searchingStarted,
             this, &QHelpSearchEngine::searchingStarted);
-    connect(d, &QHelpSearchEnginePrivate::searchingFinished,
-            this, &QHelpSearchEngine::searchingFinished);
+    connect(&d->m_searchEngine, &QHelpSearchEngineCore::searchingFinished,
+            this, [this] { emit searchingFinished(d->m_searchEngine.searchResultCount()); });
 }
 
 /*!
@@ -418,7 +160,6 @@ QHelpSearchQueryWidget* QHelpSearchEngine::queryWidget()
 {
     if (!d->queryWidget)
         d->queryWidget = new QHelpSearchQueryWidget();
-
     return d->queryWidget;
 }
 
@@ -429,28 +170,29 @@ QHelpSearchResultWidget* QHelpSearchEngine::resultWidget()
 {
     if (!d->resultWidget)
         d->resultWidget = new QHelpSearchResultWidget(this);
-
     return d->resultWidget;
 }
 
+#if QT_DEPRECATED_SINCE(5, 9)
 /*!
-    \obsolete
+    \deprecated
     Use searchResultCount() instead.
 */
 int QHelpSearchEngine::hitsCount() const
 {
-    return d->searchResultCount();
+    return searchResultCount();
 }
 
 /*!
     \since 4.6
-    \obsolete
+    \deprecated
     Use searchResultCount() instead.
 */
 int QHelpSearchEngine::hitCount() const
 {
-    return d->searchResultCount();
+    return searchResultCount();
 }
+#endif // QT_DEPRECATED_SINCE(5, 9)
 
 /*!
     \since 5.9
@@ -458,12 +200,13 @@ int QHelpSearchEngine::hitCount() const
 */
 int QHelpSearchEngine::searchResultCount() const
 {
-    return d->searchResultCount();
+    return d->m_searchEngine.searchResultCount();
 }
 
+#if QT_DEPRECATED_SINCE(5, 9)
 /*!
     \typedef QHelpSearchEngine::SearchHit
-    \obsolete
+    \deprecated
 
     Use QHelpSearchResult instead.
 
@@ -474,7 +217,7 @@ int QHelpSearchEngine::searchResultCount() const
 */
 
 /*!
-    \obsolete
+    \deprecated
     Use searchResults() instead.
 */
 QList<QHelpSearchEngine::SearchHit> QHelpSearchEngine::hits(int start, int end) const
@@ -484,15 +227,16 @@ QList<QHelpSearchEngine::SearchHit> QHelpSearchEngine::hits(int start, int end) 
         hits.append(qMakePair(result.url().toString(), result.title()));
     return hits;
 }
+#endif // QT_DEPRECATED_SINCE(5, 9)
 
 /*!
     \since 5.9
     Returns a list of search results within the range from the index
     specified by \a start to the index specified by \a end.
 */
-QVector<QHelpSearchResult> QHelpSearchEngine::searchResults(int start, int end) const
+QList<QHelpSearchResult> QHelpSearchEngine::searchResults(int start, int end) const
 {
-    return d->searchResults(start, end);
+    return d->m_searchEngine.searchResults(start, end);
 }
 
 /*!
@@ -501,26 +245,30 @@ QVector<QHelpSearchResult> QHelpSearchEngine::searchResults(int start, int end) 
 */
 QString QHelpSearchEngine::searchInput() const
 {
-    return d->m_searchInput;
+    return d->m_searchEngine.searchInput();
 }
 
+#if QT_DEPRECATED_SINCE(5, 9)
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
 /*!
-    \obsolete
+    \deprecated
     \since 4.5
     Use searchInput() instead.
 */
 QList<QHelpSearchQuery> QHelpSearchEngine::query() const
 {
-    return QList<QHelpSearchQuery>() << QHelpSearchQuery(QHelpSearchQuery::DEFAULT,
-           d->m_searchInput.split(QChar::Space));
+    return {{QHelpSearchQuery::DEFAULT, searchInput().split(QChar::Space)}};
 }
+QT_WARNING_POP
+#endif // QT_DEPRECATED_SINCE(5, 9)
 
 /*!
     Forces the search engine to reindex all documentation files.
 */
 void QHelpSearchEngine::reindexDocumentation()
 {
-    d->updateIndex(true);
+    d->m_searchEngine.reindexDocumentation();
 }
 
 /*!
@@ -528,7 +276,7 @@ void QHelpSearchEngine::reindexDocumentation()
 */
 void QHelpSearchEngine::cancelIndexing()
 {
-    d->cancelIndexing();
+    d->m_searchEngine.cancelIndexing();
 }
 
 /*!
@@ -536,7 +284,7 @@ void QHelpSearchEngine::cancelIndexing()
 */
 void QHelpSearchEngine::cancelSearching()
 {
-    d->cancelSearching();
+    d->m_searchEngine.cancelSearching();
 }
 
 /*!
@@ -558,11 +306,12 @@ void QHelpSearchEngine::cancelSearching()
 */
 void QHelpSearchEngine::search(const QString &searchInput)
 {
-    d->search(searchInput);
+    d->m_searchEngine.search(searchInput);
 }
 
+#if QT_DEPRECATED_SINCE(5, 9)
 /*!
-    \obsolete
+    \deprecated
     Use search(const QString &searchInput) instead.
 */
 void QHelpSearchEngine::search(const QList<QHelpSearchQuery> &queryList)
@@ -570,25 +319,20 @@ void QHelpSearchEngine::search(const QList<QHelpSearchQuery> &queryList)
     if (queryList.isEmpty())
         return;
 
-    d->search(queryList.first().wordList.join(QChar::Space));
+    d->m_searchEngine.search(queryList.first().wordList.join(QChar::Space));
 }
+#endif // QT_DEPRECATED_SINCE(5, 9)
 
 /*!
     \internal
 */
 void QHelpSearchEngine::scheduleIndexDocumentation()
 {
-    if (d->m_isIndexingScheduled)
-        return;
-
-    d->m_isIndexingScheduled = true;
-    QTimer::singleShot(0, this, &QHelpSearchEngine::indexDocumentation);
+    d->m_searchEngine.scheduleIndexDocumentation();
 }
 
+// TODO: Deprecate me (but it's private???)
 void QHelpSearchEngine::indexDocumentation()
-{
-    d->m_isIndexingScheduled = false;
-    d->updateIndex();
-}
+{}
 
 QT_END_NAMESPACE
