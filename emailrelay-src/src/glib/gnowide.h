@@ -357,7 +357,7 @@ namespace G
 			if( p == nullptr )
 				return {} ;
 			Path result( Convert::narrow(std::wstring(p)) ) ;
-			std::free( p ) ; // NOLINT cppcoreguidelines-no-malloc
+			std::free( p ) ; // NOLINT(*-no-malloc)
 			return result ;
 		}
 		inline std::string getenv( const std::string & name , const std::string & default_ )

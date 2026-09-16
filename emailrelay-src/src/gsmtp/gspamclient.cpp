@@ -30,7 +30,7 @@
 std::string GSmtp::SpamClient::m_username ;
 
 GSmtp::SpamClient::SpamClient( GNet::EventState es , const GNet::Location & location , bool read_only ,
-	unsigned int connection_timeout , unsigned int response_timeout ) :
+	G::TimeInterval connection_timeout , G::TimeInterval response_timeout ) :
 		GNet::Client(es,location,
 			GNet::Client::Config()
 				.set_line_buffer_config(GNet::LineBuffer::Config::newline())

@@ -51,14 +51,13 @@ fi
 # run "make install" into the payload directory
 echo `basename $0`: running make install into $payload
 payload_path="`cd \"$payload\" && pwd`"
-( cd ../.. && make install GCONFIG_HAVE_DOXYGEN=no "DESTDIR=$payload_path" ) > /dev/null 2>&1
+( cd ../.. && make install GCONFIG_DOXYGEN=no "DESTDIR=$payload_path" ) > /dev/null 2>&1
 
 # check the "./configure" was done by "bin/configure.sh --enable-gui --without-doxygen"
 if test \
-	! -d "$payload/usr/lib/emailrelay" -o \
+	! -d "$payload/usr/share/emailrelay" -o \
 	! -f "$payload/usr/share/emailrelay/emailrelay.no.qm" -o \
 	! -f "$payload/etc/emailrelay.conf" -o \
-	! -f "$payload/etc/emailrelay.auth" -o \
 	! -f "$payload/usr/sbin/emailrelay-gui.real" -o \
 	-f "$payload/usr/share/doc/emailrelay/doxygen/classes.html"
 then

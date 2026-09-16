@@ -159,8 +159,8 @@ std::pair<G::TimeInterval,bool> GNet::TimerList::interval() const
 	}
 	else
 	{
-		G::TimerTime now = G::TimerTime::now() ;
-		G::TimerTime then = m_soonest->t() ;
+		auto now = G::TimerTime::now() ;
+		auto then = m_soonest->t() ;
 		return std::make_pair( G::TimeInterval(now,then) , false ) ;
 	}
 }
@@ -225,7 +225,7 @@ void GNet::TimerList::doTimeouts()
 	G_ASSERT( m_list_added.empty() ) ;
 	Lock lock( *this ) ;
 	m_adjust = 0 ;
-	G::TimerTime now = G::TimerTime::zero() ; // lazy initialisation to G::TimerTime::now() in G::Timer::expired()
+	auto now = G::TimerTime::zero() ; // lazy initialisation to TimerTime::now() in Timer::expired()
 
 	// move expired timers to the front
 	auto expired_end = std::partition( m_list.begin() , m_list.end() ,

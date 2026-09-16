@@ -35,12 +35,12 @@
 #include <prsht.h> // PropertySheet
 
 #pragma comment( linker , \
-    "\"/manifestdependency:type='Win32' " \
-    "name='Microsoft.Windows.Common-Controls' " \
-    "version='6.0.0.0' " \
-    "processorArchitecture='*' " \
-    "publicKeyToken='6595b64144ccf1df' " \
-    "language='*'\"" )
+	"\"/manifestdependency:type='Win32' " \
+	"name='Microsoft.Windows.Common-Controls' " \
+	"version='6.0.0.0' " \
+	"processorArchitecture='*' " \
+	"publicKeyToken='6595b64144ccf1df' " \
+	"language='*'\"" )
 
 LRESULT CALLBACK gcontrol_wndproc_export( HWND hwnd , UINT message , WPARAM wparam , LPARAM lparam ) ;
 

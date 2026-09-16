@@ -88,6 +88,7 @@ fi
 
 if test "$opt_sanitise" != ""
 then
+	export CC="clang"
 	export CXX="clang++"
 	export CXXFLAGS="-O3 -fstrict-aliasing -Wstrict-aliasing -fsanitize=$opt_sanitise"
 	export LDFLAGS="-fsanitize=$opt_sanitise"
@@ -257,8 +258,11 @@ then
 		--enable-windows $enable_winxp --disable-interface-names \
 		$configure_mbedtls \
 		--disable-gui --without-pam --without-doxygen \
-		--prefix=/usr --libexecdir=/usr/lib --sysconfdir=/etc \
-		--localstatedir=/var $opt_passthrough e_initdir=/etc/init.d "$@"
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--localstatedir=/var \
+		e_initdir=/etc/init.d \
+		$opt_passthrough "$@"
 	test "$?" -eq 0 || exit 1
 	echo :
 	echo "build with..."
@@ -285,8 +289,11 @@ then
 	$thisdir/configure $enable_debug --host $TARGET \
 		--disable-gui $configure_mbedtls --without-openssl \
 		--without-pam --without-doxygen \
-		--prefix=/usr --libexecdir=/usr/lib --sysconfdir=/etc \
-		--localstatedir=/var $opt_passthrough e_initdir=/etc/init.d "$@"
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--localstatedir=/var \
+		e_initdir=/etc/init.d \
+		$opt_passthrough "$@"
 	test "$?" -eq 0 || exit 1
 	echo :
 	echo "build with..."
@@ -319,8 +326,11 @@ then
 	$thisdir/configure $enable_debug --host ${SDK_COMPILER_PREFIX} \
 		--disable-gui --without-pam --without-doxygen \
 		$configure_mbedtls \
-		--prefix=/usr --libexecdir=/usr/lib --sysconfdir=/etc \
-		--localstatedir=/var $opt_passthrough e_initdir=/etc/init.d "$@"
+		--prefix=/usr \
+		--sysconfdir=/etc \
+		--localstatedir=/var \
+		e_initdir=/etc/init.d \
+		$opt_passthrough "$@"
 	test "$?" -eq 0 || exit 1
 	if test -d "$MBEDTLS_DIR"
 	then
@@ -340,42 +350,58 @@ then
 	export CXXFLAGS="$CXXFLAGS -I/usr/X11R7/include"
 	export LDFLAGS="$LDFLAGS -L/usr/X11R7/lib"
 	$thisdir/configure $enable_debug \
-		--prefix=/usr --libexecdir=/usr/lib --sysconfdir=/etc \
-		--localstatedir=/var $opt_passthrough e_bsdinitdir=/etc/rc.d "$@"
+		--prefix=/usr/pkg \
+		--sysconfdir=/usr/pkg/etc \
+		--localstatedir=/var \
+		--mandir=/usr/pkg/man \
+		e_bsdinitdir=/etc/rc.d \
+		$opt_passthrough "$@"
 :
 elif test "`uname`" = "FreeBSD"
 then
 	export CXXFLAGS="$CXXFLAGS -I/usr/local/include -I/usr/local/include/libav"
 	export LDFLAGS="$LDFLAGS -L/usr/local/lib -L/usr/local/lib/libav"
 	$thisdir/configure $enable_debug \
-		--prefix=/usr/local --mandir=/usr/local/man \
-		$opt_passthrough e_bsdinitdir=/usr/local/etc/rc.d "$@"
+		--prefix=/usr/local \
+		--sysconfdir=/usr/local/etc \
+		--localstatedir=/usr/local/var \
+		--mandir=/usr/local/man \
+		e_bsdinitdir=/usr/local/etc/rc.d \
+		$opt_passthrough "$@"
 :
 elif test "`uname`" = "OpenBSD"
 then
 	export CXXFLAGS="$CXXFLAGS -I/usr/X11R6/include"
 	export LDFLAGS="$LDFLAGS -L/usr/X11R6/lib"
 	$thisdir/configure $enable_debug \
-		--prefix=/usr/local --mandir=/usr/local/man \
-		$opt_passthrough e_bsdinitdir=/usr/local/etc/rc.d "$@"
+		--prefix=/usr/local \
+		--sysconfdir=/etc \
+		--localstatedir=/var \
+		--mandir=/usr/local/man \
+		e_bsdinitdir=/usr/local/etc/rc.d \
+		$opt_passthrough "$@"
 :
 elif test "`uname`" = "Darwin"
 then
 	export CXXFLAGS="$CXXFLAGS -I/opt/local/include -I/opt/X11/include"
 	export LDFLAGS="$LDFLAGS -L/opt/local/lib -L/opt/X11/lib"
 	$thisdir/configure $enable_debug \
-		--prefix=/opt/local --mandir=/opt/local/man $opt_passthrough "$@"
+		--prefix=/opt/local \
+		--mandir=/opt/local/man \
+		$opt_passthrough "$@"
 :
 elif test "`uname`" = "Linux"
 then
 	export CXXFLAGS
 	export LDFLAGS
 	$thisdir/configure $enable_debug \
-		--prefix=/usr --libexecdir=/usr/lib --sysconfdir=/etc \
+		--prefix=/usr \
+		--sysconfdir=/etc \
 		--localstatedir=/var \
 		e_initdir=/etc/init.d \
 		e_systemddir=/usr/lib/systemd/system \
-		$opt_passthrough e_rundir=/run/emailrelay "$@"
+		e_rundir=/run/emailrelay \
+		$opt_passthrough "$@"
 	test "$?" -eq 0 || exit 1
 	if test "$opt_get_mbedtls" != ""
 	then

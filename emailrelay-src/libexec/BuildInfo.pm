@@ -155,8 +155,8 @@ sub read_makefiles
 			"Qt6Widgets" ,
 			"Qt6Gui" ,
 			"Qt6Core" ,
-			"Qt6EntryPoint" ,
 		) ;
+		push @qt6_libnames_release , "Qt6EntryPoint" if $opt_for_windows ;
 		my @qt6_libnames_debug = map { $_."d" } @qt6_libnames_release ;
 
 		my @qt5_static_libnames_release = (
@@ -288,7 +288,7 @@ sub read_makefiles
 			my $mkey = $program ; # fwiw
 			my $dotobj = $opt_for_windows ? ".obj" : ".o" ;
 			my $dotexe = $opt_for_windows ? ".exe" : "" ;
-			my @sources = grep {$_!~m/\.mc$/;$_} grep {$_!~m/\.rc$/;$_} $m->sources( $mkey ) ;
+			my @sources = grep {$_!~m/\.mc$/} grep {$_!~m/\.rc$/} $m->sources( $mkey ) ;
 			my @objects = map {my $x=$_;$x=~ s/\.cp*$/$dotobj/ ;$x} @sources ;
 			my @our_libnames = $m->our_libnames( $mkey ) ;
 			my @our_libdirs = $m->our_libdirs( $mkey ) ;
@@ -299,14 +299,14 @@ sub read_makefiles
 				$m->sys_libs( $mkey ) ;
 			unshift @sys_libnames , @mbedtls_sys_libnames if $cfg_with_mbedtls ;
 
-			my ( $mcfile , $rcfile , $binfile , $uac_type , $uses_commoncontrols , $manifest ) ;
+			my ( $mcfile , $rcfile , $binfile , $uac_type , $commoncontrols_extra , $manifest ) ;
 			if( $mkey eq "emailrelay" )
 			{
 				$mcfile = "messages.mc" ;
 				$rcfile = "emailrelay.rc" ;
 				$binfile = "MSG00001.bin" ;
 				$uac_type = "level='asInvoker' uiAccess='false'" ;
-				$uses_commoncontrols = 1 ;
+				$commoncontrols_extra = 0 ; # not needed -- pragma in src/win32/gcontrol.cpp
 				$manifest = undef ; # not needed
 			}
 			elsif( $mkey eq "emailrelay-gui" )
@@ -334,7 +334,7 @@ sub read_makefiles
 				"/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' " .
 				"version='6.0.0.0' publicKeyToken='6595b64144ccf1df' language='*' processorArchitecture='*' " .
 				'"'
-				if $uses_commoncontrols ;
+				if $commoncontrols_extra ;
 
 			my @our_libpairs = () ;
 			for my $i ( 0 .. scalar(@our_libnames)-1 )
@@ -471,7 +471,8 @@ sub windows_vars
 		e_examplesdir => "c:/emailrelay" ,
 		e_libdir => "c:/emailrelay" ,
 		e_pamdir => "c:/emailrelay" ,
-		e_sysconfdir => "c:/emailrelay" ,
+		e_egconfdir => "c:/emailrelay" ,
+		e_confdir => "c:/emailrelay" ,
 		GCONFIG_WINDRES => "windres" ,
 		GCONFIG_WINDMC => "mc" ,
 		GCONFIG_QT_LIBS => "" ,

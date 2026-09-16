@@ -2,6 +2,10 @@
 import sys
 import os
 
+version = u'2.7'
+release = u'2.7'
+project = u'E-MailRelay'
+
 extensions = [
 	"myst_parser",
 ]
@@ -23,11 +27,8 @@ source_suffix = {
 	'.rst': 'restructuredtext',
 }
 root_doc = 'contents'
-project = u'E-MailRelay'
 copyright = u'2026, Graeme Walker, SP' + u'DX-License-Identifier: FSFAP '
 author = u'Graeme Walker'
-version = u'2.6.2'
-release = u'2.6.2'
 language = 'en'
 today_fmt = '%Y-%m-%d'
 exclude_patterns = [

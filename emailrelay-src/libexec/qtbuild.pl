@@ -255,14 +255,14 @@ sub _configure_command
 		"$cfg_source_dir/$submodule" ) ; # possibly add "-feature-foo" or "-no-feature-bar" here
 }
 
-sub _build_command()
+sub _build_command
 {
 	return ( "nmake" ) if( $cfg_qt5 && _windows() ) ;
 	return ( "make" ) if $cfg_qt5 ;
 	return ( $cfg_cmake , "--build" , "." , "--config" , $cfg_config , "--parallel" ) ;
 }
 
-sub _install_command()
+sub _install_command
 {
 	return ( "nmake" , "install" ) if( $cfg_qt5 && _windows() ) ;
 	return ( "make" , "install" ) if $cfg_qt5 ;

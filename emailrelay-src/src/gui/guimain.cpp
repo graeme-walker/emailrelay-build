@@ -55,7 +55,7 @@
 // it is just "dir.cfg" somewhere inside the bundle.
 //
 // The main pointer variables are "dir-config", "dir-install" and "dir-run".
-// On unix these might be "/etc", "/usr/bin", and "/run", respectively.
+// On unix these might be "/etc", "/usr", and "/run", respectively.
 //
 // The pointer file on unix is cunningly formatted as an executable script that
 // runs the real GUI program.
@@ -324,15 +324,6 @@ int main( int argc , char * argv [] )
 				}
 			}
 
-			// load an icon
-			if( !isWindows() && !isMac() && !args.contains("-qwindowicon") )
-			{
-				G::Path icon_png_path = search( argv0.dirname() , "emailrelay-icon.png" ,
-					{".","icon","resources","/usr/share/emailrelay","/usr/local/share/emailrelay"} ) ;
-				if( !icon_png_path.empty() )
-					QApplication::setWindowIcon( QIcon(GQt::qstring_from_path(icon_png_path)) ) ;
-			}
-
 			// test-mode -- create a minimal payload, enable click-through,
 			// and write install variables to "installer.txt"
 			if( args.contains("--test") )
@@ -443,10 +434,6 @@ int main( int argc , char * argv [] )
 					dir_install = !server_exe.empty() && !server_exe.dirname().empty() ?
 						server_exe.dirname() : argv0.dirname() ;
 				}
-				else
-				{
-					dir_install = argv0.dirname() ;
-				}
 				dir_install = pointer_map.expandedPathValue( "dir-install" , dir_install ) ; // override
 			}
 
@@ -454,6 +441,15 @@ int main( int argc , char * argv [] )
 			G_LOG_S( "main: dir-config=" << dir_config ) ;
 			G_LOG_S( "main: dir-install=" << dir_install ) ;
 			G_LOG_S( "main: dir-run=" << dir_run ) ;
+
+			// load an icon
+			if( !isWindows() && !isMac() && !args.contains("-qwindowicon") )
+			{
+				G::Path icon_png_path = search( argv0.dirname() , "emailrelay-icon.png" ,
+					{".","icon","resources",dir_install.str()+"/share/emailrelay"} ) ;
+				if( !icon_png_path.empty() )
+					QApplication::setWindowIcon( QIcon(GQt::qstring_from_path(icon_png_path)) ) ;
+			}
 
 			// set up the gui pages' config map
 			G::MapFile pages_config = server_config_map ;

@@ -149,6 +149,7 @@ COMMON_SOURCES = \
 	gstringmap.h \
 	gstringwrap.cpp \
 	gstringwrap.h \
+	gstringvalue.h \
 	gstringview.h \
 	gstringview.cpp \
 	gtest.h \

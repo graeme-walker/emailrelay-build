@@ -451,7 +451,7 @@ GSsl::MbedTls::ProfileImp::ProfileImp( const LibraryImp & library_imp , bool is_
 			throw Error( "mbedtls_ssl_conf_own_cert" , rc ) ;
 	}
 
-	// configure verification -- note that has no effect for TLS1.3 before MbedTLS v3.6.2 (#9018)
+	// configure verification -- note that this has no effect for TLS1.3 before MbedTLS v3.6.2 (#9018)
 	{
 		if( ca_path.empty() )
 		{

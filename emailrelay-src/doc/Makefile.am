@@ -18,26 +18,27 @@
 #
 # doc/Makefile.am
 #
-# Generates nothing by default and installs only the markdown
-# documents, png files and man pages. However, if GCONFIG_HTML
-# is defined then the effect is to run the "htmlfiles" and
-# "doxygen" targets by default, and the generated HTML files
-# and all files under "doxygen/" get installed.
+# Generates nothing by default and installs only the CommonMark
+# documents, png files and man pages.
+#
+# If GCONFIG_DOXYGEN is set then "make doxygen" creates full doxygen
+# documentation under "doxygen/". Otherwise, by default, "make doxygen"
+# just creates a dummy index file "doxygen/index.html".
+#
+# If GCONFIG_HTML is defined then the effect is to run the "htmlfiles"
+# target by default and to install the generated HTML files and also
+# any files found under "doxygen/".
 #
 # Additional pseudo-targets:
 #    * htmlfiles -- builds HTML documentation using pandoc
 #    * doxygen -- generates doxygen output under doxygen/
 #    * sphinx -- runs sphinx-build into sphinx/
 #    * website -- runs "make-sphinx --website" into website/out/
-#    * release-notes -- generates RELEASE.md
+#    * release-notes -- generates RELEASE.md from the changelog
 #
-# If GCONFIG_DOXYGEN is not 'yes' then the "run_doxygen.pl" script
-# just creates a dummy "doxygen/index.html" file.
-#
-# Sphinx is configured in conf.py to generate documentation
-# from markdown source documents, converting markdown to RST
-# internally using MyST-Parser. The root document is configured
-# as "contents.md".
+# Sphinx is configured in "conf.py" to generate documentation from
+# CommonMark source documents, converting CommonMark to RST internally
+# using MyST-Parser. The root document is configured as "contents.md".
 #
 
 md_files = \

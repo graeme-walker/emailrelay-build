@@ -19,28 +19,27 @@
 #
 
 work_scripts = \
-	run_doxygen.pl \
-	git-pre-commit \
 	make-manifest.sh \
 	make-setup.sh \
+	run_doxygen.pl \
 	make-format \
 	make-sphinx \
-	make-release-notes \
 	make2cmake \
 	make2cdb \
+	make-release-notes \
 	make2unity \
 	mbedtlsbuild.pl \
+	git-pre-commit \
 	libresslbuild.pl \
 	qtbuild.pl \
-	cmake.pm \
 	winbuild.pm \
 	winbuildall.bat \
 	winbuild-assembly.pl \
 	AutoMakeParser.pm \
 	BuildInfo.pm \
+	cmake.pm \
 	CompilationDatabase.pm \
-	ConfigStatus.pm \
-	Doxyfile.pm
+	ConfigStatus.pm
 
 EXTRA_DIST = \
 	$(work_scripts)

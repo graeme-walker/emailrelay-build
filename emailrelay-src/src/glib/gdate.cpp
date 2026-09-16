@@ -150,7 +150,7 @@ G::Date::Weekday G::Date::weekday() const
 {
 	if( ! m_weekday_set )
 	{
-		BrokenDownTime bdt = BrokenDownTime::midday( m_year , m_month , m_day ) ;
+		auto bdt = BrokenDownTime::midday( m_year , m_month , m_day ) ;
 		const_cast<Date*>(this)->m_weekday_set = true ;
 		const_cast<Date*>(this)->m_weekday = Weekday(bdt.wday()) ;
 	}

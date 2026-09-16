@@ -108,15 +108,8 @@ AM_CPPFLAGS=\
 	-I$(top_srcdir)/src/gnet \
 	-I$(top_srcdir)/src/main \
 	-I$(top_srcdir)/src/main/icon \
-	-D "G_SBINDIR=$(sbindir)" \
 	-D "G_SPOOLDIR=$(e_spooldir)" \
-	-D "G_INITDIR=$(e_initdir)" \
-	-D "G_SYSCONFDIR=$(e_sysconfdir)" \
-	-D "G_ICONDIR=$(e_icondir)" \
-	-D "G_LIBDIR=$(e_libdir)" \
-	-D "G_MANDIR=$(mandir)" \
-	-D "G_DOCDIR=$(e_docdir)" \
-	-D "G_EXAMPLESDIR=$(e_examplesdir)" \
+	-D "G_CONFDIR=$(e_confdir)" \
 	$(GCONFIG_QT_CFLAGS)
 
 if GCONFIG_ENABLE_GUI
@@ -169,7 +162,7 @@ install-exec-hook:
 	@echo exec $(DESTDIR)$(sbindir)/emailrelay-gui.real --qmdir=$(DESTDIR)$(e_trdir) \"$$\@\" >> "$(DESTDIR)$(sbindir)/emailrelay-gui"
 	@echo "dir-install"=\"$(DESTDIR)/usr\" >> "$(DESTDIR)$(sbindir)/emailrelay-gui"
 	@echo "dir-spool"=\"$(DESTDIR)$(e_spooldir)\" >> "$(DESTDIR)$(sbindir)/emailrelay-gui"
-	@echo "dir-config"=\"$(DESTDIR)$(e_sysconfdir)\" >> "$(DESTDIR)$(sbindir)/emailrelay-gui"
+	@echo "dir-config"=\"$(DESTDIR)$(e_confdir)\" >> "$(DESTDIR)$(sbindir)/emailrelay-gui"
 	@chmod +x "$(DESTDIR)$(sbindir)/emailrelay-gui"
 
 uninstall-hook:

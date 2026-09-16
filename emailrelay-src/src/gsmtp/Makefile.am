@@ -21,7 +21,7 @@ AM_CPPFLAGS = \
 	-I$(top_srcdir)/src/gnet \
 	-I$(top_srcdir)/src/gauth \
 	-I$(top_srcdir)/src/gstore \
-	-D "G_SPOOLDIR=$(e_spooldir)"
+	-Inone
 
 noinst_LIBRARIES = libgsmtp.a
 

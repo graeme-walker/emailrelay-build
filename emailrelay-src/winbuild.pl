@@ -247,7 +247,7 @@ if( !defined($cfg{qt_static}) )
 }
 
 # project version
-chomp( my $version = eval { IO::File->new("VERSION")->gets() } || "2.6.2" ) ;
+chomp( my $version = eval { FileHandle->new("VERSION")->gets() } || "2.7" ) ;
 my $project = "emailrelay" ;
 
 # run stuff ...

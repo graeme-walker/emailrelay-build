@@ -64,6 +64,7 @@ rem checkout released tags rather than development branches.
 rem
 
 setlocal
+set version=2.7
 set thisdir=%~dp0
 set thisdrive=%~d0
 
@@ -117,9 +118,9 @@ if "%1"=="download" (
 	rem download emailrelay
 	if not exist emailrelay-src (
 		echo winbuildall: downloading emailrelay source
-		curl -L -O https://sf.net/projects/emailrelay/files/emailrelay/2.6.2/emailrelay-2.6.2-src.tar.gz
+		curl -L -O https://sf.net/projects/emailrelay/files/emailrelay/%version%/emailrelay-%version%-src.tar.gz
 		mkdir emailrelay-src
-		tar -m -C emailrelay-src --strip-components=1 emailrelay-2.6.2-src.tar.gz
+		tar -m -C emailrelay-src --strip-components=1 emailrelay-%version%-src.tar.gz
 	)
 	goto end
 )

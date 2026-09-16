@@ -4,13 +4,15 @@ name: winbuildall
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    branches:
+      - main
 
 jobs:
+
   winbuild_x64:
     runs-on: windows-latest
+    if: |
+      contains(github.event.head_commit.message, '[build]'
     env:
       Platform: x64
     steps:
@@ -25,9 +27,11 @@ jobs:
         with:
           name: emailrelay-windows-x64-release
           path: emailrelay-windows-x64-release
+
   winbuild_x86:
     runs-on: windows-latest
-    if: false
+    if: |
+      contains(github.event.head_commit.message, '[build-x86]')
     env:
       Platform: x86
     steps:
@@ -42,4 +46,61 @@ jobs:
         with:
           name: emailrelay-windows-x86-release
           path: emailrelay-windows-x86-release
+
+  winbuild_dynamic_gui:
+    if: |
+      contains(github.event.head_commit.message, '[build-dynamic]')
+    runs-on: windows-latest
+    env:
+      Platform: x64
+    steps:
+      - uses: jurplel/install-qt-action@v3
+        with:
+          version: '6.8.3'
+          archives: 'qtbase qttools qttranslations'
+          cache: true
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            emailrelay-src
+      - name: make2cmake
+        working-directory: ./emailrelay-src
+        run: perl libexec/make2cmake --no-help --no-mbedtls --qt-find-package
+      - name: cmake-prepare
+        working-directory: ./emailrelay-src
+        run: cmake --fresh -A x64 -B build -S .
+      - name: cmake-build-gui
+        working-directory: ./emailrelay-src
+        run: cmake --build build --config release --target emailrelay-gui
+      - name: deploy
+        working-directory: ./emailrelay-src/build/src/gui/main
+        run: windeployqt --no-compiler-runtime emailrelay-gui.exe
+      - name: archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: emailrelay-windows-x64-dynamic
+          path: ./emailrelay-src/build/src/gui/main
+
+  winbuild_x64_nogui:
+    runs-on: windows-latest
+    if: |
+      contains(github.event.head_commit.message, '[build-nogui]')
+    env:
+      Platform: x64
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: cmake-x64-release
+        run: cmake --fresh -DOPTIONS=--no-gui -A x64 -B x64 -S .
+      - name: winbuild-x64-release
+        run: cmake --build x64 --config release
+      - name: archive-windows-x64-release
+        uses: actions/upload-artifact@v4
+        with:
+          name: emailrelay-windows-x64-nogui
+          path: |
+            x64/emailrelay-build-x64-release/src/main/x64/emailrelay.exe
+            x64/emailrelay-build-x64-release/src/main/x64/emailrelay-submit.exe
+            x64/emailrelay-build-x64-release/src/main/x64/emailrelay-service.exe
 
