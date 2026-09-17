@@ -42,9 +42,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release download libs-windows-x64-release-static-r38
-          7z x qt-w64.zip -o./x64/qt-bin-x64
-          7z x mbedtls-w64.zip -o./x64/mbedtls-build-x64-release
-          7z x libressl-w64.zip -o./x64/libressl-build-x64-release
+          7z x qt-w64.zip "-ox64/qt-bin-x64"
+          7z x mbedtls-w64.zip "-ox64/mbedtls-build-x64-release"
+          7z x libressl-w64.zip "-ox64/libressl-build-x64-release"
       - name: cmake-x64-release
         run: cmake --fresh -A x64 -B x64 -S .
       - name: winbuild-x64-release
