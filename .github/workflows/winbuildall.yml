@@ -48,7 +48,7 @@ jobs:
           path: emailrelay-windows-x64-release
       - name: compress-qt
         run: |
-          cd x64/qt-bin-release && 7z a -mx9 "../../qt6-w64.zip" *
+          cd x64/qt-bin-x64 && 7z a -mx9 "../../qt6-w64.zip" *
       - name: compress-mbedtls
         run: |
           cd x64/mbedtls-build-x64-release && 7z a -mx9 "../../mbedtls-w64.zip" *
