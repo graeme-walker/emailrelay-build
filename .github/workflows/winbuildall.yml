@@ -41,7 +41,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release download libs-windows-x64-release-static-r38
+          gh release download libs-windows-x64-release-static-r41
           7z x qt-w64.zip "-ox64/qt-bin-x64"
           7z x qt-tr-w64.zip "-ox64/qt-build-x64-release/qttranslations/translations"
           7z x mbedtls-w64.zip "-ox64/mbedtls-build-x64-release"
