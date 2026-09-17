@@ -28,6 +28,33 @@ jobs:
           name: emailrelay-windows-x64-release
           path: emailrelay-windows-x64-release
 
+  winbuild_x64_import:
+    runs-on: windows-latest
+    if: |
+      contains(github.event.head_commit.message, '[build-import]')
+    env:
+      Platform: x64
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: import-libs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download libs-windows-x64-release-static-r38
+          7z x qt-w64.zip -o./x64/qt-bin-x64
+          7z x mbedtls-w64.zip -o./x64/mbedtls-build-x64-release
+          7z x libressl-w64.zip -o./x64/libressl-build-x64-release
+      - name: cmake-x64-release
+        run: cmake --fresh -A x64 -B x64 -S .
+      - name: winbuild-x64-release
+        run: cmake --build x64 --config release
+      - name: archive-windows-x64-release
+        uses: actions/upload-artifact@v4
+        with:
+          name: emailrelay-windows-x64-release
+          path: emailrelay-windows-x64-release
+
   winbuild_x64_export:
     runs-on: windows-latest
     if: |
