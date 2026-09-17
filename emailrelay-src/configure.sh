@@ -100,7 +100,7 @@ then
 	export LDFLAGS="-Wl,--gc-sections"
 fi
 
-MBEDTLS_DIR="`find \"$thisdir\" -maxdepth 1 -type d -name mbedtls\* 2>/dev/null | head -1`"
+MBEDTLS_DIR="`find \"$thisdir\" -maxdepth 1 -type d -name mbedtls\* ! -name mbedtls_build 2>/dev/null | head -1`"
 MBEDTLS_BUILD_DIR="$MBEDTLS_DIR"
 if test "$opt_get_mbedtls" != ""
 then
@@ -115,8 +115,13 @@ then
 	git -C "$thisdir/mbedtls" checkout --recurse-submodules -q "mbedtls-3.6.7"
 	set +e
 fi
-if test -d "$MBEDTLS_DIR" -a \( "$opt_win" != "" -o "$opt_rpi" != "" -o "$opt_openwrt" != "" \)
-then
+while test "$opt_win" != "" -o "$opt_rpi" != "" -o "$opt_openwrt" != ""
+do
+	if test ! -d "$MBEDTLS_DIR"
+	then
+		configure_mbedtls="--without-mbedtls"
+		break
+	fi
 	set -e
 	MBEDTLS_BUILD_DIR="`pwd`/mbedtls_build"
 	cfg="`pwd`/mbedtls_user_config.h"
@@ -208,7 +213,8 @@ then
 	export CXXFLAGS="$CXXFLAGS -I. -I../.. -DMBEDTLS_USER_CONFIG -I$MBEDTLS_DIR/include"
 	export LDFLAGS="$LDFLAGS -L$MBEDTLS_BUILD_DIR/library"
 	set +e
-fi
+	break
+done
 TlsHelp()
 {
 	local toolchain="$1"

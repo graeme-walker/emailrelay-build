@@ -249,12 +249,6 @@ const char * Main::Configuration::semanticError1() const
 	if( !validNumbers("port") )
 		return tx("invalid --port value") ;
 
-	const bool contains_poll = contains( "poll" ) ;
-	if( contains_poll && numberValue("poll",0U) == 0U )
-	{
-		return tx("invalid --poll period") ;
-	}
-
 	const bool contains_pop = contains( "pop" ) ;
 	if( contains_pop && !GPop::enabled() )
 	{
