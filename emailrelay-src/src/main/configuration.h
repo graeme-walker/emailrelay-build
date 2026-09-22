@@ -1,19 +1,7 @@
 //
-// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
-// 
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-// 
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-// 
-// You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
-// ===
+// SPDX-FileCopyrightText: 2026 Graeme Walker <graeme_walker@users.sourceforge.net>
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
 ///
 /// \file configuration.h
 ///
@@ -72,12 +60,12 @@ public:
 		///< Returns the configuration name, or the empty string for the
 		///< default configuration.
 
-	std::string semanticError() const ;
-		///< Returns a non-empty string if there is a fatal semantic conflict
-		///< in the configuration.
+	std::string error() const ;
+		///< Returns a non-empty string if there is a fatal error in
+		///< the configuration.
 
-	G::StringArray semanticWarnings() const ;
-		///< Returns a non-empty array if there are non-fatal semantic conflicts
+	G::StringArray warnings() const ;
+		///< Returns a non-empty array if there are non-fatal problems
 		///< in the configuration.
 
 	G::StringArray display( const G::Options & options_spec ) const ;
@@ -163,8 +151,11 @@ public:
 	bool pollingLog() const noexcept ;
 		///< Returns true if polling activity should be logged.
 
-	G::TimeInterval pollingTimeout() const noexcept ;
+	G::TimeInterval pollingTimeout() const ;
 		///< Returns the timeout for periodic polling.
+
+	G::TimeInterval pollingTimeoutFirst() const ;
+		///< Returns the timeout for the initial polling interval.
 
 	PollRunner::Spec pollRunner() const ;
 		///< Returns the path of any poll runner executable.
@@ -284,8 +275,9 @@ private:
 	PollRunner::Spec pollRunnerValue( std::string_view , G::StringArray * = nullptr ) const ;
 	static bool pathlike( std::string_view ) ;
 	//
-	const char * semanticError1() const ;
-	std::string semanticError2() const ;
+	const char * valueError() const ;
+	const char * semanticError() const ;
+	std::string specificationError() const ;
 	//
 	G::Path certificateFile( const std::string & option ) const ;
 	G::Path keyFile( const std::string & option ) const ;
@@ -314,12 +306,9 @@ private:
 	std::string _popSaslServerConfig() const ;
 	std::pair<int,int> _popServerSocketLinger() const noexcept ;
 	std::vector<unsigned> _ports() const ;
-	unsigned int _promptTimeout() const noexcept ;
-	unsigned int _responseTimeout() const noexcept ;
-	unsigned int _secureConnectionTimeout() const noexcept ;
-	G::TimeInterval _promptTimeoutInterval() const noexcept ;
-	G::TimeInterval _responseTimeoutInterval() const noexcept ;
-	G::TimeInterval _secureConnectionTimeoutInterval() const noexcept ;
+	G::TimeInterval _promptTimeout() const noexcept ;
+	G::TimeInterval _responseTimeout() const noexcept ;
+	G::TimeInterval _secureConnectionTimeout() const noexcept ;
 	bool _serverTlsRequired() const noexcept ;
 	std::string _show() const ;
 	int _shutdownHowOnQuit() const noexcept ;

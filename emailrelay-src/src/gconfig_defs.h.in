@@ -1,5 +1,10 @@
 /* src/gconfig_defs.h.in.  Generated from configure.ac by autoheader.  */
 
+/*
+	SPDX-FileCopyrightText: 2026 Graeme Walker <graeme_walker@users.sourceforge.net>
+	SPDX-License-Identifier: GPL-3.0-or-later
+*/
+
 /* Define true to use epoll */
 #undef GCONFIG_ENABLE_EPOLL
 

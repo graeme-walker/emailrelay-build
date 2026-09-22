@@ -1,19 +1,7 @@
 //
-// Copyright (C) 2001-2024 Graeme Walker <graeme_walker@users.sourceforge.net>
-// 
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-// 
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-// 
-// You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
-// ===
+// SPDX-FileCopyrightText: 2026 Graeme Walker <graeme_walker@users.sourceforge.net>
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
 ///
 /// \file options.cpp
 ///
@@ -588,23 +576,25 @@ G::Options Main::Options::spec()
 			// program that just exits.
 
 	G::Options::add( opt , 'W' , "filter-timeout" ,
-		tx("sets the timeout (in seconds) for running the --filter (default is 60)") , "" ,
+		tx("sets the timeout for running the --filter (default is 60s)") , "" ,
 		M::one , "time" , 30 ,
 		t_smtpserver , t_filter ) ;
 			//default: 60
-			//example: 10
-			// Specifies a timeout (in seconds) for running a --filter program. The
-			// default is 60 seconds.
+			//example: 30
+			//example: 500ms
+			// Specifies a timeout for running a --filter program. The
+			// default is 60s.
 
 	G::Options::add( opt , 'w' , "prompt-timeout" ,
-		tx("sets the timeout (in seconds) for getting an initial prompt from the server (default is 20)") , "" ,
+		tx("sets the timeout for getting an initial prompt from the server (default is 20s)") , "" ,
 		M::one , "time" , 30 ,
 		t_smtpserver ) ;
 			//default: 20
-			//example: 3
-			// Specifies a timeout (in seconds) for getting the initial prompt from
-			// a remote SMTP server. If no prompt is received after this time then
-			// the SMTP dialog goes ahead without it.
+			//example: 30
+			//example: 500ms
+			// Specifies a timeout for getting the initial prompt from a remote
+			// SMTP server. If no prompt is received after this time then the
+			// SMTP dialog goes ahead without it.
 
 	G::Options::add( opt , 'D' , "domain" ,
 		tx("sets an override for the host's fully qualified network name") , "" ,
@@ -664,31 +654,34 @@ G::Options Main::Options::spec()
 			// so this option is for forwards compatibility only.
 
 	G::Options::add( opt , 'T' , "response-timeout" ,
-		tx("sets the response timeout (in seconds) when talking to a remote server (default is 60)") , "" ,
+		tx("sets the response timeout when talking to a remote server (default is 60s)") , "" ,
 		M::one , "time" , 31 ,
 		t_smtpclient ) ;
 			//default: 60
 			//example: 2
-			// Specifies a timeout (in seconds) for getting responses from remote
-			// SMTP servers. The default is 60 seconds.
+			//example: 500ms
+			// Specifies a timeout for getting responses from remote
+			// SMTP servers. The default is 60s.
 
 	G::Options::add( opt , '\0' , "idle-timeout" ,
-		tx("sets the connection idle timeout (in seconds) (default is 60)") , "" ,
+		tx("sets the connection idle timeout (default is 60s)") , "" ,
 		M::one , "time" , 31 ,
 		t_smtpclient ) ;
 			//default: 60
 			//example: 2
-			// Specifies a timeout (in seconds) for receiving network traffic from
-			// remote SMTP and POP clients. The default is 60 seconds.
+			//example: 500ms
+			// Specifies a timeout for receiving network traffic from
+			// remote SMTP and POP clients. The default is 60s.
 
 	G::Options::add( opt , 'U' , "connection-timeout" ,
-		tx("sets the timeout (in seconds) when connecting to a remote server (default is 40)") , "" ,
+		tx("sets the timeout when connecting to a remote server (default is 40s)") , "" ,
 		M::one , "time" , 31 ,
 		t_smtpclient ) ;
 			//default: 40
 			//example: 10
-			// Specifies a timeout (in seconds) for establishing a TCP connection
-			// to remote SMTP servers. The default is 40 seconds.
+			//example: 500ms
+			// Specifies a timeout for establishing a TCP connection
+			// to remote SMTP servers. The default is 40s.
 
 	G::Options::add( opt , 'm' , "immediate" ,
 		tx("enables immediate forwarding of messages as they are received! "
@@ -752,11 +745,13 @@ G::Options Main::Options::spec()
 	G::Options::add( opt , 'O' , "poll" ,
 		tx("enables polling of the spool directory for messages to be forwarded with the specified period! "
 			"(requires --forward-to)") , "" ,
-		M::one , "period" , 30 ,
+		M::many , "period" , 30 ,
 		t_smtpclient ) ;
 			//example: 60
+			//example: 500ms
 			// Causes forwarding of spooled mail messages to happen at regular intervals
-			// (with the time given in seconds).
+			// (with the time given in seconds by default). Use twice to define a
+			// different first interval.
 
 	G::Options::add( opt , '\0' , "poll-run" ,
 		tx("specifies an external program to run before --poll forwarding") , "" ,
