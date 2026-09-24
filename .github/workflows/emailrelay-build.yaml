@@ -44,22 +44,22 @@ jobs:
           - distro: debian
             container: debian:bookworm-slim
             make_args: deb
-            artifact_name: debian-packages
-            path_pattern: "*.deb"
+            artifact_name: debian-package
+            path_pattern: "emailrelay-src/*.deb"
           - distro: ubuntu
             container: ubuntu:24.04
             make_args: deb
-            artifact_name: ubuntu-packages
-            path_pattern: "*.deb"
+            artifact_name: ubuntu-package
+            path_pattern: "emailrelay-src/*.deb"
           - distro: rhel-compatible
             container: rockylinux:9
             make_args: RPM_ROOT=rpmbuild rpm
-            artifact_name: rhel-packages
-            path_pattern: "rpmoutput/RPMS/**/*.rpm"
+            artifact_name: rhel-package
+            path_pattern: "emailrelay-src/rpmoutput/RPMS/**/*.rpm"
           - distro: alpine
             container: alpine:3.20
             make_args: apk
-            artifact_name: alpine-packages
+            artifact_name: alpine-package
             path_pattern: "~/packages/**/*.apk"
     container:
       image: ${{ matrix.container }}
@@ -89,7 +89,6 @@ jobs:
           echo "audit: actor=${{ github.actor }}"
           make ${{ matrix.make_args }}
       - name: upload-package
-        working-directory: emailrelay-src
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
