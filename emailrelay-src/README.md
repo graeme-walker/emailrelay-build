@@ -11,6 +11,8 @@ fixed smarthost but DNS MX routing can also be configured. External scripts can
 be used for address validation and for processing e-mail messages as they
 are received.
 
+![whatisit.png](doc/whatisit.png)
+
 E-MailRelay runs as a single process using the same non-blocking i/o model as
 Squid and nginx giving excellent scalability and resource usage.
 
@@ -23,6 +25,8 @@ going through the installation process.
 To use E-MailRelay in store-and-forward mode use the `--as-server` option to
 start the storage daemon in the background, and then do delivery of spooled
 messages by running with `--as-client`.
+
+![serverclient.png](doc/serverclient.png)
 
 For example, to start a storage daemon in the background listening on port 10025
 use a command like this:
@@ -43,6 +47,8 @@ like this:
 To forward continuously you can add the `--poll` and `--forward-to` options to
 the server command-line.
 
+![forwardto.png](doc/forwardto.png)
+
 For example, this starts a server that also forwards spooled-up e-mail every
 minute:
 
@@ -62,6 +68,8 @@ Look for example filter scripts in the `examples` directory.
 
 E-MailRelay can also be used as a personal internet mail server by listening on
 port 25 and serving up received e-mails with POP.
+
+![mailserver.png](doc/mailserver.png)
 
 Use `--remote-clients` (`-r`) to allow connections from outside the local
 network, define your domain name with `--domain` and use an address verifier as

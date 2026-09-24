@@ -39,6 +39,7 @@ EXTRA_DIST = \
 	emailrelay.spec \
 	configure.sh \
 	ChangeLog \
+	README.md \
 	REUSE.toml \
 	VERSION \
 	bootstrap \

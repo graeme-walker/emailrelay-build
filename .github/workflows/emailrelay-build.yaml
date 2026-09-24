@@ -78,7 +78,7 @@ jobs:
         if: matrix.distro == 'alpine'
         run: |
           apk update
-          apk add build-base git alpine-sdk abuild openssl-dev pkgconfig
+          apk add build-base autoconf automake git alpine-sdk abuild openssl-dev pkgconfig
       - name: checkout
         uses: actions/checkout@v4
       - name: make-package
