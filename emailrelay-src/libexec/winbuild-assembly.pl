@@ -225,6 +225,7 @@ sub create_payload_cfg
 	print $fh "files/programs/=\%dir-install\%/\n" ;
 	print $fh "files/scripts/=\%dir-install\%/\n" ;
 	print $fh "files/examples/=\%dir-install\%/examples/\n" ;
+	print $fh "files/licenses/=\%dir-install\%/licenses/\n" ;
 	print $fh "files/doc/=\%dir-install\%/doc/\n" ;
 	print $fh "files/base/=\%dir-install\%/\n" ;
 	print $fh "files/gui/=\%dir-install\%/\n" ;
@@ -235,18 +236,16 @@ sub install_core
 {
 	my ( $src_dir , $build_exe_dir , $out_dir , $version , $is_payload ) = @_ ;
 
-	my $examples = "examples" ;
-	if( _old($version) || !-d "$src_dir/examples" )
-	{
-		$examples = "bin" ;
-	}
+	make_readme( $src_dir ) ; # make README from README.md
 
-	my $base = $is_payload ? "base" : "." ;
 	my %copy = qw(
 		__src__/README __base__/readme.txt
 		__src__/AUTHORS __base__/authors.txt
 		__src__/NEWS __base__/news.txt
 		__src__/ChangeLog __base__/changelog.txt
+		__src__/LICENSES/FSFAP.txt licenses/fsfap.txt
+		__src__/LICENSES/GPL-3.0-or-later.txt licenses/gpl3.txt,__base__/license.txt
+		__src__/LICENSES/GPL-2.0-or-later.txt licenses/gpl2.txt
 		__exe__/emailrelay-service.exe programs/
 		__exe__/emailrelay.exe programs/
 		__exe__/emailrelay-submit.exe programs/
@@ -265,45 +264,46 @@ sub install_core
 		__src__/doc/reference.txt doc/
 		__src__/doc/userguide.txt doc/
 		__src__/doc/windows.txt doc/,__base__/readme-windows.txt
+		__exe__/emailrelay.map __build__/
+		__exe__/emailrelay-textmode.map __build__/
 	) ;
-	if( -d "$src_dir/LICENSES" )
-	{
-		$copy{"__src__/LICENSES"} = "__base__/licenses.txt" ;
-		$copy{"__src__/LICENSES/FSFAP.txt"} = "__base__/license_fsfap.txt" ;
-		$copy{"__src__/LICENSES/GPL-3.0-or-later.txt"} = "__base__/license_gpl3.txt" ;
-	}
-	else
-	{
-		$copy{"__src__/LICENSE"} = "__base__/license.txt" ;
-	}
-	if( !$is_payload && !$opt{'no-mapfiles'} )
-	{
-		# ("/MAP" in BuildInfo.pm)
-		$copy{"__exe__/emailrelay.map"} = "build/" ;
-		$copy{"__exe__/emailrelay-textmode.map"} = "build/" ;
-	}
+
+	my $base = $is_payload ? "base" : "." ;
+	my $examples = ( -d "$src_dir/examples" ? "examples" : "bin" ) ;
+	my $build = ( ( $is_payload || $opt{'no-mapfiles'} ) ? "NO_COPY" : "build" ) ;
+
 	while( my ($from,$to_list) = each %copy )
 	{
 		my @to = split( m/,/ , $to_list ) ;
 		for my $to_in ( @to )
 		{
+			my $to = $to_in ;
 			$from =~ s:__src__:$src_dir:g ;
 			$from =~ s:__exe__:$build_exe_dir:g ;
 			$from =~ s:__examples__:$examples:g ;
-			( my $to = $to_in ) =~ s:__base__:$base:g ;
+			$to =~ s:__base__:$base:g ;
+			$to =~ s:__build__:$build:g ;
 			$to = "" if $to eq "." ;
+			next if ( $to =~ m/NO_COPY/ ) ;
 			copy_files( $from , "$out_dir/$to" , {at_least=>1} ) ;
 		}
 	}
-	_fixup( $out_dir ,
-		[ "$base/readme.txt" , "$base/license.txt" ] ,
-		{
-			README => 'readme.txt' ,
-			COPYING => 'copying.txt' ,
-			AUTHORS => 'authors.txt' ,
-			INSTALL => 'install.txt' ,
-			ChangeLog => 'changelog.txt' ,
-		} ) ;
+}
+
+sub make_readme
+{
+	my ( $src_dir ) = @_ ;
+	my $fh_in = new IO::File( "$src_dir/README.md" , "r" ) or die ;
+	my $fh_out = new IO::File( "$src_dir/README" , "w" ) or die ;
+	my $state = 0 ;
+	while(<$fh_in>)
+	{
+		chomp( my $line = $_ ) ;
+		if( $line =~ m/^!/ ) { $state = 1 ; next }
+		if( $state == 1 ) { $state = 0 ; next }
+		if( $state == 0 ) { print $fh_out "$line\n" }
+	}
+	$fh_out->close() or die ;
 }
 
 sub copy_file
@@ -375,29 +375,6 @@ sub create_nouac
 	print $fh "set __COMPAT_LAYER=RunAsInvoker\n" ;
 	print $fh ".\\$name\n" ;
 	$fh->close() or die ;
-}
-
-sub _fixup
-{
-	my ( $base , $fnames , $fixes ) = @_ ;
-	for my $fname ( @$fnames )
-	{
-		my $fh_in = new IO::File( "$base/$fname" , "r" ) or _die( "cannot read [$base/$fname]" ) ;
-		my $fh_out = new IO::File( "$base/$fname.$$.tmp" , "w" ) or die ;
-		while(<$fh_in>)
-		{
-			my $line = $_ ;
-			for my $from ( keys %$fixes )
-			{
-				my $to = $fixes->{$from} ;
-				$line =~ s/\Q$from\E/$to/g ;
-			}
-			print $fh_out $line ;
-		}
-		$fh_in->close() or die ;
-		$fh_out->close() or die ;
-		rename( "$base/$fname.$$.tmp" , "$base/$fname" ) or die ;
-	}
 }
 
 sub _msvc_dir_from_cmake

@@ -11,4 +11,3 @@ EXTRA_DIST = \
 	ax_require_defined.m4.license \
 	pkg.m4 \
 	pkg.m4.license
-

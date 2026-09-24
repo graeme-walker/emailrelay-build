@@ -84,8 +84,6 @@ jobs:
           apk add build-base git alpine-sdk abuild openssl-dev pkgconfig
       - name: checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - name: make-package
         run: |
           echo "audit: distro=${{ matrix.distro }}"

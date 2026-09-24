@@ -39,9 +39,8 @@ EXTRA_DIST = \
 	emailrelay.spec \
 	configure.sh \
 	ChangeLog \
-	VERSION \
-	README.md \
 	REUSE.toml \
+	VERSION \
 	bootstrap \
 	autogen.sh \
 	winbuild.bat \
@@ -57,6 +56,9 @@ SUBDIRS = libexec bin src etc doc debian test m4 bsd unity
 ACLOCAL_AMFLAGS = -I m4
 
 e_doc_DATA = AUTHORS NEWS README ChangeLog
+
+README: README.md
+	sed '/^!/{N;d}' README.md > README
 
 RPM_ROOT ?= ${HOME}/rpmbuild
 #ARCH ?= $(shell arch)

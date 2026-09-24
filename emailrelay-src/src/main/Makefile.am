@@ -121,7 +121,6 @@ MISC_EXTRA_DIST = \
  emailrelay.rc \
  emailrelay.exe.manifest \
  emailrelay-service.exe.manifest \
- fakemc.c \
  messages.mc \
  resource.h
 
@@ -308,11 +307,8 @@ install-exec-local:
 uninstall-local:
 	-rmdir "$(DESTDIR)$(e_spooldir)" 2>/dev/null
 
-MSG00001.bin messages.rc: fakemc.exe messages.mc
+MSG00001.bin messages.rc: messages.mc
 	$(GCONFIG_WINDMC) $(top_srcdir)/src/main/messages.mc
-
-fakemc.exe: $(top_srcdir)/src/main/fakemc.c
-	$(CC) -o fakemc.exe $(top_srcdir)/src/main/fakemc.c
 
 .PHONY: strip
 strip:
