@@ -1,6 +1,5 @@
-# GitHub workflow for emailrelay-build
 
-name: winbuildall
+name: emailrelay-build
 
 on:
   push:
@@ -9,10 +8,100 @@ on:
 
 jobs:
 
+  tarball:
+    if: |
+      contains(github.event.head_commit.message, '[tarball]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+      - name: install-autotools
+        run: sudo apt-get install -y autoconf automake libtool
+      - name: make-dist
+        working-directory: emailrelay-src
+        run: |
+          ./autogen.sh
+          ./configure
+          make dist
+          for f in *.tar.gz; do
+            mv "$f" "${f%.tar.gz}-src.tar.gz"
+          done
+      - name: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-tarball
+          path: emailrelay-src/emailrelay-*-src.tar.gz
+
+  packages:
+    if: |
+      contains(github.event.head_commit.message, '[packages]')
+    name: package-for-${{ matrix.distro }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: emailrelay-src
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - distro: debian
+            container: debian:bookworm-slim
+            make_args: deb
+            artifact_name: debian-packages
+            path_pattern: "*.deb"
+          - distro: ubuntu
+            container: ubuntu:24.04
+            make_args: deb
+            artifact_name: ubuntu-packages
+            path_pattern: "*.deb"
+          - distro: rhel-compatible
+            container: rockylinux:9
+            make_args: RPM_ROOT=rpmbuild rpm
+            artifact_name: rhel-packages
+            path_pattern: "rpmoutput/RPMS/**/*.rpm"
+          - distro: alpine
+            container: alpine:3.20
+            make_args: apk
+            artifact_name: alpine-packages
+            path_pattern: "~/packages/**/*.apk"
+    container:
+      image: ${{ matrix.container }}
+    steps:
+      - name: tools-ubuntu
+        if: matrix.distro == 'debian' || matrix.distro == 'ubuntu'
+        run: |
+          apt-get update
+          apt-get install -y build-essential git devscripts debhelper libssl-dev pkg-config
+      - name: tools-rpm
+        if: matrix.distro == 'rhel-compatible'
+        run: |
+          dnf groupinstall -y "Development Tools"
+          dnf install -y git rpm-build rpmdevtools openssl-devel pkgconfig
+      - name: tools-alpine
+        if: matrix.distro == 'alpine'
+        run: |
+          apk update
+          apk add build-base git alpine-sdk abuild openssl-dev pkgconfig
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: make-package
+        run: |
+          echo "audit: distro=${{ matrix.distro }}"
+          echo "audit: sha=${{ github.sha }}"
+          echo "audit: actor=${{ github.actor }}"
+          make ${{ matrix.make_args }}
+      - name: upload-package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.path_pattern }}
+
   winbuild_x64:
     runs-on: windows-latest
     if: |
-      contains(github.event.head_commit.message, '[build]')
+      contains(github.event.head_commit.message, '[winbuild]')
     env:
       Platform: x64
     steps:
@@ -31,7 +120,7 @@ jobs:
   winbuild_x64_import:
     runs-on: windows-latest
     if: |
-      contains(github.event.head_commit.message, '[build-import]')
+      contains(github.event.head_commit.message, '[winbuild-import]')
     env:
       Platform: x64
     steps:
@@ -59,7 +148,7 @@ jobs:
   winbuild_x64_export:
     runs-on: windows-latest
     if: |
-      contains(github.event.head_commit.message, '[build-export]')
+      contains(github.event.head_commit.message, '[winbuild-export]')
     permissions:
       contents: write
     env:
@@ -106,7 +195,7 @@ jobs:
   winbuild_x86:
     runs-on: windows-latest
     if: |
-      contains(github.event.head_commit.message, '[build-x86]')
+      contains(github.event.head_commit.message, '[winbuild-x86]')
     env:
       Platform: x86
     steps:
@@ -124,7 +213,7 @@ jobs:
 
   winbuild_dynamic_gui:
     if: |
-      contains(github.event.head_commit.message, '[build-dynamic]')
+      contains(github.event.head_commit.message, '[winbuild-dynamic]')
     runs-on: windows-latest
     env:
       Platform: x64
@@ -160,7 +249,7 @@ jobs:
   winbuild_x64_nogui:
     runs-on: windows-latest
     if: |
-      contains(github.event.head_commit.message, '[build-nogui]')
+      contains(github.event.head_commit.message, '[winbuild-nogui]')
     env:
       Platform: x64
     steps:
