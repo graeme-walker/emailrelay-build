@@ -37,9 +37,6 @@ jobs:
       contains(github.event.head_commit.message, '[packages]')
     name: package-for-${{ matrix.distro }}
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: emailrelay-src
     strategy:
       fail-fast: true
       matrix:
@@ -85,12 +82,14 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
       - name: make-package
+        working-directory: emailrelay-src
         run: |
           echo "audit: distro=${{ matrix.distro }}"
           echo "audit: sha=${{ github.sha }}"
           echo "audit: actor=${{ github.actor }}"
           make ${{ matrix.make_args }}
       - name: upload-package
+        working-directory: emailrelay-src
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
