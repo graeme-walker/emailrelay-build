@@ -68,12 +68,12 @@ jobs:
         if: matrix.distro == 'debian' || matrix.distro == 'ubuntu'
         run: |
           apt-get update
-          apt-get install -y build-essential git devscripts debhelper libssl-dev pkg-config
+          apt-get install -y build-essential git devscripts debhelper dh-exec libssl-dev libpam0g-dev pkg-config
       - name: tools-rpm
         if: matrix.distro == 'rhel-compatible'
         run: |
           dnf groupinstall -y "Development Tools"
-          dnf install -y git rpm-build rpmdevtools openssl-devel pkgconfig
+          dnf install -y git rpm-build rpmdevtools openssl-devel pam-devel pkgconfig
       - name: tools-alpine
         if: matrix.distro == 'alpine'
         run: |

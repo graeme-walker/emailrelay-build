@@ -162,15 +162,15 @@ apkbuild: APKBUILD APKBUILD.post-install
 .PHONY: apk
 apk: $(TAR) APKBUILD APKBUILD.post-install
 	if grep -q "^PACKAGER_PRIVKEY=" "${HOME}/.abuild/abuild.conf" 2>/dev/null ; then : ; else abuild-keygen -n -a ; fi
-	mkdir -p "apk.d/${USER}/build"
-	cp "$(TAR)" "apk.d/${USER}/build/$(TAR)"
-	cp APKBUILD.post-install "apk.d/${USER}/build/emailrelay.post-install"
-	cp APKBUILD "apk.d/${USER}/build/APKBUILD"
-	sed -i -e 's;^source=.*;source="$(TAR)";' "apk.d/${USER}/build/APKBUILD"
-	cd "apk.d/${USER}/build" && abuild clean unpack && cd ../..
-	cp APKBUILD "apk.d/${USER}/build/APKBUILD"
-	cd "apk.d/${USER}/build" && abuild prepare mkusers build rootpkg && cd ../..
-	ls -l "${HOME}/packages/${USER}/x86_64/"emailrelay*-$(VERSION)-r0.apk .
+	mkdir -p apk.d
+	cp "$(TAR)" apk.d/
+	cp APKBUILD.post-install apk.d/emailrelay.post-install
+	cp APKBUILD apk.d/
+	sed -i -e 's;^source=.*;source="$(TAR)";' apk.d/APKBUILD
+	cd apk.d && abuild -F clean unpack
+	cp APKBUILD apk.d/
+	cd apk.d && abuild -F prepare mkusers build rootpkg
+	ls -l "${HOME}/packages/emailrelay-$(VERSION)"/*/emailrelay*-$(VERSION)-r0.apk
 
 .PHONY: mbedtls
 mbedtls:
