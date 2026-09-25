@@ -5,7 +5,7 @@ Release: 1
 License: GPL3
 Group: System Environment/Daemons
 URL: https://emailrelay.sourceforge.net
-Source0: https://sourceforge.net/projects/emailrelay/files/emailrelay/%{version}/emailrelay-%{version}-src.tar.gz
+Source0: emailrelay-%{version}-src.tar.gz
 BuildRequires: systemd-rpm-macros
 
 %{!?_unitdir: %global _unitdir /usr/lib/systemd/system}

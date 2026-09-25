@@ -167,10 +167,10 @@ apk: $(TAR) APKBUILD APKBUILD.post-install
 	cp APKBUILD.post-install apk.d/emailrelay.post-install
 	cp APKBUILD apk.d/
 	sed -i -e 's;^source=.*;source="$(TAR)";' apk.d/APKBUILD
-	cd apk.d && abuild -F clean unpack
+	base="`pwd`" && cd apk.d && abuild -P "$$base" -F clean unpack
 	cp APKBUILD apk.d/
-	cd apk.d && abuild -F prepare mkusers build rootpkg
-	ls -l "${HOME}/packages/emailrelay-$(VERSION)"/*/emailrelay*-$(VERSION)-r0.apk
+	base="`pwd`" && cd apk.d && abuild -P "$$base" -F prepare mkusers build rootpkg
+	ls -l emailrelay-$(VERSION)/*/emailrelay*-$(VERSION)-r0.apk
 
 .PHONY: mbedtls
 mbedtls:

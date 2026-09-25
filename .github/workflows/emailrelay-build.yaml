@@ -84,11 +84,10 @@ jobs:
       - name: make-package
         working-directory: emailrelay-src
         run: |
-          echo "audit: distro=${{ matrix.distro }}"
-          echo "audit: sha=${{ github.sha }}"
-          echo "audit: actor=${{ github.actor }}"
+          echo "sha=${{ github.sha }}"
           ./autogen.sh
           ./configure
+          echo "make [${{ matrix.make_args }}]"
           make ${{ matrix.make_args }}
       - name: upload-package
         uses: actions/upload-artifact@v4
