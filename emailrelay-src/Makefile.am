@@ -161,7 +161,7 @@ apkbuild: APKBUILD APKBUILD.post-install
 
 .PHONY: apk
 apk: $(TAR) APKBUILD APKBUILD.post-install
-	if grep -q "^PACKAGER_PRIVKEY=" "${HOME}/.abuild/abuild.conf" 2>/dev/null ; then : ; else abuild-keygen -i -n -a ; fi
+	if grep -q "^PACKAGER_PRIVKEY=" "${HOME}/.abuild/abuild.conf" 2>/dev/null ; then : ; else abuild-keygen -n -a ; fi
 	mkdir -p "apk.d/${USER}/build"
 	cp "$(TAR)" "apk.d/${USER}/build/$(TAR)"
 	cp APKBUILD.post-install "apk.d/${USER}/build/emailrelay.post-install"
@@ -170,8 +170,7 @@ apk: $(TAR) APKBUILD APKBUILD.post-install
 	cd "apk.d/${USER}/build" && abuild clean unpack && cd ../..
 	cp APKBUILD "apk.d/${USER}/build/APKBUILD"
 	cd "apk.d/${USER}/build" && abuild prepare mkusers build rootpkg && cd ../..
-	cp "${HOME}/packages/${USER}/x86_64/"emailrelay*.apk .
-	@echo "+++ " doas apk add emailrelay-`cat $(top_srcdir)/VERSION | sed 's/rc.*//'`-r0.apk
+	ls -l "${HOME}/packages/${USER}/x86_64/"emailrelay*-$(VERSION)-r0.apk .
 
 .PHONY: mbedtls
 mbedtls:

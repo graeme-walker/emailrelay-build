@@ -38,7 +38,7 @@ jobs:
     name: package-for-${{ matrix.distro }}
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         include:
           - distro: debian
