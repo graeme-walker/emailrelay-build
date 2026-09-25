@@ -55,12 +55,12 @@ jobs:
             container: rockylinux:9
             make_args: RPM_ROOT=rpmbuild rpm
             artifact_name: rhel-package
-            path_pattern: "emailrelay-src/rpmoutput/RPMS/**/*.rpm"
+            path_pattern: "emailrelay-src/rpmbuild/RPMS/*/emailrelay*.rpm"
           - distro: alpine
             container: alpine:3.20
             make_args: apk
             artifact_name: alpine-package
-            path_pattern: "~/packages/**/*.apk"
+            path_pattern: "~/*/*/emailrelay*.apk"
     container:
       image: ${{ matrix.container }}
     steps:

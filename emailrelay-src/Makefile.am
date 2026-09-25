@@ -77,16 +77,16 @@ strip:
 rpm: $(RPM)
 
 $(RPM): dist
-	-rm -rf $(RPM_ROOT)/BUILD/emailrelay-$(VERSION)-1.$(ARCH)
-	test ! -d $(RPM_ROOT)/BUILD/emailrelay-$(VERSION)-1.$(ARCH)
-	-mkdir -p $(RPM_ROOT)/BUILD $(RPM_ROOT)/SOURCES $(RPM_ROOT)/SPECS 2>/dev/null
-	cp $(TAR) $(RPM_ROOT)/SOURCES/emailrelay-$(VERSION)-src.tar.gz
-	cp $(top_srcdir)/emailrelay.spec $(RPM_ROOT)/SPECS/
-	-chown root:root $(RPM_ROOT)/SPECS/emailrelay.spec
-	-rm -f $(RPM)
-	test ! -f $(RPM)
-	rpmbuild -ba $(RPM_ROOT)/SPECS/emailrelay.spec
-	test -f $(RPM)
+	-rm -rf "$(RPM_ROOT)/BUILD/emailrelay-$(VERSION)-1.$(ARCH)"
+	test ! -d "$(RPM_ROOT)/BUILD/emailrelay-$(VERSION)-1.$(ARCH)"
+	-mkdir -p "$(RPM_ROOT)/BUILD $(RPM_ROOT)/SOURCES" "$(RPM_ROOT)/SPECS" 2>/dev/null
+	cp $(TAR) "$(RPM_ROOT)/SOURCES/emailrelay-$(VERSION)-src.tar.gz"
+	cp $(top_srcdir)/emailrelay.spec "$(RPM_ROOT)/SPECS/"
+	-chown root:root "$(RPM_ROOT)/SPECS/emailrelay.spec"
+	-rm -f "$(RPM)"
+	test ! -f "$(RPM)"
+	rpmbuild --define "_topdir $(RPM_ROOT)" -ba "$(RPM_ROOT)/SPECS/emailrelay.spec"
+	test -f "$(RPM)"
 
 .PHONY: deb
 deb: $(DEB)
@@ -167,10 +167,10 @@ apk: $(TAR) APKBUILD APKBUILD.post-install
 	cp APKBUILD.post-install apk.d/emailrelay.post-install
 	cp APKBUILD apk.d/
 	sed -i -e 's;^source=.*;source="$(TAR)";' apk.d/APKBUILD
-	base="`pwd`" && cd apk.d && abuild -P "$$base" -F clean unpack
+	base="`pwd`" && cd apk.d && unset REPODEST && abuild -P "$$base" -F clean unpack
 	cp APKBUILD apk.d/
-	base="`pwd`" && cd apk.d && abuild -P "$$base" -F prepare mkusers build rootpkg
-	ls -l emailrelay-$(VERSION)/*/emailrelay*-$(VERSION)-r0.apk
+	base="`pwd`" && cd apk.d && unset REPODEST && abuild -P "$$base" -F prepare mkusers build rootpkg
+	-find . -name 'emailrelay*-$(VERSION)-r0.apk'
 
 .PHONY: mbedtls
 mbedtls:
