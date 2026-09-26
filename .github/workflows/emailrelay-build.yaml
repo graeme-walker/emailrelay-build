@@ -73,7 +73,7 @@ jobs:
         if: matrix.distro == 'rhel-compatible'
         run: |
           dnf groupinstall -y "Development Tools"
-          dnf install -y git rpm-build rpmdevtools openssl-devel pam-devel pkgconfig
+          dnf install -y git rpm-build rpmdevtools systemd-rpm-macros openssl-devel pam-devel pkgconfig
       - name: tools-alpine
         if: matrix.distro == 'alpine'
         run: |
