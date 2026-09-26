@@ -53,9 +53,9 @@ jobs:
             path_pattern: "emailrelay-src/*.deb"
           - distro: rhel-compatible
             container: rockylinux:9
-            make_args: RPM_ROOT=rpmbuild rpm
+            make_args: "RPM_ROOT=${{ github.workspace }}/rpmbuild" rpm
             artifact_name: rhel-package
-            path_pattern: "emailrelay-src/rpmbuild/RPMS/*/emailrelay*.rpm"
+            path_pattern: "rpmbuild/RPMS/*/emailrelay*.rpm"
           - distro: alpine
             container: alpine:3.20
             make_args: apk
