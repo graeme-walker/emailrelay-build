@@ -116,13 +116,16 @@ jobs:
       - name: get-version
         id: get_version
         run: |
-          echo "current_version=v$(cat VERSION | xargs)" >> $GITHUB_OUTPUT
+          echo "current_version=v$(cat emailrelay-src/VERSION | xargs)" >> $GITHUB_OUTPUT
       - name: make-release-notes
-        run: cd files && ../libexec/make-release-notes ..
+        run: cd files && ../emailrelay-src/libexec/make-release-notes ../emailrelay-src
+        continue-on-error: true
       - name: list-files
         run: ls -lR files/
+        continue-on-error: true
       - name: log-version
         run: echo version=${{ steps.get_version.outputs.current_version }}
+        continue-on-error: true
 
   winbuild_x64:
     runs-on: windows-latest
