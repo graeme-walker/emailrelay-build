@@ -110,13 +110,19 @@ jobs:
       - name: download-artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: |
-            source-tarball
-            *-package
+          #pattern: ... # all uploaded artifacts by default
           path: files/
           merge-multiple: true
-      - name: list
+      - name: get-version
+        id: get_version
+        run: |
+          echo "current_version=v$(cat VERSION | xargs)" >> $GITHUB_OUTPUT
+      - name: make-release-notes
+        run: cd files && ../libexec/make-release-notes ..
+      - name: list-files
         run: ls -lR files/
+      - name: log-version
+        run: echo version=${{ steps.get_version.outputs.current_version }}
 
   winbuild_x64:
     runs-on: windows-latest
