@@ -31,6 +31,7 @@ jobs:
         with:
           name: source-tarball
           path: emailrelay-src/emailrelay-*-src.tar.gz
+          if-no-files-found: error
 
   packages:
     if: |
@@ -45,22 +46,22 @@ jobs:
             container: debian:bookworm-slim
             make_args: deb
             artifact_name: debian-package
-            path_pattern: "emailrelay-src/*.deb"
+            path_pattern: "emailrelay-src/emailrelay*.deb"
           - distro: ubuntu
             container: ubuntu:24.04
             make_args: deb
             artifact_name: ubuntu-package
-            path_pattern: "emailrelay-src/*.deb"
+            path_pattern: "emailrelay-src/emailrelay*.deb"
           - distro: rhel-compatible
             container: rockylinux:9
             make_args: RPM_ROOT=${{ github.workspace }}/rpmbuild rpm
             artifact_name: rhel-package
-            path_pattern: "rpmbuild/RPMS/*/emailrelay*.rpm"
+            path_pattern: "emailrelay-src/emailrelay*.rpm"
           - distro: alpine
             container: alpine:3.20
             make_args: apk
             artifact_name: alpine-package
-            path_pattern: "~/*/*/emailrelay*.apk"
+            path_pattern: "emailrelay-src/emailrelay*.apk"
     container:
       image: ${{ matrix.container }}
     steps:
@@ -94,6 +95,7 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.path_pattern }}
+          if-no-files-found: error
 
   release:
     name: release
@@ -110,9 +112,9 @@ jobs:
       - name: download-artifacts
         uses: actions/download-artifact@v4
         with:
-          #pattern: ... # all uploaded artifacts by default
           path: files/
-          merge-multiple: true
+          #pattern: ... # all uploaded artifacts by default
+          #merge-multiple: true # flatten
       - name: get-version
         id: get_version
         run: |
