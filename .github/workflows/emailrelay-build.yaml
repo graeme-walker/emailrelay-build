@@ -84,8 +84,8 @@ jobs:
           apk add build-base autoconf automake git alpine-sdk abuild openssl-dev pkgconfig
           mkdir ~/.abuild || true
           touch ~/.abuild/emailrelay.key && chmod 600 ~/.abuild/emailrelay.key
-          echo ${{ secrets.ABUILD_PRIVATE_KEY }} >> ~/.abuild/emailrelay.key
-          echo ${{ secrets.ABUILD_PUBLIC_KEY }} > ~/.abuild/emailrelay.key.pub
+          echo "$ABUILD_PRIVATE_KEY" >> ~/.abuild/emailrelay.key
+          echo "$ABUILD_PUBLIC_KEY" > ~/.abuild/emailrelay.key.pub
           echo "PACKAGER_PRIVKEY=\"$HOME/.abuild/emailrelay.key\"" >> ~/.abuild/abuild.conf
         env:
           ABUILD_PRIVATE_KEY: ${{ secrets.ABUILD_PRIVATE_KEY }}
