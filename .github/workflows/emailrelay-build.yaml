@@ -61,9 +61,7 @@ jobs:
             container: alpine:3.20
             make_args: APK_UNITY=1 apk
             artifact_name: alpine-package
-            path_pattern: |
-              "emailrelay-src/emailrelay*.apk"
-              "emailrelay.key.pub"
+            path_pattern: "emailrelay-src/emailrelay*.apk"
     container:
       image: ${{ matrix.container }}
     steps:
@@ -85,11 +83,9 @@ jobs:
           mkdir ~/.abuild || true
           touch ~/.abuild/emailrelay.key && chmod 600 ~/.abuild/emailrelay.key
           echo "$ABUILD_PRIVATE_KEY" >> ~/.abuild/emailrelay.key
-          echo "$ABUILD_PUBLIC_KEY" > emailrelay.key.pub
           echo "PACKAGER_PRIVKEY=\"$HOME/.abuild/emailrelay.key\"" >> ~/.abuild/abuild.conf
         env:
           ABUILD_PRIVATE_KEY: ${{ secrets.ABUILD_PRIVATE_KEY }}
-          ABUILD_PUBLIC_KEY: ${{ secrets.ABUILD_PUBLIC_KEY }}
       - name: checkout
         uses: actions/checkout@v4
       - name: make-package
@@ -125,6 +121,10 @@ jobs:
           path: files/
           #pattern: ... # all uploaded artifacts by default
           #merge-multiple: true # flatten
+      - name: write-public-key
+        run: echo "$ABUILD_PUBLIC_KEY" > files/emailrelay.key.pub
+        env:
+          ABUILD_PUBLIC_KEY: ${{ secrets.ABUILD_PUBLIC_KEY }}
       - name: get-version
         id: get_version
         run: |
