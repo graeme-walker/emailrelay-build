@@ -63,7 +63,7 @@ jobs:
             artifact_name: alpine-package
             path_pattern: |
               "emailrelay-src/emailrelay*.apk"
-              "~/.abuild/emailrelay.key.pub"
+              "emailrelay.key.pub"
     container:
       image: ${{ matrix.container }}
     steps:
@@ -85,7 +85,7 @@ jobs:
           mkdir ~/.abuild || true
           touch ~/.abuild/emailrelay.key && chmod 600 ~/.abuild/emailrelay.key
           echo "$ABUILD_PRIVATE_KEY" >> ~/.abuild/emailrelay.key
-          echo "$ABUILD_PUBLIC_KEY" > ~/.abuild/emailrelay.key.pub
+          echo "$ABUILD_PUBLIC_KEY" > emailrelay.key.pub
           echo "PACKAGER_PRIVKEY=\"$HOME/.abuild/emailrelay.key\"" >> ~/.abuild/abuild.conf
         env:
           ABUILD_PRIVATE_KEY: ${{ secrets.ABUILD_PRIVATE_KEY }}
