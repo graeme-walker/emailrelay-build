@@ -145,6 +145,7 @@ $(ZIP): $(TAR)
 
 APKBUILD: $(TAR)
 	sed -e '/^sha512sums=/q' -e '/^sha512sums=/d' -e 's/__VERSION__/'"`cat $(top_srcdir)/VERSION`/g" -e 's/__PKGVER__/'"`cat $(top_srcdir)/VERSION | sed 's/rc.*//'`/g" < "$(top_srcdir)/etc/apkbuild.in" > APKBUILD
+	if test "0$(APK_UNITY)" -eq 1 ; then sed -i -e 's;^_unity=.*;_unity=1;' APKBUILD ; fi
 	echo "sha512sums=\"" >> APKBUILD
 	sha512sum < "$(TAR)" | sed 's/-/'$(TAR)'/' >> APKBUILD
 	echo "\"" >> APKBUILD

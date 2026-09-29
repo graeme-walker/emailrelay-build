@@ -52,16 +52,18 @@ jobs:
             make_args: deb
             artifact_name: ubuntu-package
             path_pattern: "emailrelay-src/emailrelay*.deb"
-          - distro: rhel-compatible
+          - distro: redhat
             container: rockylinux:9
             make_args: RPM_ROOT=${{ github.workspace }}/rpmbuild rpm
-            artifact_name: rhel-package
+            artifact_name: redhat-package
             path_pattern: "emailrelay-src/emailrelay*.rpm"
           - distro: alpine
             container: alpine:3.20
-            make_args: apk
+            make_args: APK_UNITY=1 apk
             artifact_name: alpine-package
-            path_pattern: "emailrelay-src/emailrelay*.apk"
+            path_pattern: |
+              "emailrelay-src/emailrelay*.apk"
+              "~/.abuild/emailrelay.key.pub"
     container:
       image: ${{ matrix.container }}
     steps:
@@ -71,7 +73,7 @@ jobs:
           apt-get update
           apt-get install -y build-essential git devscripts debhelper dh-exec libssl-dev libpam0g-dev pkg-config
       - name: tools-rpm
-        if: matrix.distro == 'rhel-compatible'
+        if: matrix.distro == 'redhat'
         run: |
           dnf groupinstall -y "Development Tools"
           dnf install -y git rpm-build rpmdevtools systemd-rpm-macros openssl-devel pam-devel pkgconfig
@@ -80,6 +82,13 @@ jobs:
         run: |
           apk update
           apk add build-base autoconf automake git alpine-sdk abuild openssl-dev pkgconfig
+          touch ~/.abuild/emailrelay.key && chmod 600 ~/.abuild/emailrelay.key
+          echo ${{ secrets.ABUILD_PRIVATE_KEY }} >> ~/.abuild/emailrelay.key
+          echo ${{ secrets.ABUILD_PUBLIC_KEY }} > ~/.abuild/emailrelay.key.pub
+          echo "PACKAGER_PRIVKEY=\"/home/runner/.abuild/emailrelay.key\"" >> ~/.abuild/abuild.conf
+        env:
+          ABUILD_PRIVATE_KEY: ${{ secrets.ABUILD_PRIVATE_KEY }}
+          ABUILD_PUBLIC_KEY: ${{ secrets.ABUILD_PUBLIC_KEY }}
       - name: checkout
         uses: actions/checkout@v4
       - name: make-package

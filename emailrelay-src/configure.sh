@@ -16,7 +16,7 @@
 #         -o           cross-compile for openwrt (sdk under $HOME)
 #         -w32         cross-compile for windows 32-bit with mingw-w64
 #         -w64         cross-compile for windows 64-bit with mingw-w64
-#         -p           cross-compile for rpi
+#         -p           cross-compile for 64-bit rpi
 #         -m           git-clone mbedtls v3
 #
 # If mbedtls source is found when cross-compiling then the source is
@@ -173,7 +173,7 @@ do
 		cat <<-EOF > "$MBEDTLS_BUILD_DIR/toolchain-rpi.cmake"
 			set(CMAKE_SYSTEM_NAME Linux)
 			set(CMAKE_SYSTEM_PROCESSOR arm)
-			set(TOOLCHAIN_PREFIX arm-linux-gnueabihf-)
+			set(TOOLCHAIN_PREFIX aarch64-linux-gnu-)
 			set(CMAKE_C_COMPILER \${TOOLCHAIN_PREFIX}gcc)
 			set(CMAKE_CXX_COMPILER \${TOOLCHAIN_PREFIX}g++)
 			set(CMAKE_AR \${TOOLCHAIN_PREFIX}ar CACHE FILEPATH "Archiver")
@@ -271,7 +271,7 @@ then
 :
 elif test "$opt_rpi" != ""
 then
-	TARGET="arm-linux-gnueabihf"
+	TARGET="aarch64-linux-gnu"
 	export CXX="$TARGET-g++"
 	export CC="$TARGET-gcc"
 	export AR="$TARGET-ar"
