@@ -118,7 +118,7 @@ jobs:
       - name: set-version
         shell: cmd
         working-directory: ./emailrelay-src
-        run: set /p VERSION<VERSION && echo VERSION=%VERSION%>>%GITHUB_ENV%
+        run: set /p VERSION=<VERSION && echo VERSION=%VERSION% >> %GITHUB_ENV%
       - name: msvc-environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
