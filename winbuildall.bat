@@ -56,16 +56,23 @@ set version=2.7
 set thisdir=%~dp0
 set thisdrive=%~d0
 
-rem download tarballs if requested
+rem download and unpack tarballs to cwd if requested
 rem
 set qt=https://download.qt.io/archive/qt/6.8/6.8.3/submodules
 set qtname=src-6.8.3
+perl.exe -e "exit 99" 2>NUL
 if "%1"=="download" (
 
 	rem download perl
-	if not exist perl-src (
+	if not "%errorlevel%"=="99" if not exist perl-src (
 		echo winbuildall: downloading perl source
 		curl -L -O https://www.cpan.org/src/5.0/perl-5.38.2.tar.gz
+		certutil -hashfile perl-5.38.2.tar.gz SHA256 | findstr /i "a0a31534451eb7b83c7d6594a497543a54d488bc90ca00f5e34762577f40655e" >NUL
+		if errorlevel 1 (
+			echo winbuildall: perl tarball checksum failed
+			certutil -hashfile perl-5.38.2.tar.gz SHA256
+			goto error
+		)
 		mkdir perl-src
 		tar -m -C perl-src --strip-components=1 -xzf perl-5.38.2.tar.gz
 	)
@@ -74,6 +81,12 @@ if "%1"=="download" (
 	if not exist libressl-src (
 		echo winbuildall: downloading libressl source
 		curl -L -O https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-4.2.1.tar.gz
+		certutil -hashfile libressl-4.2.1.tar.gz SHA256 | findstr /i "6d5c2f58583588ea791f4c8645004071d00dfa554a5bf788a006ca1eb5abd70b"
+		if errorlevel 1 (
+			echo winbuildall: libressl tarball checksum failed
+			certutil -hashfile libressl-4.2.1.tar.gz SHA256
+			goto error
+		)
 		mkdir libressl-src
 		tar -m -C libressl-src --strip-components=1 -xf libressl-4.2.1.tar.gz
 	)
@@ -82,6 +95,12 @@ if "%1"=="download" (
 	if not exist mbedtls-src\CMakeLists.txt (
 		echo winbuildall: downloading mbedtls source
 		curl -L -O https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.5/mbedtls-3.6.5.tar.bz2
+		certutil -hashfile mbedtls-3.6.5.tar.bz2 SHA256 | findstr /i "4a11f1777bb95bf4ad96721cac945a26e04bf19f57d905f241fe77ebeddf46d8" >NUL
+		if errorlevel 1 (
+			echo winbuildall: mbedtls tarball checksum failed
+			certutil -hashfile mbedtls-3.6.5.tar.bz2 SHA256
+			goto error
+		)
 		mkdir mbedtls-src
 		tar -m -C mbedtls-src --strip-components=1 -xf mbedtls-3.6.5.tar.bz2
 		if not exist mbedtls-src\CMakeLists.txt (
@@ -95,8 +114,26 @@ if "%1"=="download" (
 	if not exist qt-src (
 		echo winbuildall: downloading Qt source
 		curl -L -O %qt%/qtbase-everywhere-%qtname%.zip
+		certutil -hashfile qtbase-everywhere-%qtname%.zip SHA256 | findstr /i "992bf7766e214a341ef793eb3665fb784787d2fd666955f5f507f4c6f1f770dd" >NUL
+		if errorlevel 1 (
+			echo winbuildall: qtbase tarball checksum failed
+			certutil -hashfile qtbase-everywhere-%qtname%.zip SHA256
+			goto error
+		)
 		curl -L -O %qt%/qttools-everywhere-%qtname%.zip
+		certutil -hashfile qttools-everywhere-%qtname%.zip SHA256 | findstr /i "4797251aa4d04c9d9da279d8da75f6348f76cff2a75192eac7cca81f5e1b1b38" >NUL
+		if errorlevel 1 (
+			echo winbuildall: qttools tarball checksum failed
+			certutil -hashfile qttools-everywhere-%qtname%.zip SHA256
+			goto error
+		)
 		curl -L -O %qt%/qttranslations-everywhere-%qtname%.zip
+		certutil -hashfile qttranslations-everywhere-%qtname%.zip SHA256 | findstr /i "2a51d6d2a143b17fb0f9a0ac5fbab67602a950447504ec8cb8e23db12ccd3beb" >NUL
+		if errorlevel 1 (
+			echo winbuildall: qttranslations tarball checksum failed
+			certutil -hashfile qttranslations-everywhere-%qtname%.zip SHA256
+			goto error
+		)
 		mkdir qt-src && mkdir qt-src\qtbase && mkdir qt-src\qttools && mkdir qt-src\qttranslations
 		tar -m -C qt-src/qtbase --strip-components=1 -xf qtbase-everywhere-%qtname%.zip
 		tar -m -C qt-src/qttools --strip-components=1 -xf qttools-everywhere-%qtname%.zip
@@ -104,11 +141,11 @@ if "%1"=="download" (
 	)
 
 	rem download emailrelay
-	if not exist emailrelay-src (
+	if not exist Makefile.am if not exist emailrelay-src (
 		echo winbuildall: downloading emailrelay source
 		curl -L -O https://sf.net/projects/emailrelay/files/emailrelay/%version%/emailrelay-%version%-src.tar.gz
 		mkdir emailrelay-src
-		tar -m -C emailrelay-src --strip-components=1 emailrelay-%version%-src.tar.gz
+		tar -m -C emailrelay-src --strip-components=1 -xf emailrelay-%version%-src.tar.gz
 	)
 	goto end
 )
@@ -179,7 +216,7 @@ rem
 set cctype=MSVC143
 if "%VisualStudioVersion%" == "16.0" set cctype=MSVC142
 perl.exe -e "exit 99" 2>NUL
-if %errorlevel% == 99 (
+if "%errorlevel%"=="99" (
 	set perl=perl.exe
 ) else (
 	if not exist "%perlsrc%\win32" (
@@ -203,7 +240,7 @@ if %errorlevel% == 99 (
 	set perl=%basedir%perl-bin\bin\perl.exe
 )
 %perl% -e "exit 99" 2>NUL
-if not %errorlevel% == 99 (
+if not "%errorlevel%"=="99" (
 	echo winbuildall: perl [%perl%] not working
 	goto error
 )
