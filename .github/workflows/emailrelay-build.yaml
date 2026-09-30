@@ -115,6 +115,10 @@ jobs:
       - name: download-libs
         working-directory: ./emailrelay-src
         run: libexec/winbuildall.bat download
+      - name: set-version
+        shell: cmd
+        working-directory: ./emailrelay-src
+        run: set /p VERSION<VERSION && echo VERSION=%VERSION%>>%GITHUB_ENV%
       - name: msvc-environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -122,12 +126,14 @@ jobs:
       - name: winbuildall
         working-directory: ./emailrelay-src
         run: libexec/winbuildall.bat release
-      - name: archive-windows-x64-release
+      - name: compress
         working-directory: ./emailrelay-src
+        run: 7z a emailrelay-%VERSION%-w64.zip .\emailrelay-windows-x64-release\*
+      - name: upload
         uses: actions/upload-artifact@v4
         with:
-          name: emailrelay-windows-x64-release
-          path: emailrelay-windows-x64-release
+          name: win-x64
+          path: emailrelay-%VERSION%-w64.zip
 
   release:
     name: release
