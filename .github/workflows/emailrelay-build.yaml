@@ -163,7 +163,7 @@ jobs:
       - name: checkout
         uses: actions/checkout@v7
       - name: install-autotools
-        run: "sudo apt-get install -y autoconf automake libtool g++-mingw-w64-x86-64-posix zip"
+        run: "sudo apt-get install -y autoconf automake libtool g++-mingw-w64-i686-posix zip"
       - name: configure
         working-directory: emailrelay-src
         run: |
