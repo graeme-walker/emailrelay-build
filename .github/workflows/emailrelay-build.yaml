@@ -155,7 +155,7 @@ jobs:
   release:
     name: release
     runs-on: ubuntu-latest
-    needs: [tarball, packages]
+    needs: [tarball, packages, winbuild]
     permissions:
       contents: write
     steps:
@@ -196,7 +196,7 @@ jobs:
           prerelease: ${{ contains(steps.get_version.outputs.version, 'rc') }}
           working_directory: files
           files: "*"
-          body_path: RELEASE.md
+          body_path: files/RELEASE.md
 
   winbuild_x64:
     runs-on: windows-latest
