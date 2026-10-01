@@ -147,7 +147,8 @@ jobs:
       - name: compress
         shell: cmd
         working-directory: ./emailrelay-src
-        run: "7z a emailrelay-%VERSION%-w64.zip .\emailrelay-windows-x64-release\*"
+        run: |
+          7z a emailrelay-%VERSION%-w64.zip .\emailrelay-windows-x64-release\*
       - name: upload
         uses: actions/upload-artifact@v4
         with:
