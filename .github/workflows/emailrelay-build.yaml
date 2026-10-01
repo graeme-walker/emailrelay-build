@@ -42,41 +42,56 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - distro: debian
+          - distro: debian12
             container: debian:bookworm-slim
-            make_args: deb
-            artifact_name: debian-package
-            path_pattern: "emailrelay-src/emailrelay*.deb"
-          - distro: ubuntu
+            package_type: deb
+            make_args: DISTRO=+deb12 deb
+            path_pattern: "emailrelay-src/emailrelay_*.deb"
+          - distro: debian13
+            container: debian:trixie-slim
+            package_type: deb
+            make_args: DISTRO=+deb13 deb
+            path_pattern: "emailrelay-src/emailrelay_*.deb"
+          - distro: ubuntu2404
             container: ubuntu:24.04
-            make_args: deb
-            artifact_name: ubuntu-package
-            path_pattern: "emailrelay-src/emailrelay*.deb"
-          - distro: redhat
+            package_type: deb
+            make_args: DISTRO=+ub2404 deb
+            path_pattern: "emailrelay-src/emailrelay_*.deb"
+          - distro: ubuntu2604
+            container: ubuntu:26.04
+            package_type: deb
+            make_args: DISTRO=+ub2604 deb
+            path_pattern: "emailrelay-src/emailrelay_*.deb"
+          - distro: redhat9
             container: rockylinux:9
-            make_args: RPM_ROOT=${{ github.workspace }}/rpmbuild rpm
-            artifact_name: redhat-package
+            package_type: rpm
+            make_args: DISTRO=.rh9 rpm
             path_pattern: "emailrelay-src/emailrelay*.rpm"
-          - distro: alpine
+          - distro: redhat10
+            container: rockylinux/rockylinux:10
+            package_type: rpm
+            make_args: DISTRO=.rh10 rpm
+            path_pattern: "emailrelay-src/emailrelay*.rpm"
+          - distro: alpine320
             container: alpine:3.20
-            make_args: APK_UNITY=1 apk
-            artifact_name: alpine-package
+            package_type: apk
+            make_args: DISTRO=.alpine320 APK_UNITY=1 apk
             path_pattern: "emailrelay-src/emailrelay*.apk"
     container:
       image: ${{ matrix.container }}
     steps:
-      - name: tools-ubuntu
-        if: matrix.distro == 'debian' || matrix.distro == 'ubuntu'
+      - name: tools-deb
+        if: matrix.package_type == 'deb'
         run: |
           apt-get update
           apt-get install -y build-essential git devscripts debhelper dh-exec libssl-dev libpam0g-dev pkg-config
       - name: tools-rpm
-        if: matrix.distro == 'redhat'
+        if: matrix.package_type == 'rpm'
         run: |
           dnf groupinstall -y "Development Tools"
           dnf install -y git rpm-build rpmdevtools systemd-rpm-macros openssl-devel pam-devel pkgconfig
-      - name: tools-alpine
-        if: matrix.distro == 'alpine'
+      - name: tools-apk
+        if: matrix.package_type == 'apk'
         run: |
           apk update
           apk add build-base autoconf automake git alpine-sdk abuild openssl-dev pkgconfig
@@ -99,7 +114,7 @@ jobs:
       - name: upload-package
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
+          name: ${{ matrix.distro }}
           path: ${{ matrix.path_pattern }}
           if-no-files-found: error
 
@@ -118,7 +133,9 @@ jobs:
       - name: set-version
         shell: cmd
         working-directory: ./emailrelay-src
-        run: set /p VERSION=<VERSION && echo VERSION=%VERSION% >> %GITHUB_ENV%
+        run: |
+          set /p VERSION=<VERSION
+          echo VERSION=%VERSION% >> %GITHUB_ENV%
       - name: msvc-environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -133,7 +150,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: win-x64
-          path: emailrelay-%VERSION%-w64.zip
+          path: emailrelay-src/emailrelay-%VERSION%-w64.zip
 
   release:
     name: release
@@ -148,8 +165,8 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: files/
+          merge-multiple: true
           #pattern: ... # all uploaded artifacts by default
-          #merge-multiple: true # flatten
       - name: write-public-key
         run: echo "$ABUILD_PUBLIC_KEY" > files/emailrelay.key.pub
         env:
@@ -157,7 +174,9 @@ jobs:
       - name: get-version
         id: get_version
         run: |
-          echo "current_version=v$(cat emailrelay-src/VERSION | xargs)" >> $GITHUB_OUTPUT
+          echo "VERSION=$(cat emailrelay-src/VERSION | xargs)" >> $GITHUB_ENV
+          echo "version=$(cat emailrelay-src/VERSION | xargs)" >> $GITHUB_OUTPUT
+          echo "vversion=v$(cat emailrelay-src/VERSION | xargs)" >> $GITHUB_OUTPUT
       - name: make-release-notes
         run: cd files && ../emailrelay-src/libexec/make-release-notes ../emailrelay-src
         continue-on-error: true
@@ -165,8 +184,19 @@ jobs:
         run: ls -lR files/
         continue-on-error: true
       - name: log-version
-        run: echo version=${{ steps.get_version.outputs.current_version }}
+        run: |
+          echo version=v${{ steps.get_version.outputs.version }}
+          echo tag=${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || steps.get_version.outputs.vversion }}
         continue-on-error: true
+      - name: release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || steps.get_version.outputs.vversion }}
+          draft: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          prerelease: ${{ contains(steps.get_version.outputs.version, 'rc') }}
+          working_directory: files
+          files: *
+          body_path: RELEASE.md
 
   winbuild_x64:
     runs-on: windows-latest

@@ -19,14 +19,21 @@
 #	$ ./bootstrap
 #	$ ./configure.sh
 #	$ make
-#	$ sudo make rpm
+#	$ make rpm DISRO=.rhel9
 #
 # or:
 #	$ apt install g++ make automake libssl-dev libpam0g-dev debhelper # deb
 #	$ ./bootstrap
 #	$ ./configure.sh
 #	$ make
-#	$ sudo make deb
+#	$ make deb DISTRO=+deb13
+#
+# or:
+#   $ apk add build-base autoconf automake git alpine-sdk abuild openssl-dev pkgconfig
+#	$ ./bootstrap
+#	$ ./configure.sh
+#	$ make
+#	$ make apk DISTRO=.alp320
 #
 # and possibly:
 #	$ make cmake ; make -C build
@@ -61,12 +68,16 @@ e_doc_DATA = AUTHORS NEWS README ChangeLog
 README: README.md
 	sed '/^!/{N;d}' README.md > README
 
-RPM_ROOT ?= "`pwd`/rpmbuild"
-ARCH ?= "`uname -m`"
-RPM=emailrelay-$(VERSION)-1.$(ARCH).rpm
+RPM_ARCH ?= x86_64
+APK_ARCH ?= x86_64
+DEB_ARCH ?= amd64
+DISTRO ?=
+
 TAR=emailrelay-$(VERSION).tar.gz
 ZIP=emailrelay-$(VERSION)-src.zip
-DEB=emailrelay_$(VERSION)_$(ARCH).deb
+RPM=emailrelay-$(VERSION)-1$(DISTRO).$(RPM_ARCH).rpm
+DEB=emailrelay_$(VERSION)-1$(DISTRO)_$(DEB_ARCH).deb
+APK=emailrelay-_SUBNAME_$(VERSION)-r0$(DISTRO).$(APK_ARCH).apk
 
 .PHONY: strip
 strip:
@@ -76,14 +87,14 @@ strip:
 rpm: $(RPM)
 
 $(RPM): dist
-	-rm -f "emailrelay-$(VERSION)-1.$(ARCH).rpm"
-	-mkdir -p "$(RPM_ROOT)/BUILD" "$(RPM_ROOT)/SOURCES" "$(RPM_ROOT)/SPECS" 2>/dev/null
-	cp $(TAR) "$(RPM_ROOT)/SOURCES/emailrelay-$(VERSION)-src.tar.gz"
-	cp $(top_srcdir)/emailrelay.spec "$(RPM_ROOT)/SPECS/"
-	-chown root:root "$(RPM_ROOT)/SPECS/emailrelay.spec"
-	rpmbuild --define "_topdir $(RPM_ROOT)" -ba "$(RPM_ROOT)/SPECS/emailrelay.spec"
-	mv "$(RPM_ROOT)/RPMS/$(ARCH)/emailrelay-$(VERSION)-1.$(ARCH).rpm" .
-	-ls -l "emailrelay-$(VERSION)-1.$(ARCH).rpm"
+	-rm -f "emailrelay-$(VERSION)-1.$(RPM_ARCH).rpm"
+	-mkdir -p "rpmbuild/BUILD" "rpmbuild/SOURCES" "rpmbuild/SPECS" 2>/dev/null
+	cp $(TAR) "rpmbuild/SOURCES/emailrelay-$(VERSION)-src.tar.gz"
+	cp $(top_srcdir)/emailrelay.spec "rpmbuild/SPECS/"
+	-chown root:root "rpmbuild/SPECS/emailrelay.spec"
+	rpmbuild --define "_topdir `pwd`/rpmbuild" -ba "`pwd`/rpmbuild/SPECS/emailrelay.spec"
+	mv "rpmbuild/RPMS/$(RPM_ARCH)/emailrelay-$(VERSION)-1.$(RPM_ARCH).rpm" "$(RPM)"
+	-ls -l emailrelay*.rpm
 
 .PHONY: deb
 deb: $(DEB)
@@ -92,6 +103,8 @@ $(DEB): dist
 	-mv emailrelay-$(VERSION) emailrelay-$(VERSION).old.$$$$ || true
 	tar -xzf $(TAR)
 	cd emailrelay-$(VERSION) && dpkg-buildpackage -us -uc -b -jauto
+	mv "emailrelay_$(VERSION)_$(DEB_ARCH).deb" "$(DEB)"
+	-ls -l emailrelay*.deb
 
 .PHONY: deb-src
 deb-src: dist
@@ -165,11 +178,11 @@ apk: $(TAR) APKBUILD APKBUILD.post-install
 	cp APKBUILD.post-install apk.d/emailrelay.post-install
 	cp APKBUILD apk.d/
 	sed -i -e 's;^source=.*;source="$(TAR)";' apk.d/APKBUILD
-	base="`pwd`" && cd apk.d && unset REPODEST && abuild -P "$$base" -F clean unpack
+	cd apk.d && unset REPODEST && abuild -P "`pwd`" -F clean unpack
 	cp APKBUILD apk.d/
-	base="`pwd`" && cd apk.d && unset REPODEST && abuild -P "$$base" -F prepare mkusers build rootpkg
-	mv "`basename \`pwd\``"/*/emailrelay*-$(VERSION)-r0.apk .
-	-ls -l emailrelay*-$(VERSION)-r0.apk
+	cd apk.d && unset REPODEST && abuild -P "`pwd`" -F prepare mkusers build rootpkg
+	cwdname="`basename \`pwd\``" ; for sub in "" doc- openrc- ; do src="apk.d/$${cwdname}/$(APK_ARCH)/emailrelay-$${sub}$(VERSION)-r0.apk" ; dst="`echo $(APK) | sed s/_SUBNAME_/$${sub}/`" ; mv "$${src}" "$${dst}" || break -1 2>/dev/null ; done
+	-ls -l emailrelay*.apk
 
 .PHONY: mbedtls
 mbedtls:
