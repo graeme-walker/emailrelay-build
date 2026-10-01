@@ -155,7 +155,7 @@ jobs:
   release:
     name: release
     runs-on: ubuntu-latest
-    needs: [tarball, packages, winbuild]
+    needs: [tarball, packages]
     permissions:
       contents: write
     steps:
