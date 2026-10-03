@@ -241,7 +241,7 @@ jobs:
           echo "vversion=v$(cat emailrelay-src/VERSION | xargs)" >> $GITHUB_OUTPUT
       - name: write-public-key
         run: |
-          cp ~/.abuild/*.rsa.pub > files/emailrelay-$VERSION-apk.rsa.pub
+          cp ~/.abuild/*.rsa.pub files/emailrelay-$VERSION-apk.rsa.pub
       - name: make-release-notes
         run: "cd files && ../emailrelay-src/libexec/make-release-notes ../emailrelay-src"
         continue-on-error: true
