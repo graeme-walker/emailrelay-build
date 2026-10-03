@@ -29,11 +29,11 @@
 #	$ make deb DISTRO=+deb13
 #
 # or:
-#   $ apk add build-base autoconf automake git alpine-sdk abuild openssl-dev pkgconfig
+#	$ apk add build-base autoconf automake git alpine-sdk abuild openssl-dev pkgconfig
 #	$ ./bootstrap
 #	$ ./configure.sh
 #	$ make
-#	$ make apk DISTRO=.alp320
+#	$ make apk DISTRO=.alpine320 APK_UNITY=1
 #
 # and possibly:
 #	$ make cmake ; make -C build
@@ -77,7 +77,7 @@ TAR=emailrelay-$(VERSION).tar.gz
 ZIP=emailrelay-$(VERSION)-src.zip
 RPM=emailrelay-$(VERSION)-1$(DISTRO).$(RPM_ARCH).rpm
 DEB=emailrelay_$(VERSION)-1$(DISTRO)_$(DEB_ARCH).deb
-APK=emailrelay-_SUBNAME_$(VERSION)-r0$(DISTRO).$(APK_ARCH).apk
+APK=emailrelay-$(VERSION)-r0$(DISTRO).$(APK_ARCH).apk
 
 .PHONY: strip
 strip:
@@ -167,12 +167,11 @@ APKBUILD: $(TAR)
 APKBUILD.post-install:
 	cp "$(top_srcdir)/etc/apkbuild.post-install" APKBUILD.post-install
 
-.PHONY: apkbuild
-apkbuild: APKBUILD APKBUILD.post-install
-
 .PHONY: apk
-apk: $(TAR) APKBUILD APKBUILD.post-install
-	if grep -q "^PACKAGER_PRIVKEY=" "${HOME}/.abuild/abuild.conf" 2>/dev/null ; then : ; else abuild-keygen -n -a ; fi
+apk: apk-key apk-d apk-build apk-package apk-rename
+
+.PHONY: apk-d
+apk-d: $(TAR) APKBUILD APKBUILD.post-install
 	mkdir -p apk.d
 	cp "$(TAR)" apk.d/
 	cp APKBUILD.post-install apk.d/emailrelay.post-install
@@ -180,8 +179,24 @@ apk: $(TAR) APKBUILD APKBUILD.post-install
 	sed -i -e 's;^source=.*;source="$(TAR)";' apk.d/APKBUILD
 	cd apk.d && unset REPODEST && abuild -P "`pwd`" -F clean unpack
 	cp APKBUILD apk.d/
-	cd apk.d && unset REPODEST && abuild -P "`pwd`" -F prepare mkusers build rootpkg
-	cwdname="`basename \`pwd\``" ; for sub in "" doc- openrc- ; do src="apk.d/$${cwdname}/$(APK_ARCH)/emailrelay-$${sub}$(VERSION)-r0.apk" ; dst="`echo $(APK) | sed s/_SUBNAME_/$${sub}/`" ; mv "$${src}" "$${dst}" || break -1 2>/dev/null ; done
+
+.PHONY: apk-build
+apk-build:
+	cd apk.d && unset REPODEST && abuild -P "`pwd`" -F prepare mkusers build
+
+.PHONY: apk-key
+apk-key:
+	if grep -q "^PACKAGER_PRIVKEY=" "${HOME}/.abuild/abuild.conf" 2>/dev/null ; then : ; else abuild-keygen -n -a ; fi
+
+.PHONY: apk-package
+apk-package:
+	cd apk.d && unset REPODEST && abuild -P "`pwd`" -F rootpkg
+
+.PHONY: apk-rename
+apk-rename:
+	mv apk.d/`basename \`pwd\``/$(APK_ARCH)/emailrelay-$(VERSION)-r0.apk emailrelay-$(VERSION)-r0$(DISTRO).$(APK_ARCH).apk
+	mv apk.d/`basename \`pwd\``/$(APK_ARCH)/emailrelay-doc-$(VERSION)-r0.apk emailrelay-doc-$(VERSION)-r0$(DISTRO).$(APK_ARCH).apk
+	mv apk.d/`basename \`pwd\``/$(APK_ARCH)/emailrelay-openrc-$(VERSION)-r0.apk emailrelay-openrc-$(VERSION)-r0$(DISTRO).$(APK_ARCH).apk
 	-ls -l emailrelay*.apk
 
 .PHONY: mbedtls
