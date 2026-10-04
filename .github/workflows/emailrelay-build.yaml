@@ -111,6 +111,18 @@ jobs:
           name: ${{ matrix.distro }}
           path: ${{ matrix.path_pattern }}
           if-no-files-found: error
+      - name: apk-copy-key
+        if: matrix.package_type == 'apk'
+        run: |
+          VERSION=$(cat emailrelay-src/VERSION)
+          cp ~/.abuild/*rsa.pub emailrelay-$VERSION-${{ matrix.distro }}.rsa.pub
+      - name: apk-upload-key
+        if: matrix.package_type == 'apk'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.distro }}-key
+          path: *.rsa.pub
+          if-no-files-found: error
 
   winbuild:
     runs-on: windows-latest
@@ -239,9 +251,6 @@ jobs:
           echo "VERSION=$(cat emailrelay-src/VERSION | xargs)" >> $GITHUB_ENV
           echo "version=$(cat emailrelay-src/VERSION | xargs)" >> $GITHUB_OUTPUT
           echo "vversion=v$(cat emailrelay-src/VERSION | xargs)" >> $GITHUB_OUTPUT
-      - name: write-public-key
-        run: |
-          cp ~/.abuild/*.rsa.pub files/emailrelay-$VERSION-apk.rsa.pub
       - name: make-release-notes
         run: "cd files && ../emailrelay-src/libexec/make-release-notes ../emailrelay-src"
         continue-on-error: true
