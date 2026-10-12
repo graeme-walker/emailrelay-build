@@ -462,6 +462,7 @@ jobs:
       with:
         run: |
           pkg install -y automake
+          cd emailrelay-src
           ./bootstrap
           ./configure.sh
           make -j 4
@@ -472,4 +473,4 @@ jobs:
           service emailrelay start
           service emailrelay status
           service emailrelay stop || true
- 
+
