@@ -450,3 +450,26 @@ jobs:
             x64/emailrelay-build-x64-release/src/main/x64/emailrelay-submit.exe
             x64/emailrelay-build-x64-release/src/main/x64/emailrelay-service.exe
 
+  freebsd:
+    runs-on: ubuntu-latest
+    if: |
+      contains(github.event.head_commit.message, '[freebsd]')
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4
+    - name: freebsd-vm
+      uses: vmactions/freebsd-vm@v1
+      with:
+        run: |
+          pkg install -y automake
+          ./bootstrap
+          ./configure.sh
+          make -j 4
+          make check || true
+          make install
+          echo port 0 >> /usr/local/etc/emailrelay.conf
+          echo interface /tmp/emailrelay.s >> /usr/local/etc/emailrelay.conf
+          service emailrelay start
+          service emailrelay status
+          service emailrelay stop || true
+ 

@@ -223,7 +223,7 @@ void GNet::TaskImp::onFutureEvent()
 	G_DEBUG( "GNet::TaskImp::onFutureEvent: exit code " << exit_code ) ;
 
 	std::string pipe_output = m_process.waitable().output() ;
-	G_LOG_MORE( "GNet::TaskImp::onFutureEvent: executable output: [" << G::Str::printable(pipe_output) << "]" ) ;
+	G_DEBUG( "GNet::TaskImp::onFutureEvent: executable output: [" << G::Str::printable(pipe_output) << "]" ) ;
 
 	if( m_task )
 		m_task->done( exit_code , pipe_output ) ; // last

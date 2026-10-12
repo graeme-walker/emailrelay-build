@@ -529,6 +529,7 @@ G::StringArray Main::Configuration::warnings() const
 	filterValue( "filter" , &warnings ) ;
 	filterValue( "client-filter" , &warnings ) ;
 	verifierValue( "address-verifier" , &warnings ) ;
+	pollRunnerValue( "poll-run" , &warnings ) ;
 
 	return warnings ;
 }

@@ -1,3 +1,4 @@
+#!/usr/bin/env perl
 #
 # SPDX-FileCopyrightText: 2026 Graeme Walker <graeme_walker@users.sourceforge.net>
 # SPDX-License-Identifier: GPL-3.0-or-later
@@ -1158,6 +1159,7 @@ sub testFilter
 				"exit 0" ,
 			] ,
 			win32 => [
+				"WScript.Stderr.WriteLine( \"stderr ignored\" ) ;" ,
 				"var fs = WScript.CreateObject(\"Scripting.FileSystemObject\");" ,
 				"var out_ = fs.OpenTextFile( \"$outputfile\" , 8 , true ) ;" ,
 				"out_.WriteLine( \"arg: \" + WScript.Arguments(0) ) ;" ,
@@ -1780,23 +1782,23 @@ sub testPollRun
 		PollRun => 1 ,
 	) ;
 	my $server = new Server() ;
-	$server->set_pollTimeout( "1" ) ;
+	$server->set_pollTimeout( "100ms,100s" ) ;
 	my $outputfile = System::tempfile( "output" ) ;
 	Filter::create( $server->pollRun() , undef , {
 			unix => [
 				"echo STDOUT" ,
 				'echo STDERR >&2' ,
 				"echo DONE > $outputfile" ,
-				"exit 0" ,
+				"exit 1" ,
 			] ,
 			win32 => [
-				#"WScript.StdOut.WriteLine( \"STDOUT\" ) ;" , # this terminates cscript!
+				"WScript.StdOut.WriteLine( \"STDOUT\" ) ;" ,
 				"WScript.StdErr.WriteLine( \"STDERR\" ) ;" ,
 				"var fs = WScript.CreateObject(\"Scripting.FileSystemObject\");" ,
 				"var out_ = fs.OpenTextFile( \"$outputfile\" , 8 , true ) ;" ,
 				"out_.WriteLine( \"DONE\" ) ;" ,
 				"out_.Close() ;" ,
-				"WScript.Quit(0);" ,
+				"WScript.Quit(1);" ,
 			] ,
 		} ) ;
 	Check::fileExists( $server->pollRun() ) ;
@@ -1807,6 +1809,7 @@ sub testPollRun
 	System::waitForFileLine( $outputfile , "DONE" , "poll-run script did not create an output file" , 2 ) ;
 	System::sleep_cs( 50 ) if System::windows() ;
 	Check::fileContains( $server->log() , "STDERR" , "stderr not captured from poll-run script" ) ;
+	Check::fileContains( $server->log() , "STDOUT" , "stdout not captured from poll-run script" ) ;
 
 	# tear down
 	System::unlink( $outputfile ) ;

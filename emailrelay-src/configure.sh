@@ -372,6 +372,7 @@ then
 		--sysconfdir=/usr/local/etc \
 		--localstatedir=/usr/local/var \
 		--mandir=/usr/local/man \
+		e_initdir=/usr/local/bin \
 		e_bsdinitdir=/usr/local/etc/rc.d \
 		$opt_passthrough "$@"
 :

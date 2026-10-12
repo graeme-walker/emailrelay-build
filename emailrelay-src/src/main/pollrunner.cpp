@@ -13,7 +13,9 @@
 #include "gstr.h"
 #include "gstringtoken.h"
 #include "glog.h"
+#include "glogoutput.h"
 #include "ggettext.h"
+#include <sstream>
 
 Main::PollRunner::Spec Main::PollRunner::parse( const std::string & spec ,
 	const G::Path & base_dir , const G::Path & app_dir ,
@@ -36,11 +38,10 @@ Main::PollRunner::Spec Main::PollRunner::parse( const std::string & spec ,
 	}
 	else
 	{
-		std::string path( spec ) ;
-		fixPath( path , base_dir , app_dir ) ;
-		if( warnings_out && !G::File::exists(path,std::nothrow) )
-			warnings_out->emplace_back( std::string(txt("poll-run program does not exist: ")).append(path) ) ;
-		return makeSpec( Spec::Type::cmd , 0U , false , path ) ;
+		auto result = parsePath( spec , base_dir , app_dir ) ;
+		if( warnings_out && !G::File::exists(result.path,std::nothrow) )
+			warnings_out->emplace_back( std::string(txt("poll-run program does not exist: ")).append(result.path.str()) ) ;
+		return result ;
 	}
 }
 
@@ -50,7 +51,7 @@ Main::PollRunner::PollRunner( GNet::EventState es , Unit & unit , GStore::Messag
 		m_unit(unit) ,
 		m_store(store) ,
 		m_spec(spec) ,
-		m_task(*this,es,"poll runner: exec error: __strerror__",G::Root::nobody()) ,
+		m_task(*this,es,"exec error: __strerror__",G::Root::nobody()) ,
 		m_cmd(spec.path,{spool_dir.str(),delivery_dir.str()})
 {
 }
@@ -60,11 +61,7 @@ Main::PollRunner::~PollRunner()
 
 void Main::PollRunner::onTaskDone( int ec , const std::string & output )
 {
-	if( ec != 0 || !G::Str::trimmed(output,G::Str::ws()).empty() )
-	{
-		G_LOG( "Main::PollRunner::onTaskDone: poll runner: exit " << ec
-			<< (output.empty()?"":" (") << G::Str::printable(output) << (output.empty()?"":")") ) ;
-	}
+	logEnd( ec , output ) ;
 	m_unit.requestForwarding( "poll" ) ;
 }
 
@@ -78,11 +75,11 @@ bool Main::PollRunner::start()
 	if( m_spec.type == Spec::Type::cmd )
 	{
 		// unlike filters and address verifiers stdout is not needed for
-		// anything functional so discard it and capture stderr instead
-		G_LOG_S_IF( m_spec.verbose , "Main::PollRunner::onTaskDone: poll runner: running " << m_cmd.exe() ) ;
+		// anything functional so capture stdout and stderr for logging
+		logStart() ;
 		m_task.start( m_cmd , G::Environment::minimal() ,
 			G::NewProcess::Fd::devnull() , // stdin
-			G::NewProcess::Fd::devnull() , // stdout
+			G::NewProcess::Fd::pipe() , // stdout
 			G::NewProcess::Fd::pipe() , // stderr
 			G::Path() ) ;
 		return false ; // async
@@ -105,8 +102,25 @@ bool Main::PollRunner::start()
 	}
 }
 
-void Main::PollRunner::fixPath( std::string & path , const G::Path & base_dir , const G::Path & app_dir )
+Main::PollRunner::Spec Main::PollRunner::parsePath( const std::string & spec , const G::Path & base_dir , const G::Path & app_dir )
 {
+	if( G::Str::headMatch(spec,"run:") && !G::File::exists(fullPath(spec,base_dir,app_dir),std::nothrow) )
+	{
+		std::string_view tail = G::Str::tailView( spec , ":" ) ;
+		G::StringTokenView t( tail , "," , 1U ) ;
+		G::Path path = fullPath( t() , base_dir , app_dir ) ;
+		bool verbose = t.next()() == "verbose" ;
+		return makeSpec( Spec::Type::cmd , 0U , verbose , path ) ;
+	}
+	else
+	{
+		return makeSpec( Spec::Type::cmd , 0U , false , fullPath(spec,base_dir,app_dir) ) ;
+	}
+}
+
+G::Path Main::PollRunner::fullPath( std::string_view path_in , const G::Path & base_dir , const G::Path & app_dir )
+{
+	std::string path = G::sv_to_string( path_in ) ;
 	if( path.find("@app") == 0U && !app_dir.empty() )
 	{
 		G::Str::replace( path , "@app" , app_dir.str() ) ;
@@ -115,6 +129,7 @@ void Main::PollRunner::fixPath( std::string & path , const G::Path & base_dir , 
 	{
 		path = (base_dir/path).str() ;
 	}
+	return {path} ;
 }
 
 unsigned int Main::PollRunner::parseNumber( std::string_view s )
@@ -135,5 +150,27 @@ bool Main::PollRunner::parseVerbose( std::string_view s )
 			return true ;
 	}
 	return false ;
+}
+
+void Main::PollRunner::logStart()
+{
+	if( m_spec.verbose )
+	{
+		G_LOG_S( "Main::PollRunner::logStart: poll runner: [" << m_cmd.exe().basename() << "]: running " << m_cmd.exe() ) ;
+	}
+}
+
+void Main::PollRunner::logEnd( int ec , const std::string & output )
+{
+	if( m_spec.verbose || ( ec != 0 && G::LogOutput::Instance::atVerbose() ) )
+	{
+		std::ostringstream ss ;
+		ss << "[" << m_cmd.exe().basename() << "]: exit " << ec
+			<< (output.empty()?"":" (") << G::Str::printable(output) << (output.empty()?"":")") ;
+		if( m_spec.verbose )
+			G_LOG_S( "Main::PollRunner::logEnd: poll runner: " << ss.str() ) ;
+		else
+			G_LOG( "Main::PollRunner::logEnd: poll runner: " << ss.str() ) ;
+	}
 }
 
