@@ -470,6 +470,7 @@ jobs:
           make install
           echo port 0 >> /usr/local/etc/emailrelay.conf
           echo interface /tmp/emailrelay.s >> /usr/local/etc/emailrelay.conf
+          echo 'emailrelay_enable="YES"' >> /etc/rc.conf
           service emailrelay start
           service emailrelay status
           service emailrelay stop || true
