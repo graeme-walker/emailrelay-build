@@ -29,33 +29,37 @@ namespace Main
 class Main::PollRunner : private GNet::TaskCallback
 {
 public:
-	struct Spec
+	struct Config
 	{
 		enum class Type { none , cmd , unfail , retry } ;
 		Type type {Type::none} ;
+		int verbosity {-1} ;
 		unsigned int retry_limit {0U} ;
-		bool verbose {false} ;
 		G::Path path ;
 	} ;
 
-	static Spec parse( const std::string & spec ,
+	static Config parse( const std::string & spec ,
 		const G::Path & base_dir , const G::Path & app_dir ,
 		G::StringArray * warnings_out = nullptr ) ;
-			///< Parses the option value into a Spec structure.
+			///< Parses the option value into a Config structure.
 
 	PollRunner( GNet::EventState , Unit & , GStore::MessageStore & ,
-		const Spec & spec , const G::Path & spool_dir , const G::Path & delivery_dir ) ;
+		const Config & config , const G::Path & spool_dir , const G::Path & delivery_dir ) ;
 			///< Constructor.
 
 	~PollRunner() override ;
 		///< Destructor.
 
-	bool busy() const ;
-		///< Returns true if busy from last time.
+	void disarm() noexcept ;
+		///< Prevents a call to Unit::requestForwarding() when the
+		///< current busy() task completes.
 
-	bool start() ;
-		///< Starts the task. Returns true if finished immediately, or calls
-		///< Unit::requestForwarding("poll") asynchronously when finished.
+	bool busy() const noexcept ;
+		///< Returns true if busy.
+
+	void start() ;
+		///< Runs or starts the task.
+		///< Precondition: !busy()
 
 public:
 	PollRunner( const PollRunner & ) = delete ;
@@ -69,19 +73,19 @@ private: // overrides
 private:
 	void logStart() ;
 	void logEnd( int , const std::string & ) ;
-	static Spec parsePath( const std::string & , const G::Path & , const G::Path & ) ;
 	static G::Path fullPath( std::string_view , const G::Path & , const G::Path & ) ;
 	static unsigned int parseNumber( std::string_view ) ;
-	static bool parseVerbose( std::string_view ) ;
-	static Spec makeSpec( Spec::Type t , unsigned int n = 0U , bool v = false , const G::Path & p = {} ) { Spec s {} ; s.type = t ; s.retry_limit = n ; s.verbose = v ; s.path = p ; return s ; } // c++11
+	static int parseVerbosity( std::string_view ) ;
+	static Config makeConfig( Config::Type t , int verbosity = 0 , unsigned int n = 0U , const G::Path & p = {} ) { Config c {} ; c.type = t ; c.verbosity = verbosity ; c.retry_limit = n ; c.path = p ; return c ; } // c++11
 
 private:
 	GNet::EventState m_es ;
 	Unit & m_unit ;
 	GStore::MessageStore & m_store ;
-	Spec m_spec ;
-	GNet::Task m_task ;
+	Config m_config ;
 	G::ExecutableCommand m_cmd ;
+	GNet::Task m_task ;
+	bool m_disarmed {false} ;
 } ;
 
 #endif

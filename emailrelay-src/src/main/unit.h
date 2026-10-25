@@ -93,6 +93,9 @@ public:
 		///< Initiates forwarding asynchronously. Does nothing if there
 		///< is no forwarding address.
 
+	void cancelForwarding() noexcept ;
+		///< Cancels a requestForwarding().
+
 private: //overrides
 	std::string_view eventLoggingString() const noexcept override ;
 
@@ -107,7 +110,6 @@ private:
 	G::Path spoolDir() const ;
 	void onPollTimeout() ;
 	void onRequestForwardingTimeout() ;
-	bool logForwarding() const ;
 	std::string startForwarding() ;
 	void onAdminCommand( GSmtp::AdminServer::Command , unsigned int ) ;
 	void onServerEvent( const std::string & s1 , const std::string & ) ;

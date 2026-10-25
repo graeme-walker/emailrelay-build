@@ -138,7 +138,7 @@ private: // overrides
 	std::vector<MessageId> ids() override ;
 	std::vector<MessageId> failures() override ;
 	void unfailAll() override ;
-	void retry( unsigned int , bool ) override ;
+	void retry( unsigned int count , int verbosity ) override ;
 	void rescan() override ;
 
 public:
@@ -235,7 +235,9 @@ public:
 	FileWriter & operator=( FileWriter && ) = delete ;
 } ;
 
+// clang-format off
 inline GStore::FileStore::Config & GStore::FileStore::Config::set_max_size( std::size_t n ) noexcept { max_size = n ; return *this ; }
 inline GStore::FileStore::Config & GStore::FileStore::Config::set_seq( unsigned long n ) noexcept { seq = n ; return *this ; }
+// clang-format on
 
 #endif

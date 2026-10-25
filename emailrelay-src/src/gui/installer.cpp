@@ -850,7 +850,7 @@ void CreateBatchFile::run()
 		}
 	}
 
-	G::BatchFile::write( m_bat , all_args , "emailrelay" , /*do_backup=*/true ) ;
+	G::BatchFile::write( m_bat , all_args , "emailrelay" , /*make_backup=*/true ) ;
 }
 
 // ==

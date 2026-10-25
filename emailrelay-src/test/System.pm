@@ -11,6 +11,7 @@ use strict ;
 use FileHandle ;
 use Fcntl qw(:seek :flock LOCK_EX);
 use File::Glob ;
+use IO::Socket::INET ;
 use Cwd ;
 use Check ;
 
@@ -598,6 +599,29 @@ sub editEnvelope
 	rename( "$path.tmp" , $path ) or die ;
 }
 
+sub failEnvelope
+{
+	my ( $path , $reason_code , $reason_text , $count ) = @_ ;
+	if( defined($reason_code) )
+	{
+		addEnvelopeReason( $path , $reason_code , $reason_text , $count ) ;
+	}
+	rename( $path , "$path.bad" ) or die ;
+}
+
+sub addEnvelopeReason
+{
+	my ( $path , $reason_code , $reason_text , $count ) = @_ ;
+	$count ||= 1 ;
+	my $fh = new IO::File( $path , "a" ) or die "cannot edit envelope [$path]: $!" ;
+	for( my $i = 0 ; $i < $count ; $i++ )
+	{
+		print $fh "X-MailRelay-Reason: $reason_text\r\n" ;
+		print $fh "X-MailRelay-ReasonCode: $reason_code\r\n" ;
+	}
+	$fh->close() or die ;
+}
+
 sub _pstatus
 {
 	my ( $pid , $key , $field ) = @_ ;
@@ -823,6 +847,18 @@ sub processIsRunning
 }
 
 sub nextPort
+{
+	my $port ;
+	for( my $try = 0 ; $try < 5 ; $try++ )
+	{
+		$port = nextPortImp() ;
+		my $socket = new IO::Socket::INET( LocalPort=>$port , Proto=>'tcp' ) ;
+		if( $socket ) { close($socket) ; last }
+	}
+	return $port ;
+}
+
+sub nextPortImp
 {
 	# Returns the next port number in sequence. The implementation
 	# uses a state file, which is created if necessary with a random

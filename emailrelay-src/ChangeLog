@@ -5,11 +5,13 @@ E-MailRelay Change Log
 ------------
 * The "--port" option can be used more than once.
 * New "--poll-run" option added to run a script on every "--poll" cycle.
+* New "--log-config" option added to modify logging verbosity [fr #45].
 * An initial "--poll" time can be specified by using "--poll" twice.
 * Timeout values can be specified with units, such as "100ms".
 * More sensible file ownership when doing "maildir" delivery.
 * Windows filter scripts have null handles open onto "NUL".
 * Fix for verifier exit code 100.
+* Fix listening addresses when "--interface" has no addresses.
 * Windows DPI awareness.
 * GUI support for Qt6 translations.
 * Windows build scripts updated for Qt6.
@@ -17,7 +19,6 @@ E-MailRelay Change Log
 * Documentation in CommonMark only.
 * No doxygen by default.
 * Sphinx used for "make website".
-* Icon refresh.
 
 2.6 -> 2.6.1
 ------------

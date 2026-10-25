@@ -17,6 +17,7 @@
 #include "gexception.h"
 #include "gidentity.h"
 #include "gexecutablecommand.h"
+#include "gtimer.h"
 #include <memory>
 
 namespace GNet
@@ -34,13 +35,20 @@ class GNet::Task
 {
 public:
 	G_EXCEPTION( Busy , tx("cannot execute command-line task: still busy from last time") )
+	struct Config
+	{
+		std::string exec_error_format ; // eg. "exec error: __strerror__"
+		G::Identity identity {G::Identity::invalid()} ; // eg. G::Root::nobody()
+		bool force_async {false} ; // delayed exec errors on Windows
+		Config & set_exec_error_format( const std::string & ) ;
+		Config & set_identity( const G::Identity & ) ;
+		Config & set_force_async( bool = true ) ;
+	} ;
 
-	Task( TaskCallback & , EventState es ,
-		const std::string & exec_error_format = {} ,
-		const G::Identity & = G::Identity::invalid() ) ;
-			///< Constructor for an object that can be start()ed or run().
-			///< The two trailing parameters are passed to the G::NewProcess
-			///< class.
+	Task( TaskCallback & , EventState es , const Config & ) ;
+		///< Constructor for an object that can be start()ed or run().
+		///< The type is used for logging. The two trailing parameters
+		///< are passed to the G::NewProcess class.
 
 	~Task() ;
 		///< Destructor. Kills the spawned process and waits for it to
@@ -78,6 +86,10 @@ public:
 			///< and pipe output. Throws if killed. The callback interface
 			///< is not used.
 
+	std::string name() const ;
+		///< Returns a short name for logging derived from the
+		///< executable command-line.
+
 public:
 	Task( const Task & ) = delete ;
 	Task( Task && ) = delete ;
@@ -88,13 +100,16 @@ private:
 	friend class GNet::TaskImp ;
 	void done( int exit_code , const std::string & output ) ;
 	void exception( std::exception & ) ;
+	void onExecErrorTimeout() ;
 
 private:
 	std::unique_ptr<TaskImp> m_imp ;
 	TaskCallback & m_callback ;
 	EventState m_es ;
-	std::string m_exec_error_format ;
-	G::Identity m_id ;
+	Timer<Task> m_exec_error_timer ;
+	std::string m_exec_error ;
+	std::string m_name ;
+	Config m_config ;
 	bool m_busy {false} ;
 } ;
 
@@ -110,5 +125,11 @@ public:
 	virtual void onTaskDone( int exit_status , const std::string & pipe_output ) = 0 ;
 		///< Callback function to signal task completion.
 } ;
+
+// clang-format off
+inline GNet::Task::Config & GNet::Task::Config::set_exec_error_format( const std::string & s ) { exec_error_format = s ; return *this ; }
+inline GNet::Task::Config & GNet::Task::Config::set_identity( const G::Identity & i ) { identity = i ; return *this ; }
+inline GNet::Task::Config & GNet::Task::Config::set_force_async( bool b ) { force_async = b ; return *this ; }
+// clang-format on
 
 #endif
