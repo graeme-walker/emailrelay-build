@@ -46,19 +46,21 @@ sub runClient
 	# the client will never exit. Logs each line of output using the
 	# supplied log function, and also logs to file.
 
-	my ( $peer , $logfile , $cert , $ca_file , $on_completion ) = @_ ;
+	my ( $peer , $logfile , $cert , $ca_file , $on_completion , $windows , $debug ) = @_ ;
 
 	my $end_match_1 = qr{^New.*Cipher is } ;
 	my $end_match_2 = qr{^---} ;
 	my $error_match = qr{^ERROR} ;
 
-	my $cmd = "$openssl s_client -ign_eof -4 -state -msg -debug -starttls smtp -crlf -connect $peer -showcerts $client_options" ;
+	my $cmd = "$openssl s_client -4 -state -msg -debug -starttls smtp -crlf -connect $peer -showcerts $client_options" ;
 	$cmd .= " -cert $cert" if defined($cert) ;
 	$cmd .= " -CAfile $ca_file" if defined($ca_file) ;
 	$cmd .= " -verify 10" ; # failure is not fatal -- look for "verify error:" near top of s_client log
 
 	_log_run( "runClient" , $cmd , $logfile ) ;
-	return _run( $cmd , $logfile , $end_match_1 , $end_match_2 , $error_match , $on_completion ) ;
+	return _run( $cmd , $logfile ,
+		$end_match_1 , $end_match_2 , $error_match ,
+		$on_completion , $windows , $debug ) ;
 }
 
 sub runClientSecureMatch
@@ -73,7 +75,7 @@ sub runServer
 	# pid is passed as a parameter. Logs each line of output using the
 	# global log function and also logs to the specified file.
 
-	my ( $port , $logfile , $cert , $ca_file , $on_completion , $windows ) = @_ ;
+	my ( $port , $logfile , $cert , $ca_file , $on_completion , $windows , $debug ) = @_ ;
 
 	my $end_match_1 = qr{Handshake.*, Finished} ;
 	my $end_match_2 = qr{CIPHER is |^SSL_accept:\S+ read finished A} ;
@@ -85,7 +87,9 @@ sub runServer
 	$cmd .= " -Verify 99" ;
 
 	_log_run( "runServer" , $cmd , $logfile ) ;
-	return _run( $cmd , $logfile , $end_match_1 , $end_match_2 , $error_match , $on_completion ) ;
+	return _run( $cmd , $logfile ,
+		$end_match_1 , $end_match_2 , $error_match ,
+		$on_completion , $windows , $debug ) ;
 }
 
 sub runServerErrorMatch
@@ -155,17 +159,26 @@ sub _run
 	# work and the on-completion callback is called. The callback will typically
 	# try to terminate the peer or kill the openssl process directly.
 
-	my ( $cmd , $log_file , $end_match_1 , $end_match_2 , $error_match , $on_completion ) = @_ ;
+	my ( $cmd , $log_file , $end_match_1 , $end_match_2 , $error_match , $on_completion , $windows , $debug ) = @_ ;
 
 	my $fh_log = new IO::File( $log_file , "w" ) or die ;
 	$fh_log->autoflush() ;
 
-	# run the command -- the cmd must not have any special shell operators
-	# otherwise it will trigger perl's use of "sh -c" and we will get the
-	# shell's pid and not the s_server's -- also note that "openssl s_server"
-	# will terminate after accepting a new connection if it cannot read
-	# from stdin -- see emailrelay_test.sh
-	my $pid = open( my $fh , "$cmd 2>&1 |" ) ;
+	# run the command -- the forking shenanigans is so that s_server's
+	# standard input is readable, otherwise (eg. with "make -j") it
+	# terminates immediately after accepting an incoming connection
+	#
+	pipe( my $read , my $write ) ;
+	my $pid = open( my $fh , "-|" ) ;
+	die if !defined $pid ;
+	if( $pid == 0 )
+	{
+		# (in child process)
+		open( STDIN , "<&" , $read ) ;
+		open( STDERR , ">&" , STDOUT ) ;
+		exec( $cmd ) ; # or "strace $cmd"
+		die ;
+	}
 	my $ended ;
 	my $matched_first ;
 	while(<$fh>)
@@ -178,22 +191,31 @@ sub _run
 		my $m2 = defined($end_match_2) && ( $line =~ m/$end_match_2/ ) ;
 		if( $e )
 		{
+			print STDERR "s_server log reader: error match: $line\n" if $debug ;
 			last ;
 		}
 		elsif( $m1 && !defined($end_match_2) )
 		{
+			print STDERR "s_server log reader: end match: $line\n" if $debug ;
 			$ended = 1 ;
 			last ;
 		}
 		elsif( $matched_first && $m2 )
 		{
+			print STDERR "s_server log reader: end match: $line\n" if $debug ;
 			$ended = 1 ;
 			last ;
 		}
-		$matched_first = 1 if( $m1 ) ;
+		if( $m1 )
+		{
+			print STDERR "s_server log reader: pre match: $line\n" if $debug ;
+			$matched_first = 1 ;
+		}
 	}
 	$fh_log->close() ;
 	&$on_completion($pid) if defined($on_completion) ;
+	$read->close() ;
+	$write->close() ;
 	close($fh) ; # may block until the peer goes away
 	return $ended ;
 }

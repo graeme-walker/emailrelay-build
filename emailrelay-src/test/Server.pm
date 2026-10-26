@@ -155,7 +155,7 @@ sub tlsVerifyName { return shift->{m_tls_verify_name} }
 sub tlsConfig { return shift->{m_tls_config} }
 sub pollTimeout { return shift->{m_poll_timeout} }
 sub pollRun { return shift->{m_poll_run} }
-sub set_pollRun { $_[0]->{m_poll_run} = $_[1] }
+sub set_pollRun { $_[0]->{m_poll_run} = System::unix() ? ('"'.$_[1].'"') : $_[1] }
 sub set_pollTimeout { $_[0]->{m_poll_timeout} = $_[1] }
 sub stdout { return shift->{m_stdout} }
 sub stderr { return shift->{m_stderr} }
@@ -414,6 +414,7 @@ sub cleanup
 {
 	# Cleans up some files.
 	my ( $this ) = @_ ;
+	System::unlink( $this->log() ) ;
 	System::unlink( $this->stdout() ) ;
 	System::unlink( $this->stderr() ) ;
 	System::unlink( $this->popSecrets() ) ;

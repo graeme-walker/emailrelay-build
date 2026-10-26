@@ -1817,6 +1817,7 @@ sub testPollRun
 	System::unlink( $outputfile ) ;
 	$server->kill() ;
 	$server->cleanup() ;
+	System::unlink( $server->pollRun() ) ;
 }
 
 sub testPollRunRetry
@@ -1834,7 +1835,7 @@ sub testPollRunRetry
 		PollRun => 1 ,
 	) ;
 	my $server = new Server() ;
-	$server->set_pollRun( "retry:x;1;verbose" ) ; # retry if failed only once
+	$server->set_pollRun( "retry:x;1;v+1" ) ; # retry if failed only once
 	$server->set_pollTimeout( "10ms,100s" ) ;
 	System::submitMessageSequence( $server->spoolDir() , 3 , 10 , "alice\@example.com" ) ;
 	my $epath1 = $server->spoolDir() . "/emailrelay.001.envelope" ;
@@ -2085,6 +2086,8 @@ sub testDelivery
 	# tear down
 	$smtp_client->close() ;
 	$server->kill() ;
+	System::deleteSpoolDir( $server->spoolDir()."/alice" ) ;
+	System::deleteSpoolDir( $server->spoolDir()."/bob" ) ;
 	$verifier->kill() ;
 	$verifier->cleanup() ;
 	$server->cleanup() ;
@@ -2883,7 +2886,7 @@ sub _testTlsServer
 	# test -- run openssl s_client
 	my $client_log = System::tempfile( "sclient" ) ;
 	OpensslRun::runClient( $System::localhost.":".$emailrelay->smtpPort() , $client_log , $client_cert , $client_ca ,
-		sub { System::sleep_cs(200) ; $admin_client->doTerminate() } ) ;
+		sub { System::sleep_cs(20) ; $admin_client->doTerminate() } ) ;
 	if( $expect_failure )
 	{
 		System::waitForFileLine( $server_log , "tls error" ) ;
@@ -3000,7 +3003,7 @@ sub _testTlsClient
 		AdminTerminate => 1 ,
 		ForwardTo => 1 ,
 		NoSmtp => 1 ,
-		Poll => 1 , # because the emailrelay client has to start before the s_server
+		Poll => 1 , # allow s_server time to start
 		TlsConfig => 1 ,
 	) ;
 	requireAdmin() ;
@@ -3017,6 +3020,7 @@ sub _testTlsClient
 		tls_certificates => $client_cert ,
 		tls_verify => $client_ca ,
 		tls_verify_name => $client_verify_name } ) ;
+	$emailrelay->set_pollTimeout( "500ms" ) ; # (new)
 	$emailrelay->set_forwardToPort( $server_port ) ;
 	my $admin_client = new AdminClient( $emailrelay->adminPort() ) ;
 	Check::ok( $emailrelay->run( \%args ) , "failed to start" , $emailrelay->message() ) ;
@@ -3026,7 +3030,7 @@ sub _testTlsClient
 	# test -- run openssl s_server
 	my $server_log = System::tempfile( "sserver" ) ;
 	OpensslRun::runServer( $server_port , $server_log , $server_cert , $server_ca ,
-		sub { my ($pid) = @_ ; System::sleep_cs(200) ; $admin_client->doTerminate() ; System::sleep_cs(50) ; System::killOnce($pid) } ,
+		sub { my ($pid) = @_ ; System::sleep_cs(20) ; $admin_client->doTerminate() ; System::sleep_cs(50) ; System::killOnce($pid) } ,
 		System::windows() ) ;
 	if( $expect_failure )
 	{
@@ -3400,7 +3404,7 @@ for my $test ( @tests )
 		last if $result == 1 ;
 	}
 }
-System::dump() if $opt{v} > 1 ;
+System::dump("\nTemporary files ...\n") if $opt{v} ;
 
 # analyse the results and clean up
 if( $run_all_skipped )

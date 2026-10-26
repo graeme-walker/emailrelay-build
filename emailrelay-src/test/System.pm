@@ -284,12 +284,14 @@ sub _snapshotTo
 
 sub dump
 {
+	my ( $heading ) = @_ ;
 	my @newlist = () ;
 	_snapshotTo( \@newlist ) ;
 	my %oldmap = () ;
 	map { $oldmap{$_} = 1 } @_snapshot ;
 	my @created = () ;
 	map { push @created , $_ if !exists $oldmap{$_} } @newlist ;
+	my $first = 1 ;
 	for my $f ( sort @created )
 	{
 		next if ! -f $f ;
@@ -299,6 +301,7 @@ sub dump
 		while(<$fh>)
 		{
 			chomp( my $line = $_ ) ;
+			print $heading if ( $heading && $first ) ; $first = 0 ;
 			print $prefix , $line , "\n" ;
 		}
 	}

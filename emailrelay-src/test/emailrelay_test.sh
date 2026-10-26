@@ -56,9 +56,8 @@ then
 	exit 1
 fi
 
-# run the emailrelay_test.pl tests -- the sleep
-# is for OpensslRun::_run() with "make -j"
-sleep 9999 | perl -I"${srcdir}" "$perl_script" "$@"
+# run the emailrelay_test.pl tests
+perl -I"${srcdir}" "$perl_script" "$@"
 rc=$?
 
 if test "$quiet" -eq 1 -o "$rc" -eq 77 ; then : ; else

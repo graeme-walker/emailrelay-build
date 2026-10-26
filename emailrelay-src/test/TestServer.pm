@@ -98,6 +98,7 @@ sub cleanup
 {
 	my ( $this ) = @_ ;
 	if( $this->pid() ) { $this->kill() }
+	System::unlink( $this->{m_outfile} ) ;
 	System::unlink( $this->{m_pidfile} ) ;
 	System::unlink( $this->{m_logfile} ) ;
 }
