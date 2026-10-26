@@ -21,7 +21,7 @@
 #
 
 use strict ;
-use FileHandle ;
+use IO::File ;
 use File::Basename ;
 use System ;
 
@@ -183,7 +183,7 @@ sub domain { return shift->{m_domain} }
 sub _pid
 {
 	my ( $this ) = @_ ;
-	my $fh = new FileHandle( $this->pidFile() , "r" ) ;
+	my $fh = new IO::File( $this->pidFile() , "r" ) ;
 	return undef if !$fh ;
 	my $line = <$fh> ;
 	chomp $line ;
@@ -367,7 +367,7 @@ sub error
 	# Returns the first error from the server's log file. As a
 	# required feature this only returns errors with a timestamp.
 	my ( $this ) = @_ ;
-	my $fh = new FileHandle( $this->stderr() ) or return undef ;
+	my $fh = new IO::File( $this->stderr() ) or return undef ;
 	while(<$fh>)
 	{
 		chomp( my $line = $_ ) ;
@@ -381,7 +381,7 @@ sub message
 {
 	# Returns the first warning or error from the server's log file.
 	my ( $this ) = @_ ;
-	my $fh = new FileHandle( $this->stderr() ) or return undef ;
+	my $fh = new IO::File( $this->stderr() ) or return undef ;
 	while(<$fh>)
 	{
 		chomp( my $line = $_ ) ;
@@ -469,7 +469,7 @@ sub hasUnixDomainSockets
 {
 	return undef if !System::unix() ;
 	my $exe = _textmode() ;
-	my $fh = new FileHandle( "$exe --version --verbose |" ) ;
+	my $fh = new IO::File( "$exe --version --verbose |" ) ;
 	while(<$fh>)
 	{
 		chomp( my $line = $_ ) ;
@@ -481,7 +481,7 @@ sub hasUnixDomainSockets
 sub hasPop
 {
 	my $exe = _textmode() ;
-	my $fh = new FileHandle( "$exe --version --verbose |" ) ;
+	my $fh = new IO::File( "$exe --version --verbose |" ) ;
 	while(<$fh>)
 	{
 		chomp( my $line = $_ ) ;
@@ -493,7 +493,7 @@ sub hasPop
 sub hasAdmin
 {
 	my $exe = _textmode() ;
-	my $fh = new FileHandle( "$exe --version --verbose |" ) ;
+	my $fh = new IO::File( "$exe --version --verbose |" ) ;
 	while(<$fh>)
 	{
 		chomp( my $line = $_ ) ;
@@ -507,7 +507,7 @@ sub hasTls
 	# Returns true if the executable has tls support.
 
 	my $exe = _textmode() ;
-	my $fh = new FileHandle( "$exe --version --verbose |" ) ;
+	my $fh = new IO::File( "$exe --version --verbose |" ) ;
 	while(<$fh>)
 	{
 		chomp( my $line = $_ ) ;

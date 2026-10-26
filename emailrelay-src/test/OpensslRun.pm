@@ -30,7 +30,7 @@
 #
 
 use strict ;
-use FileHandle ;
+use IO::File ;
 
 package OpensslRun ;
 our $openssl = "openssl" ;
@@ -52,7 +52,7 @@ sub runClient
 	my $end_match_2 = qr{^---} ;
 	my $error_match = qr{^ERROR} ;
 
-	my $cmd = "$openssl s_client -4 -state -msg -debug -starttls smtp -crlf -connect $peer -showcerts $client_options" ;
+	my $cmd = "$openssl s_client -ign_eof -4 -state -msg -debug -starttls smtp -crlf -connect $peer -showcerts $client_options" ;
 	$cmd .= " -cert $cert" if defined($cert) ;
 	$cmd .= " -CAfile $ca_file" if defined($ca_file) ;
 	$cmd .= " -verify 10" ; # failure is not fatal -- look for "verify error:" near top of s_client log
@@ -83,7 +83,6 @@ sub runServer
 	$cmd .= " -cert $cert" if defined($cert) ;
 	$cmd .= " -CAfile $ca_file" if defined($ca_file) ;
 	$cmd .= " -Verify 99" ;
-	###$cmd .= " </dev/tty" unless $windows ; # otherwise with "make -j" the s_server terminates immediately because stdin is eof
 
 	_log_run( "runServer" , $cmd , $logfile ) ;
 	return _run( $cmd , $logfile , $end_match_1 , $end_match_2 , $error_match , $on_completion ) ;
@@ -102,7 +101,7 @@ sub parseLog
 	my ( $logfile ) = @_ ;
 
 	my $result = {} ;
-	my $fh = new FileHandle( $logfile ) or die ;
+	my $fh = new IO::File( $logfile ) or die ;
 	my $state = 0 ;
 	while(<$fh>)
 	{
@@ -158,12 +157,14 @@ sub _run
 
 	my ( $cmd , $log_file , $end_match_1 , $end_match_2 , $error_match , $on_completion ) = @_ ;
 
-	my $fh_log = new FileHandle( $log_file , "w" ) or die ;
+	my $fh_log = new IO::File( $log_file , "w" ) or die ;
 	$fh_log->autoflush() ;
 
 	# run the command -- the cmd must not have any special shell operators
 	# otherwise it will trigger perl's use of "sh -c" and we will get the
-	# shell's pid and not the s_server's
+	# shell's pid and not the s_server's -- also note that "openssl s_server"
+	# will terminate after accepting a new connection if it cannot read
+	# from stdin -- see emailrelay_test.sh
 	my $pid = open( my $fh , "$cmd 2>&1 |" ) ;
 	my $ended ;
 	my $matched_first ;

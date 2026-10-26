@@ -20,7 +20,6 @@
 #
 
 use strict ;
-use FileHandle ;
 use System ;
 
 package TestServer ;
