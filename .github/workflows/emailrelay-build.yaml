@@ -199,7 +199,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             build-essential cmake autoconf automake g++-mingw-w64-i686-posix \
-            curl bzip2 zip
+            curl ca-certificates bzip2 zip
       - name: configure
         working-directory: emailrelay-src
         run: |
