@@ -168,16 +168,24 @@ sub _run
 	# standard input is readable, otherwise (eg. with "make -j") it
 	# terminates immediately after accepting an incoming connection
 	#
-	pipe( my $read , my $write ) ;
-	my $pid = open( my $fh , "-|" ) ;
-	die if !defined $pid ;
-	if( $pid == 0 )
+	my ( $fh , $pid , $read , $write ) ;
+	if( $windows )
 	{
-		# (in child process)
-		open( STDIN , "<&" , $read ) ;
-		open( STDERR , ">&" , STDOUT ) ;
-		exec( $cmd ) ; # or "strace $cmd"
-		die ;
+		$pid = open( $fh , "cmd 2>&1 |" ) ;
+	}
+	else
+	{
+		pipe( $read , $write ) ;
+		$pid = open( $fh , "-|" ) ;
+		die if !defined $pid ;
+		if( $pid == 0 )
+		{
+			# (in child process)
+			open( STDIN , "<&" , $read ) ;
+			open( STDERR , ">&" , STDOUT ) ;
+			exec( $cmd ) ; # or "strace $cmd"
+			die ;
+		}
 	}
 	my $ended ;
 	my $matched_first ;
@@ -213,9 +221,9 @@ sub _run
 		}
 	}
 	$fh_log->close() ;
-	&$on_completion($pid) if defined($on_completion) ;
-	$read->close() ;
-	$write->close() ;
+	&$on_completion($pid,$fh) if defined($on_completion) ;
+	$read->close() if $read ;
+	$write->close() if $write ;
 	close($fh) ; # may block until the peer goes away
 	return $ended ;
 }
