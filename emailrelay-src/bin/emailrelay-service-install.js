@@ -27,7 +27,7 @@ try
 	//
 	var service_name = "emailrelay" ;
 
-	// executables can be in "programs"
+	// executables should be in "programs"
 	var dir_install = fs.GetAbsolutePathName( this_dir ) ;
 	var dir_exe = dir_install ;
 	if( fs.FolderExists( dir_install + "\\programs" ) )
